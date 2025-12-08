@@ -90,12 +90,16 @@
 
   .metric-card::before {
     content: '';
-    @apply absolute inset-0 opacity-0 transition-opacity duration-300;
+    @apply absolute inset-0 opacity-0 transition-opacity duration-300 pointer-events-none;
     background: radial-gradient(circle at 50% 0%, hsl(var(--primary) / 0.1), transparent 50%);
   }
 
   .metric-card:hover::before {
     @apply opacity-100;
+  }
+
+  .data-table tbody tr {
+    @apply cursor-pointer;
   }
 
   .data-table {
