@@ -58,8 +58,8 @@ export default function Workloads() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-semibold text-foreground">Workloads</h1>
-          <p className="text-sm text-muted-foreground">Container-aware workload recommendations</p>
+          <h1 className="text-2xl font-semibold text-foreground">Workloads & Recommendations</h1>
+          <p className="text-sm text-muted-foreground">Container-aware workload list with optimization recommendations</p>
         </div>
         <div className="flex items-center gap-2">
           <Layers className="h-4 w-4 text-muted-foreground" />

@@ -23,10 +23,10 @@ import {
 
 const navItems = [
   { title: "Overview", url: "/", icon: LayoutDashboard },
-  { title: "Workloads", url: "/workloads", icon: Layers },
+  { title: "Workloads & Recommendations", url: "/workloads", icon: Layers },
   { title: "Performance", url: "/performance", icon: Activity },
   { title: "Audit & Events", url: "/audit", icon: FileText },
-  { title: "Policies", url: "/policies", icon: Settings },
+  { title: "Policies & Configuration", url: "/policies", icon: Settings },
 ];
 
 export function AppSidebar() {
