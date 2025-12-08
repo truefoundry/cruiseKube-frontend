@@ -24,10 +24,10 @@ import {
 
 const navItems = [
   { title: "Overview", url: "/", icon: LayoutDashboard },
-  { title: "Workloads & Recommendations", url: "/workloads", icon: Layers },
+  { title: "Recommendations", url: "/recommendations", icon: Layers },
   { title: "Historical Savings", url: "/savings", icon: History },
   { title: "Performance", url: "/performance", icon: Activity },
-  { title: "Events", url: "/events", icon: FileText },
+  { title: "Audit & Events", url: "/audit", icon: FileText },
   { title: "Policies & Configuration", url: "/policies", icon: Settings },
 ];
 

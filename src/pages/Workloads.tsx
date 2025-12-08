@@ -58,7 +58,7 @@ export default function Workloads() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-semibold text-foreground">Workloads & Recommendations</h1>
+          <h1 className="text-2xl font-semibold text-foreground">Recommendations</h1>
           <p className="text-sm text-muted-foreground">Container-aware workload list with optimization recommendations</p>
         </div>
         <div className="flex items-center gap-2">
@@ -146,14 +146,14 @@ export default function Workloads() {
                   onClick={(e) => {
                     e.preventDefault();
                     e.stopPropagation();
-                    navigate(`/workloads/${workload.namespace}/${workload.workload}`);
+                    navigate(`/recommendations/${workload.namespace}/${workload.workload}`);
                   }}
                   role="button"
                   tabIndex={0}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter' || e.key === ' ') {
                       e.preventDefault();
-                      navigate(`/workloads/${workload.namespace}/${workload.workload}`);
+                      navigate(`/recommendations/${workload.namespace}/${workload.workload}`);
                     }
                   }}
                 >
