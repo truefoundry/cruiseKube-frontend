@@ -5,12 +5,8 @@ import {
   Download, 
   Mail, 
   ExternalLink,
-  Cpu,
-  HardDrive,
-  Zap,
-  ArrowRightLeft,
   Calendar,
-  Filter
+  Zap
 } from "lucide-react";
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
@@ -30,10 +26,6 @@ import {
   CartesianGrid,
   Tooltip,
   ResponsiveContainer,
-  BarChart,
-  Bar,
-  Cell,
-  Legend,
   ReferenceLine,
 } from "recharts";
 
@@ -46,13 +38,6 @@ const savingsTrendData = [
   { date: "Dec 5", realized: 1700, potential: 2300, event: null },
   { date: "Dec 6", realized: 1650, potential: 2350, event: "incident" },
   { date: "Dec 7", realized: 1800, potential: 2200, event: null },
-];
-
-const compositionData = [
-  { name: "CPU", value: 4250, color: "hsl(var(--primary))" },
-  { name: "Memory", value: 2800, color: "hsl(var(--success))" },
-  { name: "Eviction", value: 890, color: "hsl(var(--warning))" },
-  { name: "Reallocation", value: 560, color: "hsl(var(--muted-foreground))" },
 ];
 
 const leaderboardData = [
@@ -68,8 +53,6 @@ export default function HistoricalSavings() {
   const [clusterFilter, setClusterFilter] = useState("all");
   const [namespaceFilter, setNamespaceFilter] = useState("all");
   const [breakdownBy, setBreakdownBy] = useState("namespace");
-
-  const totalComposition = compositionData.reduce((acc, item) => acc + item.value, 0);
 
   return (
     <div className="p-6 space-y-6 animate-fade-in">
@@ -294,88 +277,44 @@ export default function HistoricalSavings() {
         </div>
       </div>
 
-      {/* Composition and Leaderboard */}
-      <div className="grid gap-6 lg:grid-cols-2">
-        {/* Savings Composition Breakdown */}
-        <div className="metric-card">
-          <h3 className="text-xs font-medium uppercase tracking-wider text-muted-foreground mb-4">
-            Savings Composition Breakdown
+      {/* Savings Leaderboard */}
+      <div className="metric-card">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+            Savings Leaderboard
           </h3>
-          <div className="space-y-4">
-            {compositionData.map((item) => (
-              <div key={item.name} className="space-y-2">
+          <TrendingUp className="h-4 w-4 text-muted-foreground" />
+        </div>
+        <div className="space-y-3">
+          {leaderboardData.map((item, i) => (
+            <div key={item.namespace} className="flex items-center gap-3">
+              <span className={`
+                flex h-6 w-6 items-center justify-center rounded-full text-xs font-medium
+                ${i === 0 ? 'bg-primary/20 text-primary' : 'bg-muted text-muted-foreground'}
+              `}>
+                {i + 1}
+              </span>
+              <div className="flex-1 min-w-0">
                 <div className="flex items-center justify-between">
+                  <span className="font-mono text-sm truncate">{item.namespace}</span>
                   <div className="flex items-center gap-2">
-                    {item.name === "CPU" && <Cpu className="h-4 w-4 text-primary" />}
-                    {item.name === "Memory" && <HardDrive className="h-4 w-4 text-success" />}
-                    {item.name === "Eviction" && <Zap className="h-4 w-4 text-warning" />}
-                    {item.name === "Reallocation" && <ArrowRightLeft className="h-4 w-4 text-muted-foreground" />}
-                    <span className="text-sm text-foreground">{item.name}</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span className="font-mono text-sm text-foreground">${item.value.toLocaleString()}</span>
+                    <span className="font-mono text-sm text-primary">${item.realizedSavings.toLocaleString()}</span>
                     <span className="text-xs text-muted-foreground">
-                      ({((item.value / totalComposition) * 100).toFixed(1)}%)
+                      +${item.remainingPotential.toLocaleString()}
                     </span>
                   </div>
                 </div>
-                <div className="h-2 rounded-full bg-muted overflow-hidden">
+                <div className="mt-1 h-1.5 rounded-full bg-muted overflow-hidden">
                   <div 
-                    className="h-full rounded-full transition-all duration-500"
+                    className="h-full bg-gradient-to-r from-primary to-primary/50 rounded-full"
                     style={{ 
-                      width: `${(item.value / totalComposition) * 100}%`,
-                      backgroundColor: item.color
+                      width: `${(item.realizedSavings / (item.realizedSavings + item.remainingPotential)) * 100}%` 
                     }}
                   />
                 </div>
               </div>
-            ))}
-          </div>
-          <div className="mt-4 pt-4 border-t border-border flex items-center justify-between">
-            <span className="text-sm font-medium text-foreground">Total Savings</span>
-            <span className="font-mono text-lg text-primary">${totalComposition.toLocaleString()}</span>
-          </div>
-        </div>
-
-        {/* Savings Leaderboard */}
-        <div className="metric-card">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-              Savings Leaderboard
-            </h3>
-            <TrendingUp className="h-4 w-4 text-muted-foreground" />
-          </div>
-          <div className="space-y-3">
-            {leaderboardData.map((item, i) => (
-              <div key={item.namespace} className="flex items-center gap-3">
-                <span className={`
-                  flex h-6 w-6 items-center justify-center rounded-full text-xs font-medium
-                  ${i === 0 ? 'bg-primary/20 text-primary' : 'bg-muted text-muted-foreground'}
-                `}>
-                  {i + 1}
-                </span>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center justify-between">
-                    <span className="font-mono text-sm truncate">{item.namespace}</span>
-                    <div className="flex items-center gap-2">
-                      <span className="font-mono text-sm text-primary">${item.realizedSavings.toLocaleString()}</span>
-                      <span className="text-xs text-muted-foreground">
-                        +${item.remainingPotential.toLocaleString()}
-                      </span>
-                    </div>
-                  </div>
-                  <div className="mt-1 h-1.5 rounded-full bg-muted overflow-hidden">
-                    <div 
-                      className="h-full bg-gradient-to-r from-primary to-primary/50 rounded-full"
-                      style={{ 
-                        width: `${(item.realizedSavings / (item.realizedSavings + item.remainingPotential)) * 100}%` 
-                      }}
-                    />
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
+            </div>
+          ))}
         </div>
       </div>
 

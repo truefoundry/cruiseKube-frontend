@@ -168,9 +168,15 @@ export default function Policies() {
         {/* CPU/Memory Caps */}
         <TabsContent value="caps" className="space-y-6">
           <div className="metric-card overflow-hidden">
-            <h3 className="text-xs font-medium uppercase tracking-wider text-muted-foreground mb-4">
-              Resource Caps
-            </h3>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                Resource Caps
+              </h3>
+              <Button size="sm" className="gap-1">
+                <span className="text-lg leading-none">+</span>
+                Add Workload
+              </Button>
+            </div>
             <div className="overflow-x-auto">
               <table className="data-table">
                 <thead>

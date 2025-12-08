@@ -30,7 +30,7 @@ const App = () => (
             <Route path="/workloads/:namespace/:workloadName/:containerName" element={<ContainerDetail />} />
             <Route path="/savings" element={<HistoricalSavings />} />
             <Route path="/performance" element={<Performance />} />
-            <Route path="/audit" element={<Audit />} />
+            <Route path="/events" element={<Audit />} />
             <Route path="/policies" element={<Policies />} />
           </Route>
           <Route path="*" element={<NotFound />} />
