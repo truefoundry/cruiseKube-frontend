@@ -1,4 +1,4 @@
-import { useParams, Link } from "react-router-dom";
+import { useParams, Link, useNavigate } from "react-router-dom";
 import { 
   ArrowLeft, 
   ChevronRight, 
@@ -21,6 +21,7 @@ import { containers, workloads } from "@/lib/mock-data";
 
 export default function WorkloadDetail() {
   const { namespace, workloadName } = useParams();
+  const navigate = useNavigate();
   
   const workload = workloads.find(
     (w) => w.namespace === namespace && w.workload === workloadName
@@ -172,7 +173,11 @@ export default function WorkloadDetail() {
             </thead>
             <tbody>
               {containers.map((container) => (
-                <tr key={container.name} className="group cursor-pointer">
+                <tr 
+                  key={container.name} 
+                  className="group cursor-pointer hover:bg-muted/50 transition-colors"
+                  onClick={() => navigate(`/workloads/${namespace}/${workloadName}/${container.name}`)}
+                >
                   <td className="font-medium">{container.name}</td>
                   <td className="font-mono text-sm">{container.cpuCurrent}</td>
                   <td className="font-mono text-sm text-primary">{container.cpuRecommended}</td>
@@ -184,15 +189,7 @@ export default function WorkloadDetail() {
                     </StatusBadge>
                   </td>
                   <td>
-                    <Link to={`/workloads/${namespace}/${workloadName}/${container.name}`}>
-                      <Button 
-                        variant="ghost" 
-                        size="sm" 
-                        className="opacity-0 group-hover:opacity-100 transition-opacity"
-                      >
-                        <ChevronRight className="h-4 w-4" />
-                      </Button>
-                    </Link>
+                    <ChevronRight className="h-4 w-4 text-muted-foreground group-hover:text-foreground transition-colors" />
                   </td>
                 </tr>
               ))}
