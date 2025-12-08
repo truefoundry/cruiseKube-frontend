@@ -8,6 +8,7 @@ import Overview from "./pages/Overview";
 import Workloads from "./pages/Workloads";
 import WorkloadDetail from "./pages/WorkloadDetail";
 import ContainerDetail from "./pages/ContainerDetail";
+import HistoricalSavings from "./pages/HistoricalSavings";
 import Performance from "./pages/Performance";
 import Audit from "./pages/Audit";
 import Policies from "./pages/Policies";
@@ -27,6 +28,7 @@ const App = () => (
             <Route path="/workloads" element={<Workloads />} />
             <Route path="/workloads/:namespace/:workloadName" element={<WorkloadDetail />} />
             <Route path="/workloads/:namespace/:workloadName/:containerName" element={<ContainerDetail />} />
+            <Route path="/savings" element={<HistoricalSavings />} />
             <Route path="/performance" element={<Performance />} />
             <Route path="/audit" element={<Audit />} />
             <Route path="/policies" element={<Policies />} />
