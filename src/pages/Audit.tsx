@@ -59,7 +59,7 @@ export default function Audit() {
     <div className="p-6 space-y-6 animate-fade-in">
       {/* Header */}
       <div>
-        <h1 className="text-2xl font-semibold text-foreground">Audit & Events</h1>
+        <h1 className="text-2xl font-semibold text-foreground">Events</h1>
         <p className="text-sm text-muted-foreground">Track all optimization events and decisions</p>
       </div>
 

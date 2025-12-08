@@ -5,8 +5,7 @@ import {
   FileText, 
   Settings,
   ChevronLeft,
-  Cpu,
-  History
+  Cpu
 } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import {
@@ -25,9 +24,8 @@ import {
 const navItems = [
   { title: "Overview", url: "/", icon: LayoutDashboard },
   { title: "Workloads & Recommendations", url: "/workloads", icon: Layers },
-  { title: "Historical Savings", url: "/savings", icon: History },
   { title: "Performance", url: "/performance", icon: Activity },
-  { title: "Audit & Events", url: "/audit", icon: FileText },
+  { title: "Events", url: "/events", icon: FileText },
   { title: "Policies & Configuration", url: "/policies", icon: Settings },
 ];
 
