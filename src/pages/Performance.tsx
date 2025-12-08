@@ -1,9 +1,10 @@
 import { ExternalLink, Maximize2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import grafanaDashboard1 from "@/assets/grafana-dashboard-1.png";
+import grafanaDashboard2 from "@/assets/grafana-dashboard-2.png";
 
 export default function Performance() {
-  // Replace with your actual Grafana dashboard URL
-  const grafanaUrl = "https://your-grafana-instance.com/d/dashboard-id/dashboard-name?orgId=1&kiosk";
+  const grafanaUrl = "https://your-grafana-instance.com/d/dashboard-id/dashboard-name";
 
   return (
     <div className="h-full flex flex-col animate-fade-in">
@@ -13,38 +14,28 @@ export default function Performance() {
           <h1 className="text-xl font-semibold text-foreground">Performance</h1>
           <p className="text-sm text-muted-foreground">Grafana metrics dashboard</p>
         </div>
-        <div className="flex items-center gap-2">
-          <Button 
-            variant="outline" 
-            size="sm"
-            className="gap-2"
-            onClick={() => window.open(grafanaUrl.replace('&kiosk', ''), '_blank')}
-          >
-            <ExternalLink className="h-4 w-4" />
-            Open in Grafana
-          </Button>
-          <Button 
-            variant="ghost" 
-            size="sm"
-            onClick={() => {
-              const iframe = document.querySelector('iframe');
-              if (iframe) {
-                iframe.requestFullscreen?.();
-              }
-            }}
-          >
-            <Maximize2 className="h-4 w-4" />
-          </Button>
-        </div>
+        <Button 
+          variant="outline" 
+          size="sm"
+          className="gap-2"
+          onClick={() => window.open(grafanaUrl, '_blank')}
+        >
+          <ExternalLink className="h-4 w-4" />
+          Open in Grafana
+        </Button>
       </div>
 
-      {/* Grafana Embed */}
-      <div className="flex-1 min-h-0">
-        <iframe
-          src={grafanaUrl}
-          title="Grafana Dashboard"
-          className="w-full h-full border-0"
-          allow="fullscreen"
+      {/* Dashboard Images */}
+      <div className="flex-1 overflow-auto bg-[#181b1f]">
+        <img 
+          src={grafanaDashboard1} 
+          alt="Grafana Dashboard - Overview, CPU, Memory Performance" 
+          className="w-full"
+        />
+        <img 
+          src={grafanaDashboard2} 
+          alt="Grafana Dashboard - Pod Statistics, Evictions, Task Performance" 
+          className="w-full"
         />
       </div>
     </div>
