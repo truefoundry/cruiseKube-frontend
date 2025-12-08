@@ -1,12 +1,16 @@
-import { useParams, Link, useNavigate } from "react-router-dom";
+import { useState } from "react";
+import { useParams, Link } from "react-router-dom";
 import { 
   ArrowLeft, 
   ChevronRight, 
+  ChevronDown,
   Cpu, 
   HardDrive,
   Tag,
   User,
-  Settings
+  FileCode,
+  Clock,
+  ExternalLink
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { StatusBadge } from "@/components/ui/status-badge";
@@ -17,11 +21,17 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { containers, workloads } from "@/lib/mock-data";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
+import { containers, workloads, podRecommendations, recommendationHistory } from "@/lib/mock-data";
 
 export default function WorkloadDetail() {
   const { namespace, workloadName } = useParams();
-  const navigate = useNavigate();
+  const [expandedContainers, setExpandedContainers] = useState<string[]>([]);
+  const [selectedPods, setSelectedPods] = useState<string[]>([]);
   
   const workload = workloads.find(
     (w) => w.namespace === namespace && w.workload === workloadName
@@ -33,12 +43,37 @@ export default function WorkloadDetail() {
     return "success";
   };
 
+  const getDecisionBadge = (decision: string) => {
+    switch (decision) {
+      case "applied": return "success";
+      case "ignored": return "destructive";
+      case "snoozed": return "warning";
+      default: return "default";
+    }
+  };
+
+  const toggleContainer = (name: string) => {
+    setExpandedContainers(prev => 
+      prev.includes(name) 
+        ? prev.filter(c => c !== name)
+        : [...prev, name]
+    );
+  };
+
+  const togglePodSelection = (pod: string) => {
+    setSelectedPods(prev =>
+      prev.includes(pod)
+        ? prev.filter(p => p !== pod)
+        : [...prev, pod]
+    );
+  };
+
   if (!workload) {
     return (
       <div className="p-6 text-center">
         <p className="text-muted-foreground">Workload not found</p>
-        <Link to="/workloads">
-          <Button variant="link" className="mt-2">Back to workloads</Button>
+        <Link to="/recommendations">
+          <Button variant="link" className="mt-2">Back to recommendations</Button>
         </Link>
       </div>
     );
@@ -48,8 +83,8 @@ export default function WorkloadDetail() {
     <div className="p-6 space-y-6 animate-fade-in">
       {/* Breadcrumb */}
       <div className="flex items-center gap-2 text-sm text-muted-foreground">
-        <Link to="/workloads" className="hover:text-foreground transition-colors">
-          Workloads
+        <Link to="/recommendations" className="hover:text-foreground transition-colors">
+          Recommendations
         </Link>
         <ChevronRight className="h-4 w-4" />
         <span className="font-mono">{namespace}</span>
@@ -60,7 +95,7 @@ export default function WorkloadDetail() {
       {/* Header */}
       <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
         <div className="flex items-start gap-4">
-          <Link to="/workloads">
+          <Link to="/recommendations">
             <Button variant="ghost" size="icon" className="shrink-0">
               <ArrowLeft className="h-4 w-4" />
             </Button>
@@ -90,24 +125,25 @@ export default function WorkloadDetail() {
           </div>
         </div>
 
-        {/* Controls */}
+        {/* Controls - Mode & Priority */}
         <div className="flex flex-wrap items-center gap-3 lg:shrink-0">
           <div className="flex items-center gap-2">
             <span className="text-sm text-muted-foreground">Mode:</span>
             <Select defaultValue={workload.mode}>
-              <SelectTrigger className="w-[140px] bg-muted/50">
+              <SelectTrigger className="w-[160px] bg-muted/50">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="enabled">Enabled</SelectItem>
                 <SelectItem value="recommend-only">Recommend Only</SelectItem>
+                <SelectItem value="disabled">Disabled</SelectItem>
               </SelectContent>
             </Select>
           </div>
           <div className="flex items-center gap-2">
             <span className="text-sm text-muted-foreground">Priority:</span>
             <Select defaultValue={workload.priority}>
-              <SelectTrigger className="w-[140px] bg-muted/50">
+              <SelectTrigger className="w-[160px] bg-muted/50">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -118,9 +154,6 @@ export default function WorkloadDetail() {
               </SelectContent>
             </Select>
           </div>
-          <Button variant="outline" size="icon">
-            <Settings className="h-4 w-4" />
-          </Button>
         </div>
       </div>
 
@@ -150,59 +183,158 @@ export default function WorkloadDetail() {
         </div>
       </div>
 
-      {/* Containers Table */}
+      {/* Containers & Pods Accordion */}
       <div className="metric-card overflow-hidden">
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-            Containers
+            Containers & Pods
           </h3>
-          <span className="text-xs text-muted-foreground">{containers.length} containers</span>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" size="sm" disabled={selectedPods.length === 0}>
+              <FileCode className="h-4 w-4 mr-2" />
+              Generate Patch ({selectedPods.length})
+            </Button>
+            <Button variant="outline" size="sm" disabled={selectedPods.length === 0}>
+              Snooze
+            </Button>
+          </div>
+        </div>
+
+        <div className="space-y-2">
+          {containers.map((container) => (
+            <Collapsible 
+              key={container.name}
+              open={expandedContainers.includes(container.name)}
+              onOpenChange={() => toggleContainer(container.name)}
+            >
+              <CollapsibleTrigger className="w-full">
+                <div className="flex items-center justify-between p-3 rounded-lg bg-muted/30 hover:bg-muted/50 transition-colors">
+                  <div className="flex items-center gap-4">
+                    {expandedContainers.includes(container.name) ? (
+                      <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                    ) : (
+                      <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                    )}
+                    <span className="font-medium">{container.name}</span>
+                    <StatusBadge status={getWasteStatus(container.wastePercent)}>
+                      {container.wastePercent}% waste
+                    </StatusBadge>
+                  </div>
+                  <div className="flex items-center gap-6 text-sm">
+                    <div>
+                      <span className="text-muted-foreground">CPU: </span>
+                      <span className="font-mono text-primary">{container.cpuRecommended}</span>
+                    </div>
+                    <div>
+                      <span className="text-muted-foreground">Memory: </span>
+                      <span className="font-mono text-primary">{container.memRecommended}</span>
+                    </div>
+                  </div>
+                </div>
+              </CollapsibleTrigger>
+              
+              <CollapsibleContent>
+                <div className="mt-2 ml-8 p-4 rounded-lg bg-background border border-border">
+                  <h4 className="text-xs font-medium uppercase tracking-wider text-muted-foreground mb-3">
+                    Per-Pod Recommendations
+                  </h4>
+                  <div className="overflow-x-auto">
+                    <table className="data-table">
+                      <thead>
+                        <tr>
+                          <th className="w-8">
+                            <input 
+                              type="checkbox" 
+                              className="rounded"
+                              onChange={(e) => {
+                                if (e.target.checked) {
+                                  setSelectedPods(podRecommendations.map(p => p.pod));
+                                } else {
+                                  setSelectedPods([]);
+                                }
+                              }}
+                            />
+                          </th>
+                          <th>Pod</th>
+                          <th>CPU Request</th>
+                          <th>CPU Rec.</th>
+                          <th>Memory Request</th>
+                          <th>Memory Rec.</th>
+                          <th>Usage (p99/p50)</th>
+                          <th></th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {podRecommendations.map((pod) => (
+                          <tr key={pod.pod}>
+                            <td>
+                              <input 
+                                type="checkbox"
+                                className="rounded"
+                                checked={selectedPods.includes(pod.pod)}
+                                onChange={() => togglePodSelection(pod.pod)}
+                              />
+                            </td>
+                            <td className="font-mono text-xs">{pod.pod}</td>
+                            <td className="font-mono text-sm">{pod.cpuRequest}</td>
+                            <td className="font-mono text-sm text-primary">{pod.cpuRecRequest}</td>
+                            <td className="font-mono text-sm">{pod.memRequest}</td>
+                            <td className="font-mono text-sm text-primary">{pod.memRecRequest}</td>
+                            <td className="text-xs text-muted-foreground">
+                              {pod.usageP99} / {pod.usageP50}
+                            </td>
+                            <td>
+                              <Button variant="ghost" size="sm" className="h-7 px-2">
+                                <ExternalLink className="h-3 w-3" />
+                              </Button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </CollapsibleContent>
+            </Collapsible>
+          ))}
+        </div>
+      </div>
+
+      {/* History */}
+      <div className="metric-card overflow-hidden">
+        <div className="flex items-center gap-2 mb-4">
+          <Clock className="h-4 w-4 text-muted-foreground" />
+          <h3 className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+            Recommendation History
+          </h3>
         </div>
         <div className="overflow-x-auto">
           <table className="data-table">
             <thead>
               <tr>
-                <th>Container</th>
-                <th>CPU Request</th>
-                <th>CPU Recommended</th>
-                <th>Memory Request</th>
-                <th>Memory Recommended</th>
-                <th>Waste</th>
-                <th></th>
+                <th>Timestamp</th>
+                <th>Old Values</th>
+                <th>New Values</th>
+                <th>Decision</th>
+                <th>Actor</th>
               </tr>
             </thead>
             <tbody>
-              {containers.map((container) => (
-                <tr 
-                  key={container.name} 
-                  className="group cursor-pointer hover:bg-muted/50 transition-colors"
-                  onClick={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    navigate(`/workloads/${namespace}/${workloadName}/${container.name}`);
-                  }}
-                  role="button"
-                  tabIndex={0}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' || e.key === ' ') {
-                      e.preventDefault();
-                      navigate(`/workloads/${namespace}/${workloadName}/${container.name}`);
-                    }
-                  }}
-                >
-                  <td className="font-medium">{container.name}</td>
-                  <td className="font-mono text-sm">{container.cpuCurrent}</td>
-                  <td className="font-mono text-sm text-primary">{container.cpuRecommended}</td>
-                  <td className="font-mono text-sm">{container.memCurrent}</td>
-                  <td className="font-mono text-sm text-primary">{container.memRecommended}</td>
+              {recommendationHistory.map((entry, idx) => (
+                <tr key={idx}>
+                  <td className="font-mono text-xs text-muted-foreground">{entry.timestamp}</td>
+                  <td className="font-mono text-xs">
+                    CPU: {entry.oldCpu} / Mem: {entry.oldMem}
+                  </td>
+                  <td className="font-mono text-xs text-primary">
+                    CPU: {entry.newCpu} / Mem: {entry.newMem}
+                  </td>
                   <td>
-                    <StatusBadge status={getWasteStatus(container.wastePercent)}>
-                      {container.wastePercent}%
+                    <StatusBadge status={getDecisionBadge(entry.decision)}>
+                      {entry.decision}
                     </StatusBadge>
                   </td>
-                  <td>
-                    <ChevronRight className="h-4 w-4 text-muted-foreground group-hover:text-foreground transition-colors" />
-                  </td>
+                  <td className="text-xs text-muted-foreground">{entry.actor}</td>
                 </tr>
               ))}
             </tbody>
