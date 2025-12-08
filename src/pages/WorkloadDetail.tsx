@@ -176,7 +176,19 @@ export default function WorkloadDetail() {
                 <tr 
                   key={container.name} 
                   className="group cursor-pointer hover:bg-muted/50 transition-colors"
-                  onClick={() => navigate(`/workloads/${namespace}/${workloadName}/${container.name}`)}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    navigate(`/workloads/${namespace}/${workloadName}/${container.name}`);
+                  }}
+                  role="button"
+                  tabIndex={0}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      navigate(`/workloads/${namespace}/${workloadName}/${container.name}`);
+                    }
+                  }}
                 >
                   <td className="font-medium">{container.name}</td>
                   <td className="font-mono text-sm">{container.cpuCurrent}</td>
