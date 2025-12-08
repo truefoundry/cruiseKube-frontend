@@ -6,6 +6,7 @@ import {
   Layers,
   Clock
 } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { StatusBadge } from "@/components/ui/status-badge";
@@ -17,9 +18,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { workloads } from "@/lib/mock-data";
-import { Link } from "react-router-dom";
-
 export default function Workloads() {
+  const navigate = useNavigate();
   const [search, setSearch] = useState("");
   const [namespaceFilter, setNamespaceFilter] = useState("all");
   const [modeFilter, setModeFilter] = useState("all");
@@ -140,7 +140,11 @@ export default function Workloads() {
             </thead>
             <tbody>
               {filteredWorkloads.map((workload) => (
-                <tr key={workload.id} className="group cursor-pointer">
+                <tr 
+                  key={workload.id} 
+                  className="group cursor-pointer hover:bg-muted/50 transition-colors"
+                  onClick={() => navigate(`/workloads/${workload.namespace}/${workload.workload}`)}
+                >
                   <td className="font-mono text-xs">{workload.namespace}</td>
                   <td>
                     <div className="flex items-center gap-2">
@@ -177,15 +181,7 @@ export default function Workloads() {
                     </span>
                   </td>
                   <td>
-                    <Link to={`/workloads/${workload.namespace}/${workload.workload}`}>
-                      <Button 
-                        variant="ghost" 
-                        size="sm" 
-                        className="opacity-0 group-hover:opacity-100 transition-opacity"
-                      >
-                        <ChevronRight className="h-4 w-4" />
-                      </Button>
-                    </Link>
+                    <ChevronRight className="h-4 w-4 text-muted-foreground group-hover:text-foreground transition-colors" />
                   </td>
                 </tr>
               ))}
