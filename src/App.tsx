@@ -3,7 +3,14 @@ import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
-import Index from "./pages/Index";
+import { AppLayout } from "@/components/layout/AppLayout";
+import Overview from "./pages/Overview";
+import Workloads from "./pages/Workloads";
+import WorkloadDetail from "./pages/WorkloadDetail";
+import ContainerDetail from "./pages/ContainerDetail";
+import Performance from "./pages/Performance";
+import Audit from "./pages/Audit";
+import Policies from "./pages/Policies";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -15,8 +22,15 @@ const App = () => (
       <Sonner />
       <BrowserRouter>
         <Routes>
-          <Route path="/" element={<Index />} />
-          {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
+          <Route element={<AppLayout />}>
+            <Route path="/" element={<Overview />} />
+            <Route path="/workloads" element={<Workloads />} />
+            <Route path="/workloads/:namespace/:workloadName" element={<WorkloadDetail />} />
+            <Route path="/workloads/:namespace/:workloadName/:containerName" element={<ContainerDetail />} />
+            <Route path="/performance" element={<Performance />} />
+            <Route path="/audit" element={<Audit />} />
+            <Route path="/policies" element={<Policies />} />
+          </Route>
           <Route path="*" element={<NotFound />} />
         </Routes>
       </BrowserRouter>
