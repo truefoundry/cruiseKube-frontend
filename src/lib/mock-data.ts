@@ -6,28 +6,28 @@ export const overviewMetrics = {
   potentialSavings: {
     cpu: 24.5,
     memory: 32.8,
-    dollars: 2450,
+    dollars: 245,
   },
   realizedSavings: {
     cpu: 18.2,
     memory: 25.1,
-    dollars: 1890,
+    dollars: 189,
   },
   reliabilityIssues: 12,
-  totalSaved: 15670,
+  totalSavedPerHour: 189,
 };
 
 export const wastefulWorkloads = [
-  { namespace: "production", workload: "api-gateway", containers: 3, wastePercent: 67, potentialSavings: 450, type: "Deployment" },
-  { namespace: "production", workload: "user-service", containers: 2, wastePercent: 58, potentialSavings: 380, type: "Deployment" },
-  { namespace: "staging", workload: "data-processor", containers: 4, wastePercent: 52, potentialSavings: 320, type: "StatefulSet" },
-  { namespace: "development", workload: "test-runner", containers: 1, wastePercent: 48, potentialSavings: 280, type: "Job" },
-  { namespace: "production", workload: "cache-service", containers: 2, wastePercent: 45, potentialSavings: 250, type: "Deployment" },
-  { namespace: "monitoring", workload: "prometheus", containers: 1, wastePercent: 42, potentialSavings: 220, type: "StatefulSet" },
-  { namespace: "production", workload: "auth-service", containers: 2, wastePercent: 38, potentialSavings: 190, type: "Deployment" },
-  { namespace: "staging", workload: "web-frontend", containers: 1, wastePercent: 35, potentialSavings: 170, type: "Deployment" },
-  { namespace: "production", workload: "notification-svc", containers: 2, wastePercent: 32, potentialSavings: 150, type: "Deployment" },
-  { namespace: "development", workload: "debug-tools", containers: 3, wastePercent: 28, potentialSavings: 120, type: "DaemonSet" },
+  { namespace: "production", workload: "api-gateway", containers: 3, wastePercent: 67, savingsPerHour: 45, type: "Deployment" },
+  { namespace: "production", workload: "user-service", containers: 2, wastePercent: 58, savingsPerHour: 38, type: "Deployment" },
+  { namespace: "staging", workload: "data-processor", containers: 4, wastePercent: 52, savingsPerHour: 32, type: "StatefulSet" },
+  { namespace: "development", workload: "test-runner", containers: 1, wastePercent: 48, savingsPerHour: 28, type: "Job" },
+  { namespace: "production", workload: "cache-service", containers: 2, wastePercent: 45, savingsPerHour: 25, type: "Deployment" },
+  { namespace: "monitoring", workload: "prometheus", containers: 1, wastePercent: 42, savingsPerHour: 22, type: "StatefulSet" },
+  { namespace: "production", workload: "auth-service", containers: 2, wastePercent: 38, savingsPerHour: 19, type: "Deployment" },
+  { namespace: "staging", workload: "web-frontend", containers: 1, wastePercent: 35, savingsPerHour: 17, type: "Deployment" },
+  { namespace: "production", workload: "notification-svc", containers: 2, wastePercent: 32, savingsPerHour: 15, type: "Deployment" },
+  { namespace: "development", workload: "debug-tools", containers: 3, wastePercent: 28, savingsPerHour: 12, type: "DaemonSet" },
 ];
 
 export const leaderboard = [

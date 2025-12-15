@@ -42,7 +42,6 @@ export default function Overview() {
           subtitle="How optimized is this cluster"
           icon={Gauge}
           variant="success"
-          trend={{ value: 5.2, isPositive: true }}
         />
         <MetricCard
           title="Coverage"
@@ -50,7 +49,6 @@ export default function Overview() {
           subtitle="Optimized / Total workloads"
           icon={Layers}
           variant="default"
-          trend={{ value: 2.8, isPositive: true }}
         />
         <MetricCard
           title="Reliability Issues"
@@ -60,19 +58,18 @@ export default function Overview() {
           variant={overviewMetrics.reliabilityIssues > 10 ? "warning" : "default"}
         />
         <MetricCard
-          title="Total Saved"
-          value={`$${overviewMetrics.totalSaved.toLocaleString()}`}
-          subtitle="All time"
+          title="Total Saved / Hour"
+          value={`$${overviewMetrics.totalSavedPerHour.toLocaleString()}`}
+          subtitle="Per hour savings"
           icon={DollarSign}
           variant="success"
-          trend={{ value: 12.4, isPositive: true }}
         />
       </div>
 
       {/* Savings Summary */}
       <div className="metric-card">
         <h3 className="text-xs font-medium uppercase tracking-wider text-muted-foreground mb-4">
-          Potential vs Realized Savings
+          Potential vs Realized Savings / Hour
         </h3>
         <div className="grid gap-6 md:grid-cols-3">
           <div className="space-y-3">
@@ -170,7 +167,7 @@ export default function Overview() {
                 <th>Workload</th>
                 <th>Containers</th>
                 <th>Waste</th>
-                <th>Potential Savings</th>
+                <th>Savings / Hour</th>
                 <th></th>
               </tr>
             </thead>
@@ -185,7 +182,7 @@ export default function Overview() {
                       {workload.wastePercent}%
                     </StatusBadge>
                   </td>
-                  <td className="font-mono text-primary">${workload.potentialSavings}</td>
+                  <td className="font-mono text-primary">${workload.savingsPerHour}/hr</td>
                   <td>
                     <Link to={`/workloads/${workload.namespace}/${workload.workload}`}>
                       <Button variant="ghost" size="sm" className="opacity-0 group-hover:opacity-100 transition-opacity text-xs">

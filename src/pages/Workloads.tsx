@@ -146,9 +146,9 @@ export default function Workloads() {
                 <th>Workload</th>
                 <th>Type</th>
                 <th>Waste</th>
-                <th>CPU Savings</th>
-                <th>Memory Savings</th>
-                <th>$ Savings</th>
+                <th>CPU Savings/hr</th>
+                <th>Memory Savings/hr</th>
+                <th>$/hr</th>
                 <th>Updated</th>
                 <th>Mode</th>
                 <th>Priority</th>
