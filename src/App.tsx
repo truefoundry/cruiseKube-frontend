@@ -7,10 +7,7 @@ import { AppLayout } from "@/components/layout/AppLayout";
 import Overview from "./pages/Overview";
 import Workloads from "./pages/Workloads";
 import WorkloadDetail from "./pages/WorkloadDetail";
-
-import HistoricalSavings from "./pages/HistoricalSavings";
-import Performance from "./pages/Performance";
-import Audit from "./pages/Audit";
+import ContainerDetail from "./pages/ContainerDetail";
 import Policies from "./pages/Policies";
 import NotFound from "./pages/NotFound";
 
@@ -25,11 +22,9 @@ const App = () => (
         <Routes>
           <Route element={<AppLayout />}>
             <Route path="/" element={<Overview />} />
-            <Route path="/recommendations" element={<Workloads />} />
-            <Route path="/recommendations/:namespace/:workloadName" element={<WorkloadDetail />} />
-            <Route path="/savings" element={<HistoricalSavings />} />
-            <Route path="/performance" element={<Performance />} />
-            <Route path="/audit" element={<Audit />} />
+            <Route path="/workloads" element={<Workloads />} />
+            <Route path="/workloads/:namespace/:workloadName" element={<WorkloadDetail />} />
+            <Route path="/workloads/:namespace/:workloadName/:containerName" element={<ContainerDetail />} />
             <Route path="/policies" element={<Policies />} />
           </Route>
           <Route path="*" element={<NotFound />} />

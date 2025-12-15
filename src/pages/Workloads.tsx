@@ -18,12 +18,14 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { workloads } from "@/lib/mock-data";
+
 export default function Workloads() {
   const navigate = useNavigate();
   const [search, setSearch] = useState("");
   const [namespaceFilter, setNamespaceFilter] = useState("all");
   const [modeFilter, setModeFilter] = useState("all");
   const [priorityFilter, setPriorityFilter] = useState("all");
+  const [hasRecommendations, setHasRecommendations] = useState("all");
 
   const filteredWorkloads = workloads.filter((w) => {
     const matchesSearch = 
@@ -32,7 +34,10 @@ export default function Workloads() {
     const matchesNamespace = namespaceFilter === "all" || w.namespace === namespaceFilter;
     const matchesMode = modeFilter === "all" || w.mode === modeFilter;
     const matchesPriority = priorityFilter === "all" || w.priority === priorityFilter;
-    return matchesSearch && matchesNamespace && matchesMode && matchesPriority;
+    const matchesRecommendations = hasRecommendations === "all" || 
+      (hasRecommendations === "yes" && w.hasRecommendations) ||
+      (hasRecommendations === "no" && !w.hasRecommendations);
+    return matchesSearch && matchesNamespace && matchesMode && matchesPriority && matchesRecommendations;
   });
 
   const namespaces = [...new Set(workloads.map((w) => w.namespace))];
@@ -58,7 +63,7 @@ export default function Workloads() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-semibold text-foreground">Recommendations</h1>
+          <h1 className="text-2xl font-semibold text-foreground">Workloads & Recommendations</h1>
           <p className="text-sm text-muted-foreground">Container-aware workload list with optimization recommendations</p>
         </div>
         <div className="flex items-center gap-2">
@@ -88,6 +93,17 @@ export default function Workloads() {
             {namespaces.map((ns) => (
               <SelectItem key={ns} value={ns}>{ns}</SelectItem>
             ))}
+          </SelectContent>
+        </Select>
+
+        <Select value={hasRecommendations} onValueChange={setHasRecommendations}>
+          <SelectTrigger className="w-[180px] bg-muted/50 border-border">
+            <SelectValue placeholder="Has Recommendations" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All</SelectItem>
+            <SelectItem value="yes">Has Recommendations</SelectItem>
+            <SelectItem value="no">No Recommendations</SelectItem>
           </SelectContent>
         </Select>
 
@@ -132,6 +148,7 @@ export default function Workloads() {
                 <th>Waste</th>
                 <th>CPU Savings</th>
                 <th>Memory Savings</th>
+                <th>$ Savings</th>
                 <th>Updated</th>
                 <th>Mode</th>
                 <th>Priority</th>
@@ -146,14 +163,14 @@ export default function Workloads() {
                   onClick={(e) => {
                     e.preventDefault();
                     e.stopPropagation();
-                    navigate(`/recommendations/${workload.namespace}/${workload.workload}`);
+                    navigate(`/workloads/${workload.namespace}/${workload.workload}`);
                   }}
                   role="button"
                   tabIndex={0}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter' || e.key === ' ') {
                       e.preventDefault();
-                      navigate(`/recommendations/${workload.namespace}/${workload.workload}`);
+                      navigate(`/workloads/${workload.namespace}/${workload.workload}`);
                     }
                   }}
                 >
@@ -174,6 +191,7 @@ export default function Workloads() {
                   </td>
                   <td className="font-mono text-sm">{workload.potentialCpu}</td>
                   <td className="font-mono text-sm">{workload.potentialMem}</td>
+                  <td className="font-mono text-sm text-primary">${workload.potentialDollars}</td>
                   <td className="text-muted-foreground text-xs">
                     <div className="flex items-center gap-1">
                       <Clock className="h-3 w-3" />
