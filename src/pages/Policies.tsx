@@ -1,14 +1,10 @@
-import { useState } from "react";
 import { 
-  Power, 
   Database,
   CheckCircle,
   XCircle,
-  Plus,
-  Trash2
+  Loader2
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Switch } from "@/components/ui/switch";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
@@ -18,21 +14,153 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { workloads } from "@/lib/mock-data";
+import { useState } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { apiClient, WorkloadOverrideInfo, Overrides } from "@/lib/api";
+import { mapEvictionRankingToPriority, mapPriorityToEvictionRanking } from "@/lib/transformers";
+import { useCluster } from "@/contexts/ClusterContext";
 import { toast } from "@/hooks/use-toast";
 
 export default function Policies() {
-  const [globalEnabled, setGlobalEnabled] = useState(true);
-  const [prometheusUrl, setPrometheusUrl] = useState("http://prometheus.monitoring:9090");
-  const [connectionStatus, setConnectionStatus] = useState<"ok" | "error" | null>("ok");
+  const { selectedClusterId } = useCluster();
+  const queryClient = useQueryClient();
+  const [updatingWorkloads, setUpdatingWorkloads] = useState<Set<string>>(new Set());
 
-  const testConnection = () => {
-    toast({
-      title: "Connection successful",
-      description: "Successfully connected to Prometheus",
-    });
-    setConnectionStatus("ok");
+  const { data: workloads, isLoading: workloadsLoading, error: workloadsError } = useQuery({
+    queryKey: ['workloads', selectedClusterId],
+    queryFn: () => {
+      if (!selectedClusterId) throw new Error('No cluster selected');
+      return apiClient.getWorkloads(selectedClusterId);
+    },
+    enabled: !!selectedClusterId,
+  });
+
+  const { data: prometheusConfig, isLoading: prometheusConfigLoading, refetch: refetchPrometheusConfig } = useQuery({
+    queryKey: ['prometheus-config', selectedClusterId],
+    queryFn: () => {
+      if (!selectedClusterId) throw new Error('No cluster selected');
+      return apiClient.getPrometheusConfig(selectedClusterId);
+    },
+    enabled: !!selectedClusterId,
+  });
+
+  const updateOverrideMutation = useMutation({
+    mutationFn: async ({ workloadId, overrides }: { workloadId: string; overrides: Overrides }) => {
+      if (!selectedClusterId) throw new Error('No cluster selected');
+      return apiClient.updateWorkloadOverrides(selectedClusterId, workloadId, overrides);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['workloads', selectedClusterId] });
+      toast({
+        title: "Success",
+        description: "Workload override updated successfully",
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to update workload override",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const handleModeChange = async (workloadId: string, mode: 'enabled' | 'recommend-only') => {
+    setUpdatingWorkloads(prev => new Set(prev).add(workloadId));
+    try {
+      const enabled = mode === 'enabled';
+      await updateOverrideMutation.mutateAsync({
+        workloadId,
+        overrides: { enabled },
+      });
+    } finally {
+      setUpdatingWorkloads(prev => {
+        const next = new Set(prev);
+        next.delete(workloadId);
+        return next;
+      });
+    }
   };
+
+  const handlePriorityChange = async (workloadId: string, priority: 'low' | 'medium' | 'high' | 'non-evictable') => {
+    setUpdatingWorkloads(prev => new Set(prev).add(workloadId));
+    try {
+      const evictionRanking = mapPriorityToEvictionRanking(priority);
+      await updateOverrideMutation.mutateAsync({
+        workloadId,
+        overrides: { eviction_ranking: evictionRanking },
+      });
+    } finally {
+      setUpdatingWorkloads(prev => {
+        const next = new Set(prev);
+        next.delete(workloadId);
+        return next;
+      });
+    }
+  };
+
+  const getWorkloadMode = (workload: WorkloadOverrideInfo): 'enabled' | 'recommend-only' => {
+    if (workload.enabled) return 'enabled';
+    return 'recommend-only';
+  };
+
+  const getWorkloadPriority = (workload: WorkloadOverrideInfo): 'low' | 'medium' | 'high' | 'non-evictable' => {
+    return mapEvictionRankingToPriority(workload.eviction_ranking);
+  };
+
+  const testConnection = async () => {
+    try {
+      const result = await refetchPrometheusConfig();
+      if (result.data?.connected) {
+        toast({
+          title: "Connection successful",
+          description: "Successfully connected to Prometheus",
+        });
+      } else {
+        toast({
+          title: "Connection failed",
+          description: result.data?.error || "Failed to connect to Prometheus",
+          variant: "destructive",
+        });
+      }
+    } catch (error) {
+      toast({
+        title: "Connection failed",
+        description: error instanceof Error ? error.message : "Failed to connect to Prometheus",
+        variant: "destructive",
+      });
+    }
+  };
+
+  if (!selectedClusterId) {
+    return (
+      <div className="p-6">
+        <div className="text-center text-muted-foreground">
+          Please select a cluster to view policies
+        </div>
+      </div>
+    );
+  }
+
+  if (workloadsLoading) {
+    return (
+      <div className="p-6 flex items-center justify-center">
+        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
+  if (workloadsError) {
+    return (
+      <div className="p-6">
+        <div className="text-center text-destructive">
+          Failed to load workloads: {workloadsError instanceof Error ? workloadsError.message : 'Unknown error'}
+        </div>
+      </div>
+    );
+  }
+
+  const workloadsList = workloads || [];
 
   return (
     <div className="p-6 space-y-6 animate-fade-in">
@@ -44,39 +172,14 @@ export default function Policies() {
 
       <Tabs defaultValue="mode" className="space-y-6">
         <TabsList className="bg-muted/50">
-          <TabsTrigger value="mode">Autopilot Mode</TabsTrigger>
-          <TabsTrigger value="priority">Priority & Eviction</TabsTrigger>
-          <TabsTrigger value="caps">CPU/Memory Caps</TabsTrigger>
+          <TabsTrigger value="mode">Autopilot Mode & Priority</TabsTrigger>
           <TabsTrigger value="prometheus">Prometheus Config</TabsTrigger>
         </TabsList>
 
-        {/* Autopilot Mode Tab */}
         <TabsContent value="mode" className="space-y-6">
-          {/* Global Toggle */}
-          <div className="metric-card">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="rounded-lg bg-primary/10 p-2">
-                  <Power className="h-5 w-5 text-primary" />
-                </div>
-                <div>
-                  <h3 className="font-medium text-foreground">Global Autopilot</h3>
-                  <p className="text-xs text-muted-foreground mt-0.5">
-                    Enable automatic optimization cluster-wide
-                  </p>
-                </div>
-              </div>
-              <Switch
-                checked={globalEnabled}
-                onCheckedChange={setGlobalEnabled}
-              />
-            </div>
-          </div>
-
-          {/* Per Workload Mode Table */}
           <div className="metric-card overflow-hidden">
             <h3 className="text-xs font-medium uppercase tracking-wider text-muted-foreground mb-4">
-              Per Workload Mode
+              Per Workload Settings
             </h3>
             <div className="overflow-x-auto">
               <table className="data-table">
@@ -85,139 +188,67 @@ export default function Policies() {
                     <th>Workload</th>
                     <th>Namespace</th>
                     <th>Mode</th>
-                    <th></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {workloads.slice(0, 8).map((workload) => (
-                    <tr key={workload.id}>
-                      <td className="font-medium">{workload.workload}</td>
-                      <td className="font-mono text-xs text-muted-foreground">{workload.namespace}</td>
-                      <td>
-                        <Select defaultValue={workload.mode}>
-                          <SelectTrigger className="w-[150px] bg-muted/50 h-8">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="enabled">Enabled</SelectItem>
-                            <SelectItem value="recommend-only">Recommend Only</SelectItem>
-                            <SelectItem value="disabled">Disabled</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </td>
-                      <td>
-                        <Button variant="ghost" size="sm" className="h-8">
-                          Edit
-                        </Button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </TabsContent>
-
-        {/* Priority & Eviction Tab */}
-        <TabsContent value="priority" className="space-y-6">
-          <div className="metric-card overflow-hidden">
-            <h3 className="text-xs font-medium uppercase tracking-wider text-muted-foreground mb-4">
-              Workload Priority
-            </h3>
-            <div className="overflow-x-auto">
-              <table className="data-table">
-                <thead>
-                  <tr>
-                    <th>Workload</th>
-                    <th>Namespace</th>
                     <th>Priority</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {workloads.slice(0, 8).map((workload) => (
-                    <tr key={workload.id}>
-                      <td className="font-medium">{workload.workload}</td>
-                      <td className="font-mono text-xs text-muted-foreground">{workload.namespace}</td>
-                      <td>
-                        <Select defaultValue={workload.priority}>
-                          <SelectTrigger className="w-[150px] bg-muted/50 h-8">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="high">High</SelectItem>
-                            <SelectItem value="medium">Medium</SelectItem>
-                            <SelectItem value="low">Low</SelectItem>
-                            <SelectItem value="non-evictable">Non-evictable</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </TabsContent>
-
-        {/* CPU/Memory Caps Tab */}
-        <TabsContent value="caps" className="space-y-6">
-          <div className="metric-card overflow-hidden">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                Resource Caps
-              </h3>
-              <Button size="sm" className="gap-1">
-                <Plus className="h-4 w-4" />
-                Add Workload
-              </Button>
-            </div>
-            <div className="overflow-x-auto">
-              <table className="data-table">
-                <thead>
-                  <tr>
-                    <th>Workload</th>
-                    <th>Min CPU</th>
-                    <th>Max CPU</th>
-                    <th>Min Mem</th>
-                    <th>Max Mem</th>
                     <th></th>
                   </tr>
                 </thead>
                 <tbody>
-                  {workloads.slice(0, 6).map((workload) => (
-                    <tr key={workload.id}>
-                      <td className="font-medium">{workload.workload}</td>
-                      <td>
-                        <Input 
-                          defaultValue="50m" 
-                          className="w-20 bg-muted/50 font-mono text-xs h-8" 
-                        />
-                      </td>
-                      <td>
-                        <Input 
-                          defaultValue="2000m" 
-                          className="w-20 bg-muted/50 font-mono text-xs h-8" 
-                        />
-                      </td>
-                      <td>
-                        <Input 
-                          defaultValue="128Mi" 
-                          className="w-20 bg-muted/50 font-mono text-xs h-8" 
-                        />
-                      </td>
-                      <td>
-                        <Input 
-                          defaultValue="4Gi" 
-                          className="w-20 bg-muted/50 font-mono text-xs h-8" 
-                        />
-                      </td>
-                      <td>
-                        <Button variant="ghost" size="sm" className="h-8 w-8 p-0 text-destructive hover:text-destructive">
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
+                  {workloadsList.length === 0 ? (
+                    <tr>
+                      <td colSpan={5} className="text-center text-muted-foreground py-8">
+                        No workloads found
                       </td>
                     </tr>
-                  ))}
+                  ) : (
+                    workloadsList.map((workload) => {
+                      const isUpdating = updatingWorkloads.has(workload.workload_id);
+                      const currentMode = getWorkloadMode(workload);
+                      const currentPriority = getWorkloadPriority(workload);
+                      return (
+                        <tr key={workload.workload_id}>
+                          <td className="font-medium">{workload.name}</td>
+                          <td className="font-mono text-xs text-muted-foreground">{workload.namespace}</td>
+                          <td>
+                            <Select 
+                              value={currentMode}
+                              onValueChange={(value) => handleModeChange(workload.workload_id, value as 'enabled' | 'recommend-only')}
+                              disabled={isUpdating}
+                            >
+                              <SelectTrigger className="w-[150px] bg-muted/50 h-8">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="enabled">Enabled</SelectItem>
+                                <SelectItem value="recommend-only">Recommend Only</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </td>
+                          <td>
+                            <Select 
+                              value={currentPriority}
+                              onValueChange={(value) => handlePriorityChange(workload.workload_id, value as 'low' | 'medium' | 'high' | 'non-evictable')}
+                              disabled={isUpdating}
+                            >
+                              <SelectTrigger className="w-[150px] bg-muted/50 h-8">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="low">Low</SelectItem>
+                                <SelectItem value="medium">Medium</SelectItem>
+                                <SelectItem value="high">High</SelectItem>
+                                <SelectItem value="non-evictable">Non-evictable</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </td>
+                          <td>
+                            {isUpdating && (
+                              <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
                 </tbody>
               </table>
             </div>
@@ -233,42 +264,50 @@ export default function Policies() {
                 Prometheus Configuration
               </h3>
             </div>
-            <div className="space-y-4">
-              <div>
-                <label className="text-sm font-medium text-foreground">Prometheus URL</label>
-                <div className="flex items-center gap-3 mt-2">
-                  <Input
-                    value={prometheusUrl}
-                    onChange={(e) => setPrometheusUrl(e.target.value)}
-                    className="bg-muted/50 font-mono text-sm flex-1"
-                    placeholder="http://prometheus:9090"
-                  />
-                  <Button onClick={testConnection}>
-                    Test Connection
-                  </Button>
-                </div>
+            {prometheusConfigLoading ? (
+              <div className="flex items-center justify-center py-8">
+                <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
               </div>
-
-              {connectionStatus && (
-                <div className={`flex items-center gap-2 p-3 rounded-lg ${
-                  connectionStatus === "ok" 
-                    ? "bg-success/10 border border-success/20" 
-                    : "bg-destructive/10 border border-destructive/20"
-                }`}>
-                  {connectionStatus === "ok" ? (
-                    <>
-                      <CheckCircle className="h-4 w-4 text-success" />
-                      <span className="text-sm text-success">Connected successfully</span>
-                    </>
-                  ) : (
-                    <>
-                      <XCircle className="h-4 w-4 text-destructive" />
-                      <span className="text-sm text-destructive">Connection failed</span>
-                    </>
-                  )}
+            ) : (
+              <div className="space-y-4">
+                <div>
+                  <label className="text-sm font-medium text-foreground">Prometheus URL</label>
+                  <div className="flex items-center gap-3 mt-2">
+                    <Input
+                      value={prometheusConfig?.url || ""}
+                      readOnly
+                      className="bg-muted/50 font-mono text-sm flex-1"
+                      placeholder="http://prometheus:9090"
+                    />
+                    <Button onClick={testConnection} disabled={prometheusConfigLoading}>
+                      Test Connection
+                    </Button>
+                  </div>
                 </div>
-              )}
-            </div>
+
+                {prometheusConfig && (
+                  <div className={`flex items-center gap-2 p-3 rounded-lg ${
+                    prometheusConfig.connected 
+                      ? "bg-success/10 border border-success/20" 
+                      : "bg-destructive/10 border border-destructive/20"
+                  }`}>
+                    {prometheusConfig.connected ? (
+                      <>
+                        <CheckCircle className="h-4 w-4 text-success" />
+                        <span className="text-sm text-success">Connected successfully</span>
+                      </>
+                    ) : (
+                      <>
+                        <XCircle className="h-4 w-4 text-destructive" />
+                        <span className="text-sm text-destructive">
+                          {prometheusConfig.error || "Connection failed"}
+                        </span>
+                      </>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </TabsContent>
       </Tabs>

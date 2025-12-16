@@ -3,29 +3,71 @@ import {
   ArrowLeft, 
   ChevronRight, 
   Cpu, 
-  HardDrive,
-  Tag,
-  User
+  HardDrive
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { StatusBadge } from "@/components/ui/status-badge";
-import { containers, workloads } from "@/lib/mock-data";
+import { useQuery } from "@tanstack/react-query";
+import { useCluster } from "@/contexts/ClusterContext";
+import { apiClient } from "@/lib/api";
+import { transformWorkloadStatToContainers, transformWorkloadStatToFrontend } from "@/lib/transformers";
 
 export default function WorkloadDetail() {
   const { namespace, workloadName } = useParams();
   const navigate = useNavigate();
-  
-  const workload = workloads.find(
-    (w) => w.namespace === namespace && w.workload === workloadName
+  const { selectedClusterId } = useCluster();
+
+  const { data: statsData, isLoading, error } = useQuery({
+    queryKey: ['cluster-stats', selectedClusterId],
+    queryFn: () => apiClient.getClusterStats(selectedClusterId!),
+    enabled: !!selectedClusterId,
+  });
+
+  const { data: recommendationAnalysis } = useQuery({
+    queryKey: ['recommendation-analysis', selectedClusterId],
+    queryFn: () => apiClient.getRecommendationAnalysis(selectedClusterId!),
+    enabled: !!selectedClusterId,
+  });
+
+  const workloadStat = statsData?.stats.find(
+    (s) => s.namespace === namespace && s.name === workloadName
   );
 
-  const getWasteStatus = (percent: number) => {
-    if (percent >= 50) return "destructive";
-    if (percent >= 30) return "warning";
-    return "success";
-  };
+  const containers = workloadStat ? transformWorkloadStatToContainers(workloadStat, recommendationAnalysis?.analysis) : [];
+  const workload = workloadStat ? transformWorkloadStatToFrontend(workloadStat, undefined, recommendationAnalysis?.analysis) : null;
 
-  if (!workload) {
+  if (!selectedClusterId) {
+    return (
+      <div className="p-6 text-center">
+        <p className="text-muted-foreground">Please select a cluster to view workload details.</p>
+        <Link to="/workloads">
+          <Button variant="link" className="mt-2">Back to workloads</Button>
+        </Link>
+      </div>
+    );
+  }
+
+  if (isLoading) {
+    return (
+      <div className="p-6 text-center">
+        <p className="text-muted-foreground">Loading workload data...</p>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="p-6 text-center">
+        <p className="text-destructive">
+          Error loading workload data: {error instanceof Error ? error.message : 'Unknown error'}
+        </p>
+        <Link to="/workloads">
+          <Button variant="link" className="mt-2">Back to workloads</Button>
+        </Link>
+      </div>
+    );
+  }
+
+  if (!workload || !workloadStat) {
     return (
       <div className="p-6 text-center">
         <p className="text-muted-foreground">Workload not found</p>
@@ -63,21 +105,6 @@ export default function WorkloadDetail() {
               <span className="font-mono text-sm text-muted-foreground">{namespace}</span>
               <span className="text-muted-foreground">•</span>
               <span className="text-sm text-muted-foreground">{workload.type}</span>
-              <span className="text-muted-foreground">•</span>
-              <div className="flex items-center gap-1 text-sm text-muted-foreground">
-                <User className="h-3 w-3" />
-                platform-team
-              </div>
-            </div>
-            <div className="flex flex-wrap items-center gap-2 mt-3">
-              <div className="flex items-center gap-1 rounded-md bg-muted px-2 py-1 text-xs">
-                <Tag className="h-3 w-3" />
-                app=api-gateway
-              </div>
-              <div className="flex items-center gap-1 rounded-md bg-muted px-2 py-1 text-xs">
-                <Tag className="h-3 w-3" />
-                env=production
-              </div>
             </div>
           </div>
         </div>
@@ -123,40 +150,42 @@ export default function WorkloadDetail() {
                 <th>CPU Recommended</th>
                 <th>Memory Current</th>
                 <th>Memory Recommended</th>
-                <th>Waste</th>
                 <th></th>
               </tr>
             </thead>
             <tbody>
-              {containers.map((container) => (
-                <tr 
-                  key={container.name} 
-                  className="group cursor-pointer hover:bg-muted/50 transition-colors"
-                  onClick={() => navigate(`/workloads/${namespace}/${workloadName}/${container.name}`)}
-                  role="button"
-                  tabIndex={0}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' || e.key === ' ') {
-                      e.preventDefault();
-                      navigate(`/workloads/${namespace}/${workloadName}/${container.name}`);
-                    }
-                  }}
-                >
-                  <td className="font-medium">{container.name}</td>
-                  <td className="font-mono text-sm">{container.cpuCurrent}</td>
-                  <td className="font-mono text-sm text-primary">{container.cpuRecommended}</td>
-                  <td className="font-mono text-sm">{container.memCurrent}</td>
-                  <td className="font-mono text-sm text-primary">{container.memRecommended}</td>
-                  <td>
-                    <StatusBadge status={getWasteStatus(container.wastePercent)}>
-                      {container.wastePercent}%
-                    </StatusBadge>
-                  </td>
-                  <td>
-                    <ChevronRight className="h-4 w-4 text-muted-foreground group-hover:text-foreground transition-colors" />
+              {containers.length === 0 ? (
+                <tr>
+                  <td colSpan={6} className="text-center text-muted-foreground py-8">
+                    No containers found for this workload
                   </td>
                 </tr>
-              ))}
+              ) : (
+                containers.map((container) => (
+                  <tr 
+                    key={container.name} 
+                    className="group cursor-pointer hover:bg-muted/50 transition-colors"
+                    onClick={() => navigate(`/workloads/${namespace}/${workloadName}/${container.name}`)}
+                    role="button"
+                    tabIndex={0}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        navigate(`/workloads/${namespace}/${workloadName}/${container.name}`);
+                      }
+                    }}
+                  >
+                    <td className="font-medium">{container.name}</td>
+                    <td className="font-mono text-sm">{container.cpuCurrent}</td>
+                    <td className="font-mono text-sm text-primary">{container.cpuRecommended}</td>
+                    <td className="font-mono text-sm">{container.memCurrent}</td>
+                    <td className="font-mono text-sm text-primary">{container.memRecommended}</td>
+                    <td>
+                      <ChevronRight className="h-4 w-4 text-muted-foreground group-hover:text-foreground transition-colors" />
+                    </td>
+                  </tr>
+                ))
+              )}
             </tbody>
           </table>
         </div>

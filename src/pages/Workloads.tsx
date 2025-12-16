@@ -1,15 +1,18 @@
 import { useState } from "react";
 import { 
   Search, 
-  Filter, 
   ChevronRight,
+  ChevronUp,
+  ChevronDown,
   Layers,
   Clock
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+import { useQuery } from "@tanstack/react-query";
+import { useCluster } from "@/contexts/ClusterContext";
+import { apiClient } from "@/lib/api";
+import { transformStatsToWorkloads, FrontendWorkload } from "@/lib/transformers";
 import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
-import { StatusBadge } from "@/components/ui/status-badge";
 import {
   Select,
   SelectContent,
@@ -17,15 +20,130 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { workloads } from "@/lib/mock-data";
 
 export default function Workloads() {
   const navigate = useNavigate();
+  const { selectedClusterId } = useCluster();
   const [search, setSearch] = useState("");
   const [namespaceFilter, setNamespaceFilter] = useState("all");
   const [modeFilter, setModeFilter] = useState("all");
   const [priorityFilter, setPriorityFilter] = useState("all");
   const [hasRecommendations, setHasRecommendations] = useState("all");
+  const [sortColumn, setSortColumn] = useState<string | null>(null);
+  const [sortDirection, setSortDirection] = useState<"asc" | "desc" | null>(null);
+
+  const { data: statsData, isLoading: isLoadingStats, error: statsError } = useQuery({
+    queryKey: ['cluster-stats', selectedClusterId],
+    queryFn: () => apiClient.getClusterStats(selectedClusterId!),
+    enabled: !!selectedClusterId,
+  });
+
+  const { data: workloadsData, isLoading: isLoadingWorkloads, error: workloadsError } = useQuery({
+    queryKey: ['workloads', selectedClusterId],
+    queryFn: () => apiClient.getWorkloads(selectedClusterId!),
+    enabled: !!selectedClusterId,
+  });
+
+  const { data: recommendationAnalysis } = useQuery({
+    queryKey: ['recommendation-analysis', selectedClusterId],
+    queryFn: () => apiClient.getRecommendationAnalysis(selectedClusterId!),
+    enabled: !!selectedClusterId,
+  });
+
+  const workloads: FrontendWorkload[] = statsData && workloadsData 
+    ? transformStatsToWorkloads(statsData, workloadsData, recommendationAnalysis?.analysis)
+    : [];
+
+  const parseCpuValue = (cpuString: string): number => {
+    if (!cpuString) return 0;
+    const rangeParts = cpuString.split("-");
+    const valueToParse = rangeParts.length > 1 ? rangeParts[1].trim() : cpuString;
+    if (valueToParse.endsWith("m")) {
+      return parseFloat(valueToParse.replace("m", "")) / 1000;
+    }
+    if (valueToParse.includes("cores")) {
+      return parseFloat(valueToParse.replace(" cores", "")) || 0;
+    }
+    return parseFloat(valueToParse) || 0;
+  };
+
+  const parseMemoryValue = (memString: string): number => {
+    if (!memString) return 0;
+    const rangeParts = memString.split("-");
+    const valueToParse = rangeParts.length > 1 ? rangeParts[1].trim() : memString;
+    if (valueToParse.endsWith("Mi")) {
+      return parseFloat(valueToParse.replace("Mi", "")) || 0;
+    }
+    if (valueToParse.endsWith("GB")) {
+      return (parseFloat(valueToParse.replace(" GB", "")) || 0) * 1024;
+    }
+    return parseFloat(valueToParse) || 0;
+  };
+
+  const parseTimeValue = (timeString: string): number => {
+    if (!timeString) return 0;
+    if (timeString === "just now") return 0;
+    const minsMatch = timeString.match(/(\d+) min ago/);
+    if (minsMatch) return parseInt(minsMatch[1]) || 0;
+    const hoursMatch = timeString.match(/(\d+) hr ago/);
+    if (hoursMatch) return (parseInt(hoursMatch[1]) || 0) * 60;
+    const daysMatch = timeString.match(/(\d+) days ago/);
+    if (daysMatch) return (parseInt(daysMatch[1]) || 0) * 1440;
+    return 0;
+  };
+
+  const sortWorkloads = (workloads: FrontendWorkload[]): FrontendWorkload[] => {
+    if (!sortColumn || !sortDirection) {
+      return workloads;
+    }
+
+    const sorted = [...workloads].sort((a, b) => {
+      let aValue: string | number;
+      let bValue: string | number;
+
+      switch (sortColumn) {
+        case "namespace":
+        case "workload":
+        case "type":
+        case "mode":
+        case "priority":
+          aValue = a[sortColumn as keyof FrontendWorkload] as string;
+          bValue = b[sortColumn as keyof FrontendWorkload] as string;
+          if (aValue < bValue) return sortDirection === "asc" ? -1 : 1;
+          if (aValue > bValue) return sortDirection === "asc" ? 1 : -1;
+          return 0;
+
+        case "potentialDollars":
+          aValue = a[sortColumn as keyof FrontendWorkload] as number;
+          bValue = b[sortColumn as keyof FrontendWorkload] as number;
+          return sortDirection === "asc" ? aValue - bValue : bValue - aValue;
+
+        case "currentCpu":
+        case "recommendedCpu":
+        case "potentialCpu":
+          aValue = parseCpuValue(a[sortColumn as keyof FrontendWorkload] as string);
+          bValue = parseCpuValue(b[sortColumn as keyof FrontendWorkload] as string);
+          return sortDirection === "asc" ? aValue - bValue : bValue - aValue;
+
+        case "currentMem":
+        case "recommendedMem":
+        case "potentialMem":
+          aValue = parseMemoryValue(a[sortColumn as keyof FrontendWorkload] as string);
+          bValue = parseMemoryValue(b[sortColumn as keyof FrontendWorkload] as string);
+          return sortDirection === "asc" ? aValue - bValue : bValue - aValue;
+
+        case "lastUpdated":
+          aValue = parseTimeValue(a.lastUpdated);
+          bValue = parseTimeValue(b.lastUpdated);
+          return sortDirection === "asc" ? aValue - bValue : bValue - aValue;
+
+        default:
+          return 0;
+      }
+    });
+
+    return sorted;
+  };
 
   const filteredWorkloads = workloads.filter((w) => {
     const matchesSearch = 
@@ -40,19 +158,58 @@ export default function Workloads() {
     return matchesSearch && matchesNamespace && matchesMode && matchesPriority && matchesRecommendations;
   });
 
+  const sortedWorkloads = sortWorkloads(filteredWorkloads);
+
   const namespaces = [...new Set(workloads.map((w) => w.namespace))];
 
-  const getWasteStatus = (percent: number) => {
-    if (percent >= 50) return "destructive";
-    if (percent >= 30) return "warning";
-    return "success";
+  const handleSort = (column: string) => {
+    if (sortColumn === column) {
+      if (sortDirection === "desc") {
+        setSortDirection("asc");
+      } else if (sortDirection === "asc") {
+        setSortColumn(null);
+        setSortDirection(null);
+      }
+    } else {
+      setSortColumn(column);
+      setSortDirection("desc");
+    }
   };
+
+  if (!selectedClusterId) {
+    return (
+      <div className="p-6">
+        <div className="text-center text-muted-foreground">
+          Please select a cluster to view workloads.
+        </div>
+      </div>
+    );
+  }
+
+  if (isLoadingStats || isLoadingWorkloads) {
+    return (
+      <div className="p-6">
+        <div className="text-center text-muted-foreground">Loading workloads...</div>
+      </div>
+    );
+  }
+
+  if (statsError || workloadsError) {
+    const errorMessage = statsError instanceof Error ? statsError.message : workloadsError instanceof Error ? workloadsError.message : 'Unknown error';
+    return (
+      <div className="p-6">
+        <div className="text-center text-destructive">
+          Error loading workloads: {errorMessage}
+        </div>
+      </div>
+    );
+  }
 
   const getPriorityColor = (priority: string) => {
     switch (priority) {
-      case "high": return "text-destructive";
+      case "low": return "text-destructive";
       case "medium": return "text-warning";
-      case "low": return "text-muted-foreground";
+      case "high": return "text-success";
       case "non-evictable": return "text-primary";
       default: return "text-muted-foreground";
     }
@@ -96,17 +253,6 @@ export default function Workloads() {
           </SelectContent>
         </Select>
 
-        <Select value={hasRecommendations} onValueChange={setHasRecommendations}>
-          <SelectTrigger className="w-[180px] bg-muted/50 border-border">
-            <SelectValue placeholder="Has Recommendations" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All</SelectItem>
-            <SelectItem value="yes">Has Recommendations</SelectItem>
-            <SelectItem value="no">No Recommendations</SelectItem>
-          </SelectContent>
-        </Select>
-
         <Select value={modeFilter} onValueChange={setModeFilter}>
           <SelectTrigger className="w-[160px] bg-muted/50 border-border">
             <SelectValue placeholder="Mode" />
@@ -124,16 +270,12 @@ export default function Workloads() {
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All Priorities</SelectItem>
-            <SelectItem value="high">High</SelectItem>
-            <SelectItem value="medium">Medium</SelectItem>
             <SelectItem value="low">Low</SelectItem>
+            <SelectItem value="medium">Medium</SelectItem>
+            <SelectItem value="high">High</SelectItem>
             <SelectItem value="non-evictable">Non-evictable</SelectItem>
           </SelectContent>
         </Select>
-
-        <Button variant="outline" size="icon" className="shrink-0">
-          <Filter className="h-4 w-4" />
-        </Button>
       </div>
 
       {/* Table */}
@@ -142,21 +284,193 @@ export default function Workloads() {
           <table className="data-table">
             <thead>
               <tr>
-                <th>Namespace</th>
-                <th>Workload</th>
-                <th>Type</th>
-                <th>Waste</th>
-                <th>CPU Savings/hr</th>
-                <th>Memory Savings/hr</th>
-                <th>$/hr</th>
-                <th>Updated</th>
-                <th>Mode</th>
-                <th>Priority</th>
+                <th 
+                  className="cursor-pointer select-none hover:bg-muted/50 transition-colors"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleSort("namespace");
+                  }}
+                >
+                  <div className="flex items-center gap-1">
+                    Namespace
+                    {sortColumn === "namespace" && (
+                      sortDirection === "asc" ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />
+                    )}
+                  </div>
+                </th>
+                <th 
+                  className="cursor-pointer select-none hover:bg-muted/50 transition-colors"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleSort("workload");
+                  }}
+                >
+                  <div className="flex items-center gap-1">
+                    Workload
+                    {sortColumn === "workload" && (
+                      sortDirection === "asc" ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />
+                    )}
+                  </div>
+                </th>
+                <th 
+                  className="cursor-pointer select-none hover:bg-muted/50 transition-colors"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleSort("type");
+                  }}
+                >
+                  <div className="flex items-center gap-1">
+                    Type
+                    {sortColumn === "type" && (
+                      sortDirection === "asc" ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />
+                    )}
+                  </div>
+                </th>
+                <th 
+                  className="cursor-pointer select-none hover:bg-muted/50 transition-colors"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleSort("currentCpu");
+                  }}
+                >
+                  <div className="flex items-center gap-1">
+                    Current CPU
+                    {sortColumn === "currentCpu" && (
+                      sortDirection === "asc" ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />
+                    )}
+                  </div>
+                </th>
+                <th 
+                  className="cursor-pointer select-none hover:bg-muted/50 transition-colors"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleSort("recommendedCpu");
+                  }}
+                >
+                  <div className="flex items-center gap-1">
+                    Recommended CPU
+                    {sortColumn === "recommendedCpu" && (
+                      sortDirection === "asc" ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />
+                    )}
+                  </div>
+                </th>
+                <th 
+                  className="cursor-pointer select-none hover:bg-muted/50 transition-colors"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleSort("potentialCpu");
+                  }}
+                >
+                  <div className="flex items-center gap-1">
+                    CPU Savings
+                    {sortColumn === "potentialCpu" && (
+                      sortDirection === "asc" ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />
+                    )}
+                  </div>
+                </th>
+                <th 
+                  className="cursor-pointer select-none hover:bg-muted/50 transition-colors"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleSort("currentMem");
+                  }}
+                >
+                  <div className="flex items-center gap-1">
+                    Current Memory
+                    {sortColumn === "currentMem" && (
+                      sortDirection === "asc" ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />
+                    )}
+                  </div>
+                </th>
+                <th 
+                  className="cursor-pointer select-none hover:bg-muted/50 transition-colors"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleSort("recommendedMem");
+                  }}
+                >
+                  <div className="flex items-center gap-1">
+                    Recommended Memory
+                    {sortColumn === "recommendedMem" && (
+                      sortDirection === "asc" ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />
+                    )}
+                  </div>
+                </th>
+                <th 
+                  className="cursor-pointer select-none hover:bg-muted/50 transition-colors"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleSort("potentialMem");
+                  }}
+                >
+                  <div className="flex items-center gap-1">
+                    Memory Savings
+                    {sortColumn === "potentialMem" && (
+                      sortDirection === "asc" ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />
+                    )}
+                  </div>
+                </th>
+                <th 
+                  className="cursor-pointer select-none hover:bg-muted/50 transition-colors"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleSort("potentialDollars");
+                  }}
+                >
+                  <div className="flex items-center gap-1">
+                    $/month
+                    {sortColumn === "potentialDollars" && (
+                      sortDirection === "asc" ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />
+                    )}
+                  </div>
+                </th>
+                <th 
+                  className="cursor-pointer select-none hover:bg-muted/50 transition-colors"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleSort("lastUpdated");
+                  }}
+                >
+                  <div className="flex items-center gap-1">
+                    Updated
+                    {sortColumn === "lastUpdated" && (
+                      sortDirection === "asc" ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />
+                    )}
+                  </div>
+                </th>
+                <th 
+                  className="cursor-pointer select-none hover:bg-muted/50 transition-colors"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleSort("mode");
+                  }}
+                >
+                  <div className="flex items-center gap-1">
+                    Mode
+                    {sortColumn === "mode" && (
+                      sortDirection === "asc" ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />
+                    )}
+                  </div>
+                </th>
+                <th 
+                  className="cursor-pointer select-none hover:bg-muted/50 transition-colors"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleSort("priority");
+                  }}
+                >
+                  <div className="flex items-center gap-1">
+                    Priority
+                    {sortColumn === "priority" && (
+                      sortDirection === "asc" ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />
+                    )}
+                  </div>
+                </th>
                 <th></th>
               </tr>
             </thead>
             <tbody>
-              {filteredWorkloads.map((workload) => (
+              {sortedWorkloads.map((workload) => (
                 <tr 
                   key={workload.id} 
                   className="group cursor-pointer hover:bg-muted/50 transition-colors"
@@ -184,14 +498,13 @@ export default function Workloads() {
                     </div>
                   </td>
                   <td className="text-muted-foreground text-xs">{workload.type}</td>
-                  <td>
-                    <StatusBadge status={getWasteStatus(workload.wastePercent)}>
-                      {workload.wastePercent}%
-                    </StatusBadge>
-                  </td>
+                  <td className="font-mono text-sm">{workload.currentCpu}</td>
+                  <td className="font-mono text-sm">{workload.recommendedCpu}</td>
                   <td className="font-mono text-sm">{workload.potentialCpu}</td>
+                  <td className="font-mono text-sm">{workload.currentMem}</td>
+                  <td className="font-mono text-sm">{workload.recommendedMem}</td>
                   <td className="font-mono text-sm">{workload.potentialMem}</td>
-                  <td className="font-mono text-sm text-primary">${workload.potentialDollars}</td>
+                  <td className="font-mono text-sm text-primary">${workload.potentialDollars.toFixed(2)}</td>
                   <td className="text-muted-foreground text-xs">
                     <div className="flex items-center gap-1">
                       <Clock className="h-3 w-3" />
@@ -220,7 +533,7 @@ export default function Workloads() {
         </div>
       </div>
 
-      {filteredWorkloads.length === 0 && (
+      {sortedWorkloads.length === 0 && (
         <div className="text-center py-12 text-muted-foreground">
           No workloads match your filters
         </div>

@@ -1,17 +1,82 @@
 import { useParams, Link } from "react-router-dom";
-import { ArrowLeft, ChevronRight, ExternalLink } from "lucide-react";
+import { ArrowLeft, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { containers, podRecommendations } from "@/lib/mock-data";
+import { useQuery } from "@tanstack/react-query";
+import { useCluster } from "@/contexts/ClusterContext";
+import { apiClient, RecommendationAnalysisItem } from "@/lib/api";
+import { getPodRecommendationsForContainer, FrontendPodRecommendation } from "@/lib/transformers";
 
 export default function ContainerDetail() {
   const { namespace, workloadName, containerName } = useParams();
-  
-  const container = containers.find((c) => c.name === containerName);
+  const { selectedClusterId } = useCluster();
 
-  if (!container) {
+  const { data: analysisData, isLoading, error } = useQuery({
+    queryKey: ['recommendation-analysis', selectedClusterId],
+    queryFn: () => apiClient.getRecommendationAnalysis(selectedClusterId!),
+    enabled: !!selectedClusterId && !!namespace && !!workloadName && !!containerName,
+  });
+
+  let podRecommendations: FrontendPodRecommendation[] = [];
+  let filteredAnalysisItems: RecommendationAnalysisItem[] = [];
+  
+  if (analysisData?.analysis) {
+    filteredAnalysisItems = analysisData.analysis.filter(
+      item => 
+        item.workload_namespace === namespace && 
+        item.workload_name === workloadName &&
+        item.container_name === containerName
+    );
+    podRecommendations = getPodRecommendationsForContainer(filteredAnalysisItems, containerName!);
+  }
+
+
+  if (!selectedClusterId) {
     return (
       <div className="p-6 text-center">
-        <p className="text-muted-foreground">Container not found</p>
+        <p className="text-muted-foreground">Please select a cluster to view container details.</p>
+        <Link to={`/workloads/${namespace}/${workloadName}`}>
+          <Button variant="link" className="mt-2">Back to workload</Button>
+        </Link>
+      </div>
+    );
+  }
+
+  if (isLoading) {
+    return (
+      <div className="p-6 text-center">
+        <p className="text-muted-foreground">Loading container data...</p>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="p-6 text-center">
+        <p className="text-destructive">
+          Error loading container data: {error instanceof Error ? error.message : 'Unknown error'}
+        </p>
+        <Link to={`/workloads/${namespace}/${workloadName}`}>
+          <Button variant="link" className="mt-2">Back to workload</Button>
+        </Link>
+      </div>
+    );
+  }
+
+  if (!namespace || !workloadName || !containerName) {
+    return (
+      <div className="p-6 text-center">
+        <p className="text-muted-foreground">Invalid container path</p>
+        <Link to="/workloads">
+          <Button variant="link" className="mt-2">Back to workloads</Button>
+        </Link>
+      </div>
+    );
+  }
+
+  if (podRecommendations.length === 0) {
+    return (
+      <div className="p-6 text-center">
+        <p className="text-muted-foreground">No recommendations found for this container</p>
         <Link to={`/workloads/${namespace}/${workloadName}`}>
           <Button variant="link" className="mt-2">Back to workload</Button>
         </Link>
@@ -63,28 +128,20 @@ export default function ContainerDetail() {
                 <th>CPU Recommended</th>
                 <th>Memory Request</th>
                 <th>Memory Recommended</th>
-                <th>CPU Usage 7d (pmax/p99/p90/p75/p50)</th>
-                <th></th>
               </tr>
             </thead>
             <tbody>
-              {podRecommendations.map((pod) => (
-                <tr key={pod.pod}>
-                  <td className="font-mono text-xs">{pod.pod}</td>
-                  <td className="font-mono text-sm">{pod.cpuRequest}</td>
-                  <td className="font-mono text-sm text-primary">{pod.cpuRecRequest}</td>
-                  <td className="font-mono text-sm">{pod.memRequest}</td>
-                  <td className="font-mono text-sm text-primary">{pod.memRecRequest}</td>
-                  <td className="text-xs text-muted-foreground">
-                    {pod.usageP99} / {pod.usageP99} / {pod.usageP99} / {pod.usageP50} / {pod.usageP50}
-                  </td>
-                  <td>
-                    <Button variant="ghost" size="sm" className="h-7 px-2" title="View in Shared Chart">
-                      <ExternalLink className="h-3 w-3" />
-                    </Button>
-                  </td>
-                </tr>
-              ))}
+              {podRecommendations.map((pod) => {
+                return (
+                  <tr key={pod.pod}>
+                    <td className="font-mono text-xs">{pod.pod}</td>
+                    <td className="font-mono text-sm">{pod.cpuRequest}</td>
+                    <td className="font-mono text-sm text-primary">{pod.cpuRecRequest}</td>
+                    <td className="font-mono text-sm">{pod.memRequest}</td>
+                    <td className="font-mono text-sm text-primary">{pod.memRecRequest}</td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
