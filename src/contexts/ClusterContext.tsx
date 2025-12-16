@@ -2,7 +2,7 @@ import { createContext, useContext, useState, useEffect, ReactNode } from 'react
 import { useQuery } from '@tanstack/react-query';
 import { apiClient, Cluster } from '@/lib/api';
 
-const STORAGE_KEY = 'autopilot-selected-cluster-id';
+const STORAGE_KEY = 'cruisekube-selected-cluster-id';
 
 interface ClusterContextType {
   clusters: Cluster[];

@@ -1,4 +1,4 @@
-// Mock data for the Autopilot dashboard
+// Mock data for the CruiseKube dashboard
 
 export const overviewMetrics = {
   optimizationScore: 73,
@@ -186,8 +186,8 @@ export const podRecommendations = [
 ];
 
 export const recommendationHistory = [
-  { timestamp: "2024-12-08 14:32:15", oldCpu: "500m", newCpu: "200m", oldMem: "1Gi", newMem: "512Mi", decision: "applied", actor: "autopilot" },
-  { timestamp: "2024-12-07 10:15:42", oldCpu: "600m", newCpu: "500m", oldMem: "1.5Gi", newMem: "1Gi", decision: "applied", actor: "autopilot" },
+  { timestamp: "2024-12-08 14:32:15", oldCpu: "500m", newCpu: "200m", oldMem: "1Gi", newMem: "512Mi", decision: "applied", actor: "cruisekube" },
+  { timestamp: "2024-12-07 10:15:42", oldCpu: "600m", newCpu: "500m", oldMem: "1.5Gi", newMem: "1Gi", decision: "applied", actor: "cruisekube" },
   { timestamp: "2024-12-06 08:22:33", oldCpu: "400m", newCpu: "350m", oldMem: "768Mi", newMem: "1Gi", decision: "ignored", actor: "user@company.com" },
   { timestamp: "2024-12-05 16:45:21", oldCpu: "800m", newCpu: "600m", oldMem: "2Gi", newMem: "1.5Gi", decision: "snoozed", actor: "user@company.com" },
 ];

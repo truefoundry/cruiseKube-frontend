@@ -167,12 +167,12 @@ export default function Policies() {
       {/* Header */}
       <div>
         <h1 className="text-2xl font-semibold text-foreground">Policies & Configuration</h1>
-        <p className="text-sm text-muted-foreground">Configure autopilot behavior and workload settings</p>
+        <p className="text-sm text-muted-foreground">Configure CruiseKube behavior and workload settings</p>
       </div>
 
       <Tabs defaultValue="mode" className="space-y-6">
         <TabsList className="bg-muted/50">
-          <TabsTrigger value="mode">Autopilot Mode & Priority</TabsTrigger>
+          <TabsTrigger value="mode">CruiseKube Mode & Priority</TabsTrigger>
           <TabsTrigger value="prometheus">Prometheus Config</TabsTrigger>
         </TabsList>
 

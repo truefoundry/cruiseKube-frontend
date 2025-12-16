@@ -37,7 +37,7 @@ export function AppSidebar() {
           </div>
           {!isCollapsed && (
             <div className="flex flex-col">
-              <span className="font-semibold text-sidebar-accent-foreground">Autopilot</span>
+              <span className="font-semibold text-sidebar-accent-foreground">CruiseKube</span>
               <span className="text-xs text-sidebar-foreground">K8s Optimizer</span>
             </div>
           )}
