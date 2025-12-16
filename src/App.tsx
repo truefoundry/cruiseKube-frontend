@@ -5,10 +5,8 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { ClusterProvider } from "@/contexts/ClusterContext";
-import Overview from "./pages/Overview";
 import Workloads from "./pages/Workloads";
 import WorkloadDetail from "./pages/WorkloadDetail";
-import ContainerDetail from "./pages/ContainerDetail";
 import Policies from "./pages/Policies";
 import NotFound from "./pages/NotFound";
 
@@ -23,10 +21,8 @@ const App = () => (
         <BrowserRouter>
           <Routes>
             <Route element={<AppLayout />}>
-              <Route path="/" element={<Overview />} />
-              <Route path="/workloads" element={<Workloads />} />
+              <Route path="/" element={<Workloads />} />
               <Route path="/workloads/:namespace/:workloadName" element={<WorkloadDetail />} />
-              <Route path="/workloads/:namespace/:workloadName/:containerName" element={<ContainerDetail />} />
               <Route path="/policies" element={<Policies />} />
             </Route>
             <Route path="*" element={<NotFound />} />

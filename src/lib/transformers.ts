@@ -63,6 +63,14 @@ export interface FrontendPodRecommendation {
   usageP50: string;
 }
 
+export interface FrontendContainerRecommendation {
+  container: string;
+  cpuRequest: string;
+  cpuRecRequest: string;
+  memRequest: string;
+  memRecRequest: string;
+}
+
 export interface OverviewMetrics {
   optimizationScore: number;
   coverage: number;
@@ -801,5 +809,41 @@ export function getPodRecommendationsForContainer(
 ): FrontendPodRecommendation[] {
   const filtered = analysis.filter(item => item.container_name === containerName);
   return transformRecommendationAnalysisToPodRecommendations(filtered);
+}
+
+export function getPodsForWorkload(
+  analysis: RecommendationAnalysisItem[],
+  namespace: string,
+  workloadName: string
+): string[] {
+  const pods = new Set<string>();
+  for (const item of analysis) {
+    if (item.workload_namespace === namespace && item.workload_name === workloadName) {
+      pods.add(item.pod_name);
+    }
+  }
+  return Array.from(pods).sort();
+}
+
+export function getContainersForPod(
+  analysis: RecommendationAnalysisItem[],
+  podName: string
+): FrontendContainerRecommendation[] {
+  const filtered = analysis.filter(item => item.pod_name === podName);
+  const containerMap = new Map<string, RecommendationAnalysisItem>();
+  
+  for (const item of filtered) {
+    if (!containerMap.has(item.container_name)) {
+      containerMap.set(item.container_name, item);
+    }
+  }
+  
+  return Array.from(containerMap.values()).map(item => ({
+    container: item.container_name,
+    cpuRequest: formatCpu(item.current_requested_cpu),
+    cpuRecRequest: formatCpu(item.recommended_cpu),
+    memRequest: formatMemory(item.current_requested_memory),
+    memRecRequest: formatMemory(item.recommended_memory),
+  }));
 }
 

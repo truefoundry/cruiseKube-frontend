@@ -5,13 +5,24 @@ import {
   ChevronUp,
   ChevronDown,
   Layers,
-  Clock
+  Clock,
+  DollarSign,
+  AlertTriangle,
+  TrendingDown,
+  Info
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { useCluster } from "@/contexts/ClusterContext";
 import { apiClient } from "@/lib/api";
-import { transformStatsToWorkloads, FrontendWorkload } from "@/lib/transformers";
+import { 
+  transformStatsToWorkloads, 
+  FrontendWorkload,
+  transformStatsToOverviewMetrics,
+  OverviewMetrics
+} from "@/lib/transformers";
+import { MetricCard } from "@/components/ui/metric-card";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -20,6 +31,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 export default function Workloads() {
   const navigate = useNavigate();
@@ -44,7 +61,7 @@ export default function Workloads() {
     enabled: !!selectedClusterId,
   });
 
-  const { data: recommendationAnalysis } = useQuery({
+  const { data: recommendationAnalysis, isLoading: isLoadingRecommendationAnalysis } = useQuery({
     queryKey: ['recommendation-analysis', selectedClusterId],
     queryFn: () => apiClient.getRecommendationAnalysis(selectedClusterId!),
     enabled: !!selectedClusterId,
@@ -186,13 +203,7 @@ export default function Workloads() {
     );
   }
 
-  if (isLoadingStats || isLoadingWorkloads) {
-    return (
-      <div className="p-6">
-        <div className="text-center text-muted-foreground">Loading workloads...</div>
-      </div>
-    );
-  }
+  const isLoadingMetrics = isLoadingStats || isLoadingWorkloads || isLoadingRecommendationAnalysis;
 
   if (statsError || workloadsError) {
     const errorMessage = statsError instanceof Error ? statsError.message : workloadsError instanceof Error ? workloadsError.message : 'Unknown error';
@@ -215,6 +226,20 @@ export default function Workloads() {
     }
   };
 
+  let overviewMetrics: OverviewMetrics = {
+    optimizationScore: 0,
+    coverage: 0,
+    potentialSavings: { cpu: 0, memory: 0, dollars: 0 },
+    realizedSavings: { cpu: 0, memory: 0, dollars: 0 },
+    reliabilityIssues: 0,
+    costOptimizedWorkloads: 0,
+    totalSavedPerHour: 0,
+  };
+
+  if (statsData) {
+    overviewMetrics = transformStatsToOverviewMetrics(statsData, workloadsData || [], recommendationAnalysis?.analysis);
+  }
+
   return (
     <div className="p-6 space-y-6 animate-fade-in">
       {/* Header */}
@@ -224,9 +249,66 @@ export default function Workloads() {
           <p className="text-sm text-muted-foreground">Container-aware workload list with optimization recommendations</p>
         </div>
         <div className="flex items-center gap-2">
+          {statsData && statsData.stats.length > 0 && (
+            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+              <span className="h-2 w-2 rounded-full bg-success animate-pulse" />
+              <span>
+                Last sync: {statsData.stats[0]?.updated_at 
+                  ? new Date(statsData.stats[0].updated_at).toLocaleString()
+                  : 'Unknown'}
+              </span>
+            </div>
+          )}
           <Layers className="h-4 w-4 text-muted-foreground" />
           <span className="text-sm text-muted-foreground">{workloads.length} workloads</span>
         </div>
+      </div>
+
+      {/* Metric Cards */}
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+        {isLoadingMetrics ? (
+          <>
+            <div className="metric-card space-y-3">
+              <Skeleton className="h-3 w-24" />
+              <Skeleton className="h-8 w-16" />
+              <Skeleton className="h-4 w-32" />
+            </div>
+            <div className="metric-card space-y-3">
+              <Skeleton className="h-3 w-24" />
+              <Skeleton className="h-8 w-16" />
+              <Skeleton className="h-4 w-32" />
+            </div>
+            <div className="metric-card space-y-3">
+              <Skeleton className="h-3 w-24" />
+              <Skeleton className="h-8 w-20" />
+              <Skeleton className="h-4 w-32" />
+            </div>
+          </>
+        ) : (
+          <>
+            <MetricCard
+              title="Reliability Improved"
+              value={overviewMetrics.reliabilityIssues}
+              subtitle="Workloads with improvements applied"
+              icon={AlertTriangle}
+              variant={overviewMetrics.reliabilityIssues > 10 ? "warning" : "default"}
+            />
+            <MetricCard
+              title="Cost Optimized"
+              value={overviewMetrics.costOptimizedWorkloads}
+              subtitle="Workloads with savings applied"
+              icon={TrendingDown}
+              variant="success"
+            />
+            <MetricCard
+              title="Total Saved / Month"
+              value={`$${overviewMetrics.totalSavedPerHour.toLocaleString()}`}
+              subtitle="Per month savings"
+              icon={DollarSign}
+              variant="success"
+            />
+          </>
+        )}
       </div>
 
       {/* Filters */}
@@ -259,8 +341,8 @@ export default function Workloads() {
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All Modes</SelectItem>
-            <SelectItem value="enabled">Enabled</SelectItem>
-            <SelectItem value="recommend-only">Recommend Only</SelectItem>
+            <SelectItem value="enabled">Cruise</SelectItem>
+            <SelectItem value="recommend-only">Recommend</SelectItem>
           </SelectContent>
         </Select>
 
@@ -450,6 +532,16 @@ export default function Workloads() {
                     {sortColumn === "mode" && (
                       sortDirection === "asc" ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />
                     )}
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger asChild onClick={(e) => e.stopPropagation()}>
+                          <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          <p className="max-w-xs">Enables auto-apply of recommendations. When Cruise is enabled, CruiseKube will automatically apply resource recommendations.</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
                   </div>
                 </th>
                 <th 
@@ -464,6 +556,16 @@ export default function Workloads() {
                     {sortColumn === "priority" && (
                       sortDirection === "asc" ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />
                     )}
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger asChild onClick={(e) => e.stopPropagation()}>
+                          <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          <p className="max-w-xs">Determines eviction priority during optimization. Higher priority workloads have a lower chance of being evicted when the algorithm needs to optimize resources.</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
                   </div>
                 </th>
                 <th></th>
@@ -490,12 +592,7 @@ export default function Workloads() {
                 >
                   <td className="font-mono text-xs">{workload.namespace}</td>
                   <td>
-                    <div className="flex items-center gap-2">
-                      <span className="font-medium">{workload.workload}</span>
-                      {workload.hasRecommendations && (
-                        <span className="h-1.5 w-1.5 rounded-full bg-primary animate-pulse" />
-                      )}
-                    </div>
+                    <span className="font-medium">{workload.workload}</span>
                   </td>
                   <td className="text-muted-foreground text-xs">{workload.type}</td>
                   <td className="font-mono text-sm">{workload.currentCpu}</td>
@@ -515,7 +612,7 @@ export default function Workloads() {
                     <span className={`text-xs font-medium ${
                       workload.mode === "enabled" ? "text-success" : "text-muted-foreground"
                     }`}>
-                      {workload.mode === "enabled" ? "Enabled" : "Recommend"}
+                      {workload.mode === "enabled" ? "Cruise" : "Recommend"}
                     </span>
                   </td>
                   <td>

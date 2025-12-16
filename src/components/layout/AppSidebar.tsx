@@ -1,5 +1,4 @@
 import { 
-  LayoutDashboard, 
   Layers, 
   Settings,
   Cpu
@@ -19,8 +18,7 @@ import {
 } from "@/components/ui/sidebar";
 
 const navItems = [
-  { title: "Overview", url: "/", icon: LayoutDashboard },
-  { title: "Workloads & Recommendations", url: "/workloads", icon: Layers },
+  { title: "Workloads & Recommendations", url: "/", icon: Layers },
   { title: "Policies & Configuration", url: "/policies", icon: Settings },
 ];
 

@@ -2,11 +2,14 @@ import {
   Database,
   CheckCircle,
   XCircle,
-  Loader2
+  Loader2,
+  Search,
+  Info
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Switch } from "@/components/ui/switch";
 import {
   Select,
   SelectContent,
@@ -14,6 +17,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiClient, WorkloadOverrideInfo, Overrides } from "@/lib/api";
@@ -25,6 +34,7 @@ export default function Policies() {
   const { selectedClusterId } = useCluster();
   const queryClient = useQueryClient();
   const [updatingWorkloads, setUpdatingWorkloads] = useState<Set<string>>(new Set());
+  const [search, setSearch] = useState("");
 
   const { data: workloads, isLoading: workloadsLoading, error: workloadsError } = useQuery({
     queryKey: ['workloads', selectedClusterId],
@@ -65,10 +75,9 @@ export default function Policies() {
     },
   });
 
-  const handleModeChange = async (workloadId: string, mode: 'enabled' | 'recommend-only') => {
+  const handleModeChange = async (workloadId: string, enabled: boolean) => {
     setUpdatingWorkloads(prev => new Set(prev).add(workloadId));
     try {
-      const enabled = mode === 'enabled';
       await updateOverrideMutation.mutateAsync({
         workloadId,
         overrides: { enabled },
@@ -97,11 +106,6 @@ export default function Policies() {
         return next;
       });
     }
-  };
-
-  const getWorkloadMode = (workload: WorkloadOverrideInfo): 'enabled' | 'recommend-only' => {
-    if (workload.enabled) return 'enabled';
-    return 'recommend-only';
   };
 
   const getWorkloadPriority = (workload: WorkloadOverrideInfo): 'low' | 'medium' | 'high' | 'non-evictable' => {
@@ -160,7 +164,12 @@ export default function Policies() {
     );
   }
 
-  const workloadsList = workloads || [];
+  const workloadsList = (workloads || []).filter((w) => {
+    const matchesSearch = 
+      w.name.toLowerCase().includes(search.toLowerCase()) ||
+      w.namespace.toLowerCase().includes(search.toLowerCase());
+    return matchesSearch;
+  });
 
   return (
     <div className="p-6 space-y-6 animate-fade-in">
@@ -177,6 +186,15 @@ export default function Policies() {
         </TabsList>
 
         <TabsContent value="mode" className="space-y-6">
+          <div className="relative flex-1 min-w-[240px] max-w-sm">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Search workloads..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="pl-9 bg-muted/50 border-border"
+            />
+          </div>
           <div className="metric-card overflow-hidden">
             <h3 className="text-xs font-medium uppercase tracking-wider text-muted-foreground mb-4">
               Per Workload Settings
@@ -187,8 +205,36 @@ export default function Policies() {
                   <tr>
                     <th>Workload</th>
                     <th>Namespace</th>
-                    <th>Mode</th>
-                    <th>Priority</th>
+                    <th>
+                      <div className="flex items-center gap-1.5">
+                        Mode
+                        <TooltipProvider>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              <p className="max-w-xs">Enables auto-apply of recommendations. When Cruise is enabled, CruiseKube will automatically apply resource recommendations.</p>
+                            </TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
+                      </div>
+                    </th>
+                    <th>
+                      <div className="flex items-center gap-1.5">
+                        Priority
+                        <TooltipProvider>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              <p className="max-w-xs">Determines eviction priority during optimization. Higher priority workloads have a lower chance of being evicted when the algorithm needs to optimize resources. This is determined using the mode setting.</p>
+                            </TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
+                      </div>
+                    </th>
                     <th></th>
                   </tr>
                 </thead>
@@ -202,26 +248,25 @@ export default function Policies() {
                   ) : (
                     workloadsList.map((workload) => {
                       const isUpdating = updatingWorkloads.has(workload.workload_id);
-                      const currentMode = getWorkloadMode(workload);
                       const currentPriority = getWorkloadPriority(workload);
                       return (
                         <tr key={workload.workload_id}>
                           <td className="font-medium">{workload.name}</td>
                           <td className="font-mono text-xs text-muted-foreground">{workload.namespace}</td>
                           <td>
-                            <Select 
-                              value={currentMode}
-                              onValueChange={(value) => handleModeChange(workload.workload_id, value as 'enabled' | 'recommend-only')}
-                              disabled={isUpdating}
-                            >
-                              <SelectTrigger className="w-[150px] bg-muted/50 h-8">
-                                <SelectValue />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="enabled">Enabled</SelectItem>
-                                <SelectItem value="recommend-only">Recommend Only</SelectItem>
-                              </SelectContent>
-                            </Select>
+                            <div className="flex items-center gap-3">
+                              <span className={`text-sm ${!workload.enabled ? 'font-medium text-foreground' : 'text-muted-foreground'}`}>
+                                Recommend
+                              </span>
+                              <Switch
+                                checked={workload.enabled}
+                                onCheckedChange={(checked) => handleModeChange(workload.workload_id, checked)}
+                                disabled={isUpdating}
+                              />
+                              <span className={`text-sm ${workload.enabled ? 'font-medium text-foreground' : 'text-muted-foreground'}`}>
+                                Cruise
+                              </span>
+                            </div>
                           </td>
                           <td>
                             <Select 
