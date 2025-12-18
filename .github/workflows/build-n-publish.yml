@@ -1,0 +1,25 @@
+name: Push image to JFROG Public
+
+on:
+  push:
+    branches:
+      - 'main'
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  build-cruisekube-frontend:
+    name: Build and Push Docker Images
+    uses: truefoundry/github-workflows-public/.github/workflows/build.yml@main
+    with:
+      image_tag: ${{ github.sha }}
+      image_artifact_name: 'cruisekube-frontend'
+      dockerfile_path: 'Dockerfile'
+      artifactory_registry_url: ${{ vars.TRUEFOUNDRY_ARTIFACTORY_REGISTRY_URL }}
+      artifactory_repository_url: ${{ vars.TRUEFOUNDRY_ARTIFACTORY_PUBLIC_REPOSITORY }}
+      platforms: 'linux/amd64'
+    secrets:
+      artifactory_username: ${{ secrets.TRUEFOUNDRY_ARTIFACTORY_PUBLIC_USERNAME }}
+      artifactory_password: ${{ secrets.TRUEFOUNDRY_ARTIFACTORY_PUBLIC_PASSWORD }}
