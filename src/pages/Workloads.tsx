@@ -9,7 +9,9 @@ import {
   DollarSign,
   AlertTriangle,
   TrendingDown,
-  Info
+  Info,
+  Cpu,
+  HardDrive
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
@@ -67,6 +69,143 @@ export default function Workloads() {
     enabled: !!selectedClusterId,
   });
 
+  const prometheusQueries = {
+    cpuUtilised: `round(
+      sum(
+        sum by (node) (
+          rate(node_cpu_seconds_total{job="node-exporter", mode=~"user|system"}[1m])
+        )
+        unless max by (node) (
+          max_over_time(kube_node_status_allocatable{
+            job="kube-state-metrics",
+            resource=~"nvidia_com_gpu|amd_com_gpu"
+          }[7d:]) > 0
+        )
+      ),
+      0.001
+    )`,
+    cpuRequested: `round(
+      sum(
+        sum by (node) (
+          (
+            (
+              sum by (namespace, pod) (kube_pod_container_resource_requests{job="kube-state-metrics", container!="", resource="cpu"})
+            )
+            unless on (namespace, pod)
+            (
+              sum by (namespace, pod) (kube_pod_container_resource_requests{job="kube-state-metrics", container!="", resource=~"nvidia_com_gpu|amd_com_gpu"})
+            )
+          )
+          * on (namespace, pod) group_left
+            sum by (namespace, pod) (kube_pod_status_phase{job="kube-state-metrics", phase!~"Failed|Succeeded|Unknown"})
+        )
+        unless on (node)
+        (
+          max by (node) (
+            max_over_time(
+              kube_node_status_allocatable{job="kube-state-metrics", resource=~"nvidia_com_gpu|amd_com_gpu"}[7d:]
+            )
+          )
+          >
+          0
+        )
+      ),
+      0.001
+    )`,
+    cpuAllocatable: `round(
+      sum(
+        sum by (node) (kube_node_status_allocatable{job="kube-state-metrics", resource="cpu"})
+        unless (
+          sum by (node) (
+            kube_node_spec_taint{job="kube-state-metrics", key="nvidia.com/gpu"}
+          )
+        )
+        unless on (node) (
+          kube_node_labels{job="kube-state-metrics", accelerator="nvidia"}
+        )
+      ),
+      0.001
+    )`,
+    memoryUtilised: `round(
+      sum(
+        sum by (node) (
+          node_memory_MemTotal_bytes{job="node-exporter"} - (node_memory_MemFree_bytes{job="node-exporter"} + node_memory_Buffers_bytes{job="node-exporter"} + node_memory_Cached_bytes{job="node-exporter"})
+        )
+        unless
+        max by (node) (
+          max_over_time(kube_node_status_allocatable{job="kube-state-metrics", resource=~"nvidia_com_gpu|amd_com_gpu"}[7d:])
+        ) > 0
+      )
+      / 1000000000,
+      0.001
+    )`,
+    memoryRequested: `round(
+      sum(
+        sum by (node) (
+          (
+            (
+              sum by (namespace, pod) (kube_pod_container_resource_requests{job="kube-state-metrics", container!="", resource="memory"})
+            )
+            unless on (namespace, pod)
+            (
+              sum by (namespace, pod) (kube_pod_container_resource_requests{job="kube-state-metrics", container!="", resource=~"nvidia_com_gpu|amd_com_gpu"})
+            )
+          )
+          * on (namespace, pod) group_left
+            sum by (namespace, pod) (kube_pod_status_phase{job="kube-state-metrics", phase!~"Failed|Succeeded|Unknown"})
+        )
+        unless on (node)
+        (
+          max by (node) (
+            max_over_time(
+              kube_node_status_allocatable{job="kube-state-metrics", resource=~"nvidia_com_gpu|amd_com_gpu"}[7d:]
+            )
+          )
+          >
+          0
+        )
+      ) / 1000000000,
+      0.001
+    )`,
+    memoryAllocatable: `round(
+      sum(
+        sum by (node) (kube_node_status_allocatable{job="kube-state-metrics", resource="memory"})
+        unless (
+          sum by (node) (kube_node_spec_taint{job="kube-state-metrics", key="nvidia.com/gpu"})
+        )
+        unless on (node) (
+          kube_node_labels{job="kube-state-metrics", accelerator="nvidia"}
+        )
+      ) / 1000000000,
+      0.001
+    )`,
+  };
+
+  const { data: clusterMetrics, isLoading: isLoadingClusterMetrics } = useQuery({
+    queryKey: ['cluster-metrics', selectedClusterId],
+    queryFn: async () => {
+      if (!selectedClusterId) throw new Error('No cluster selected');
+      const results = await Promise.all([
+        apiClient.queryPrometheus(selectedClusterId, prometheusQueries.cpuUtilised).catch(() => null),
+        apiClient.queryPrometheus(selectedClusterId, prometheusQueries.cpuRequested).catch(() => null),
+        apiClient.queryPrometheus(selectedClusterId, prometheusQueries.cpuAllocatable).catch(() => null),
+        apiClient.queryPrometheus(selectedClusterId, prometheusQueries.memoryUtilised).catch(() => null),
+        apiClient.queryPrometheus(selectedClusterId, prometheusQueries.memoryRequested).catch(() => null),
+        apiClient.queryPrometheus(selectedClusterId, prometheusQueries.memoryAllocatable).catch(() => null),
+      ]);
+      return {
+        cpuUtilised: results[0]?.data?.result?.[0]?.value?.[1] || null,
+        cpuRequested: results[1]?.data?.result?.[0]?.value?.[1] || null,
+        cpuAllocatable: results[2]?.data?.result?.[0]?.value?.[1] || null,
+        memoryUtilised: results[3]?.data?.result?.[0]?.value?.[1] || null,
+        memoryRequested: results[4]?.data?.result?.[0]?.value?.[1] || null,
+        memoryAllocatable: results[5]?.data?.result?.[0]?.value?.[1] || null,
+      };
+    },
+    enabled: !!selectedClusterId,
+    retry: false,
+  });
+
   const workloads: FrontendWorkload[] = statsData && workloadsData 
     ? transformStatsToWorkloads(statsData, workloadsData, recommendationAnalysis?.analysis)
     : [];
@@ -107,6 +246,20 @@ export default function Workloads() {
     const daysMatch = timeString.match(/(\d+) days ago/);
     if (daysMatch) return (parseInt(daysMatch[1]) || 0) * 1440;
     return 0;
+  };
+
+  const formatCpuValue = (value: string | null): string => {
+    if (!value) return "N/A";
+    const numValue = parseFloat(value);
+    if (isNaN(numValue)) return "N/A";
+    return `${numValue.toFixed(2)} cores`;
+  };
+
+  const formatMemoryValue = (value: string | null): string => {
+    if (!value) return "N/A";
+    const numValue = parseFloat(value);
+    if (isNaN(numValue)) return "N/A";
+    return `${numValue.toFixed(2)} GB`;
   };
 
   const sortWorkloads = (workloads: FrontendWorkload[]): FrontendWorkload[] => {
@@ -203,7 +356,7 @@ export default function Workloads() {
     );
   }
 
-  const isLoadingMetrics = isLoadingStats || isLoadingWorkloads || isLoadingRecommendationAnalysis;
+  const isLoadingMetrics = isLoadingStats || isLoadingWorkloads || isLoadingRecommendationAnalysis || isLoadingClusterMetrics;
 
   if (statsError || workloadsError) {
     const errorMessage = statsError instanceof Error ? statsError.message : workloadsError instanceof Error ? workloadsError.message : 'Unknown error';
@@ -306,6 +459,66 @@ export default function Workloads() {
               subtitle="Per month savings"
               icon={DollarSign}
               variant="success"
+            />
+          </>
+        )}
+      </div>
+
+      {/* Cluster Resource Metrics */}
+      <div className="grid gap-4 md:grid-cols-3 lg:grid-cols-6">
+        {isLoadingClusterMetrics ? (
+          <>
+            {[...Array(6)].map((_, i) => (
+              <div key={i} className="metric-card space-y-3">
+                <Skeleton className="h-3 w-24" />
+                <Skeleton className="h-8 w-20" />
+                <Skeleton className="h-4 w-32" />
+              </div>
+            ))}
+          </>
+        ) : (
+          <>
+            <MetricCard
+              title="CPU Utilised"
+              value={formatCpuValue(clusterMetrics?.cpuUtilised || null)}
+              subtitle="Current CPU usage"
+              icon={Cpu}
+              variant="default"
+            />
+            <MetricCard
+              title="CPU Requested"
+              value={formatCpuValue(clusterMetrics?.cpuRequested || null)}
+              subtitle="Total CPU requests"
+              icon={Cpu}
+              variant="default"
+            />
+            <MetricCard
+              title="CPU Allocatable"
+              value={formatCpuValue(clusterMetrics?.cpuAllocatable || null)}
+              subtitle="Total CPU capacity"
+              icon={Cpu}
+              variant="default"
+            />
+            <MetricCard
+              title="Memory Utilised"
+              value={formatMemoryValue(clusterMetrics?.memoryUtilised || null)}
+              subtitle="Current memory usage"
+              icon={HardDrive}
+              variant="default"
+            />
+            <MetricCard
+              title="Memory Requested"
+              value={formatMemoryValue(clusterMetrics?.memoryRequested || null)}
+              subtitle="Total memory requests"
+              icon={HardDrive}
+              variant="default"
+            />
+            <MetricCard
+              title="Memory Allocatable"
+              value={formatMemoryValue(clusterMetrics?.memoryAllocatable || null)}
+              subtitle="Total memory capacity"
+              icon={HardDrive}
+              variant="default"
             />
           </>
         )}
