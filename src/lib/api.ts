@@ -141,6 +141,17 @@ export interface PrometheusConfig {
   error?: string;
 }
 
+export interface PrometheusQueryResult {
+  status: string;
+  data: {
+    resultType: string;
+    result: Array<{
+      metric: Record<string, string>;
+      value: [number, string];
+    }>;
+  };
+}
+
 class ApiClient {
   private baseUrl: string;
 
@@ -223,6 +234,11 @@ class ApiClient {
 
   async getPrometheusConfig(clusterID: string): Promise<PrometheusConfig> {
     return this.request<PrometheusConfig>(`/clusters/${clusterID}/prometheus-config`);
+  }
+
+  async queryPrometheus(clusterID: string, query: string): Promise<PrometheusQueryResult> {
+    const encodedQuery = encodeURIComponent(query);
+    return this.request<PrometheusQueryResult>(`/clusters/${clusterID}/prometheus-query?query=${encodedQuery}`);
   }
 }
 
