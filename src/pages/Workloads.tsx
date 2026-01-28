@@ -152,7 +152,7 @@ export default function Workloads() {
             )
           )
           * on (namespace, pod) group_left
-            sum by (namespace, pod) (kube_pod_status_phase{job="kube-state-metrics", phase!~"Failed|Succeeded|UnknownPending"})
+            sum by (namespace, pod) (kube_pod_status_phase{job="kube-state-metrics", phase!~"Failed|Succeeded|Unknown|Pending"})
         )
         unless on (node)
         (
