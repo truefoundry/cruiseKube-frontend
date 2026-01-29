@@ -48,8 +48,8 @@ export default function Workloads() {
   const [modeFilter, setModeFilter] = useState("all");
   const [priorityFilter, setPriorityFilter] = useState("all");
   const [hasRecommendations, setHasRecommendations] = useState("all");
-  const [sortColumn, setSortColumn] = useState<string | null>(null);
-  const [sortDirection, setSortDirection] = useState<"asc" | "desc" | null>(null);
+  const [sortColumn, setSortColumn] = useState<string | null>("potentialDollars");
+  const [sortDirection, setSortDirection] = useState<"asc" | "desc" | null>("desc");
 
   const { data: statsData, isLoading: isLoadingStats, error: statsError } = useQuery({
     queryKey: ['cluster-stats', selectedClusterId],
