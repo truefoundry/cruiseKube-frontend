@@ -198,23 +198,55 @@ class ApiClient {
   }
 
   async getClusters(): Promise<ClustersResponse> {
-    return this.request<ClustersResponse>('/clusters');
+    const data = await this.request<ClustersResponse | null>('/clusters');
+    if (data == null) {
+      return { clusters: [], count: 0, cluster_mode: '' };
+    }
+    return {
+      ...data,
+      clusters: Array.isArray(data.clusters) ? data.clusters : [],
+    };
   }
 
+  /** Normalizes empty response: API may return {"stats": null}. Always returns { stats: array }. */
   async getClusterStats(clusterID: string): Promise<StatsResponse> {
-    return this.request<StatsResponse>(`/clusters/${clusterID}/stats`);
+    const data = await this.request<StatsResponse | null>(`/clusters/${clusterID}/stats`);
+    if (data == null) {
+      return { stats: [] };
+    }
+    const stats = data.stats != null && Array.isArray(data.stats) ? data.stats : [];
+    return { ...data, stats };
   }
 
+  /** Normalizes empty response: API may return [] or null. Always returns an array. */
   async getWorkloads(clusterID: string): Promise<WorkloadOverrideInfo[]> {
-    return this.request<WorkloadOverrideInfo[]>(`/clusters/${clusterID}/workloads`);
+    const data = await this.request<WorkloadOverrideInfo[] | null>(`/clusters/${clusterID}/workloads`);
+    if (data == null || !Array.isArray(data)) {
+      return [];
+    }
+    return data;
   }
 
+  /** Normalizes empty response: API may return { "analysis": null, "summary": {...} }. Always returns { analysis: array, summary }. */
   async getRecommendationAnalysis(clusterID: string): Promise<RecommendationAnalysisResponse> {
-    return this.request<RecommendationAnalysisResponse>(`/clusters/${clusterID}/recommendation-analysis`);
+    const data = await this.request<RecommendationAnalysisResponse | null>(`/clusters/${clusterID}/recommendation-analysis`);
+    const defaultSummary: RecommendationSummary = {
+      total_current_cpu_requests: 0,
+      total_cpu_differences: 0,
+      total_current_memory_requests: 0,
+      total_memory_differences: 0,
+    };
+    if (data == null) {
+      return { analysis: [], summary: defaultSummary };
+    }
+    const analysis = data.analysis != null && Array.isArray(data.analysis) ? data.analysis : [];
+    const summary = data.summary ?? defaultSummary;
+    return { ...data, analysis, summary };
   }
 
   async getWorkloadAnalysis(clusterID: string): Promise<WorkloadAnalysisItem[]> {
-    return this.request<WorkloadAnalysisItem[]>(`/clusters/${clusterID}/workload-analysis`);
+    const data = await this.request<WorkloadAnalysisItem[] | null>(`/clusters/${clusterID}/workload-analysis`);
+    return Array.isArray(data) ? data : [];
   }
 
   async getWorkloadOverrides(clusterID: string, workloadID: string): Promise<Overrides> {

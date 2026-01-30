@@ -39,6 +39,8 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { asArray } from "@/lib/utils";
 
 export default function Workloads() {
   const navigate = useNavigate();
@@ -206,9 +208,17 @@ export default function Workloads() {
     retry: false,
   });
 
-  const workloads: FrontendWorkload[] = statsData && workloadsData 
-    ? transformStatsToWorkloads(statsData, workloadsData, recommendationAnalysis?.analysis)
-    : [];
+  let rawWorkloads: FrontendWorkload[] = [];
+  try {
+    const workloadsList = Array.isArray(workloadsData) ? workloadsData : [];
+    const analysisList = Array.isArray(recommendationAnalysis?.analysis) ? recommendationAnalysis?.analysis : undefined;
+    rawWorkloads = statsData && workloadsData
+      ? transformStatsToWorkloads(statsData, workloadsList, analysisList)
+      : [];
+  } catch {
+    rawWorkloads = [];
+  }
+  const workloads: FrontendWorkload[] = Array.isArray(rawWorkloads) ? rawWorkloads : [];
 
   const parseCpuValue = (cpuString: string): number => {
     if (!cpuString) return 0;
@@ -263,11 +273,12 @@ export default function Workloads() {
   };
 
   const sortWorkloads = (workloads: FrontendWorkload[]): FrontendWorkload[] => {
+    const list = workloads ?? [];
     if (!sortColumn || !sortDirection) {
-      return workloads;
+      return list;
     }
 
-    const sorted = [...workloads].sort((a, b) => {
+    const sorted = [...list].sort((a, b) => {
       let aValue: string | number;
       let bValue: string | number;
 
@@ -315,7 +326,7 @@ export default function Workloads() {
     return sorted;
   };
 
-  const filteredWorkloads = workloads.filter((w) => {
+  const filteredWorkloads = asArray(workloads).filter((w) => {
     const matchesSearch = 
       w.workload.toLowerCase().includes(search.toLowerCase()) ||
       w.namespace.toLowerCase().includes(search.toLowerCase());
@@ -330,7 +341,7 @@ export default function Workloads() {
 
   const sortedWorkloads = sortWorkloads(filteredWorkloads);
 
-  const namespaces = [...new Set(workloads.map((w) => w.namespace))];
+  const namespaces = [...new Set(asArray(workloads).map((w) => w.namespace))];
 
   const handleSort = (column: string) => {
     if (sortColumn === column) {
@@ -361,10 +372,12 @@ export default function Workloads() {
   if (statsError || workloadsError) {
     const errorMessage = statsError instanceof Error ? statsError.message : workloadsError instanceof Error ? workloadsError.message : 'Unknown error';
     return (
-      <div className="p-6">
-        <div className="text-center text-destructive">
-          Error loading workloads: {errorMessage}
-        </div>
+      <div className="p-6 space-y-4">
+        <Alert variant="destructive">
+          <AlertTriangle className="h-4 w-4" />
+          <AlertTitle>Error loading workloads</AlertTitle>
+          <AlertDescription>{errorMessage}</AlertDescription>
+        </Alert>
       </div>
     );
   }
@@ -387,14 +400,30 @@ export default function Workloads() {
     reliabilityIssues: 0,
     costOptimizedWorkloads: 0,
     totalSavedPerHour: 0,
+    realizedDollars: 0,
+    unrealizedDollars: 0,
   };
 
   if (statsData) {
-    overviewMetrics = transformStatsToOverviewMetrics(statsData, workloadsData || [], recommendationAnalysis?.analysis);
+    const workloadsList = Array.isArray(workloadsData) ? workloadsData : [];
+    const analysisList = Array.isArray(recommendationAnalysis?.analysis) ? recommendationAnalysis!.analysis : undefined;
+    overviewMetrics = transformStatsToOverviewMetrics(statsData, workloadsList, analysisList);
   }
+
+  const hasNoData = !isLoadingMetrics && (statsData?.stats == null || (Array.isArray(statsData?.stats) && statsData.stats.length === 0));
 
   return (
     <div className="p-6 space-y-6 animate-fade-in">
+      {/* Error / empty data banner */}
+      {hasNoData && (
+        <Alert variant="default" className="border-amber-500/50 bg-amber-500/10 [&>svg]:text-amber-600 dark:[&>svg]:text-amber-400">
+          <Info className="h-4 w-4" />
+          <AlertTitle>No workload data available</AlertTitle>
+          <AlertDescription>
+            No workload or stats data was returned for this cluster. The cluster may have no workloads yet, or the data sync may not have completed. Try refreshing the page or selecting another cluster.
+          </AlertDescription>
+        </Alert>
+      )}
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
@@ -402,23 +431,23 @@ export default function Workloads() {
           <p className="text-sm text-muted-foreground">Container-aware workload list with optimization recommendations</p>
         </div>
         <div className="flex items-center gap-2">
-          {statsData && statsData.stats.length > 0 && (
+          {statsData && (statsData.stats ?? []).length > 0 && (
             <div className="flex items-center gap-2 text-xs text-muted-foreground">
               <span className="h-2 w-2 rounded-full bg-success animate-pulse" />
               <span>
-                Last sync: {statsData.stats[0]?.updated_at 
-                  ? new Date(statsData.stats[0].updated_at).toLocaleString()
+                Last sync: {(statsData.stats ?? [])[0]?.updated_at 
+                  ? new Date((statsData.stats ?? [])[0].updated_at).toLocaleString()
                   : 'Unknown'}
               </span>
             </div>
           )}
           <Layers className="h-4 w-4 text-muted-foreground" />
-          <span className="text-sm text-muted-foreground">{workloads.length} workloads</span>
+          <span className="text-sm text-muted-foreground">{asArray(workloads).length} workloads</span>
         </div>
       </div>
 
       {/* Metric Cards */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         {isLoadingMetrics ? (
           <>
             <div className="metric-card space-y-3">
@@ -440,6 +469,20 @@ export default function Workloads() {
         ) : (
           <>
             <MetricCard
+              title="Realized Savings"
+              value={`$${overviewMetrics.realizedDollars.toLocaleString()}`}
+              subtitle="Per month savings"
+              icon={DollarSign}
+              variant="success"
+            />
+            <MetricCard
+              title="Unrealized Savings"
+              value={`$${overviewMetrics.unrealizedDollars.toLocaleString()}`}
+              subtitle="Per month savings"
+              icon={DollarSign}
+              variant="success"
+            />
+            <MetricCard
               title="Reliability Improved"
               value={overviewMetrics.reliabilityIssues}
               subtitle="Workloads with improvements applied"
@@ -451,13 +494,6 @@ export default function Workloads() {
               value={overviewMetrics.costOptimizedWorkloads}
               subtitle="Workloads with savings applied"
               icon={TrendingDown}
-              variant="success"
-            />
-            <MetricCard
-              title="Total Saved / Month"
-              value={`$${overviewMetrics.totalSavedPerHour.toLocaleString()}`}
-              subtitle="Per month savings"
-              icon={DollarSign}
               variant="success"
             />
           </>
@@ -542,7 +578,7 @@ export default function Workloads() {
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All Namespaces</SelectItem>
-            {namespaces.map((ns) => (
+            {asArray(namespaces).map((ns) => (
               <SelectItem key={ns} value={ns}>{ns}</SelectItem>
             ))}
           </SelectContent>
@@ -785,7 +821,7 @@ export default function Workloads() {
               </tr>
             </thead>
             <tbody>
-              {sortedWorkloads.map((workload) => (
+              {asArray(sortedWorkloads).map((workload) => (
                 <tr 
                   key={workload.id} 
                   className="group cursor-pointer hover:bg-muted/50 transition-colors"

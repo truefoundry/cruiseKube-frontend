@@ -29,6 +29,7 @@ import { apiClient, WorkloadOverrideInfo, Overrides } from "@/lib/api";
 import { mapEvictionRankingToPriority, mapPriorityToEvictionRanking } from "@/lib/transformers";
 import { useCluster } from "@/contexts/ClusterContext";
 import { toast } from "@/hooks/use-toast";
+import { asArray } from "@/lib/utils";
 
 export default function Policies() {
   const { selectedClusterId } = useCluster();
@@ -164,7 +165,7 @@ export default function Policies() {
     );
   }
 
-  const workloadsList = (workloads || []).filter((w) => {
+  const workloadsList = asArray(workloads).filter((w) => {
     const matchesSearch = 
       w.name.toLowerCase().includes(search.toLowerCase()) ||
       w.namespace.toLowerCase().includes(search.toLowerCase());
@@ -246,7 +247,7 @@ export default function Policies() {
                       </td>
                     </tr>
                   ) : (
-                    workloadsList.map((workload) => {
+                    asArray(workloadsList).map((workload) => {
                       const isUpdating = updatingWorkloads.has(workload.workload_id);
                       const currentPriority = getWorkloadPriority(workload);
                       return (

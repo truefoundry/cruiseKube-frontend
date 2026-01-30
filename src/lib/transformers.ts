@@ -87,6 +87,8 @@ export interface OverviewMetrics {
   reliabilityIssues: number;
   costOptimizedWorkloads: number;
   totalSavedPerHour: number;
+  realizedDollars: number;
+  unrealizedDollars: number;
 }
 
 export interface WastefulWorkload {
@@ -123,8 +125,8 @@ export type RecommendationMap = Map<string, { cpu: number[]; memory: number[] }>
 
 export function buildRecommendationMap(analysis: RecommendationAnalysisItem[]): RecommendationMap {
   const map = new Map<string, { cpu: number[]; memory: number[] }>();
-  
-  for (const item of analysis) {
+  const items = Array.isArray(analysis) ? analysis : [];
+  for (const item of items) {
     const key = `${item.workload_namespace}:${item.workload_name}:${item.container_name}`;
     const existing = map.get(key);
     
@@ -237,9 +239,11 @@ export function transformWorkloadStatToFrontend(
   let hasRecommendations = false;
 
   const recommendationMap = recommendationAnalysis ? buildRecommendationMap(recommendationAnalysis) : undefined;
+  const containerStats = Array.isArray(stat.container_stats) ? stat.container_stats : [];
+  const originalResources = Array.isArray(stat.original_container_resources) ? stat.original_container_resources : [];
 
-  for (const containerStat of stat.container_stats) {
-    const originalResource = stat.original_container_resources.find(
+  for (const containerStat of containerStats) {
+    const originalResource = originalResources.find(
       r => r.name === containerStat.container_name
     );
 
@@ -269,8 +273,9 @@ export function transformWorkloadStatToFrontend(
   let totalPotentialCpuDiff = 0;
   let totalPotentialMemoryDiff = 0;
 
-  if (recommendationAnalysis) {
-    const workloadRecommendations = recommendationAnalysis.filter(
+  const analysisList = Array.isArray(recommendationAnalysis) ? recommendationAnalysis : [];
+  if (analysisList.length > 0) {
+    const workloadRecommendations = analysisList.filter(
       item => 
         item.workload_namespace === stat.namespace &&
         item.workload_name === stat.name
@@ -374,9 +379,11 @@ export function transformStatsToWorkloads(
   overrides: WorkloadOverrideInfo[] = [],
   recommendationAnalysis?: RecommendationAnalysisItem[]
 ): FrontendWorkload[] {
-  const overrideMap = new Map(overrides.map(o => [o.workload_id, o]));
+  const stats = Array.isArray(statsResponse?.stats) ? statsResponse.stats : [];
+  const overrideList = Array.isArray(overrides) ? overrides : [];
+  const overrideMap = new Map(overrideList.map(o => [o.workload_id, o]));
   
-  return statsResponse.stats.map(stat => {
+  return stats.map(stat => {
     const workloadId = stat.workload;
     const override = overrideMap.get(workloadId);
     return transformWorkloadStatToFrontend(stat, override, recommendationAnalysis);
@@ -387,10 +394,12 @@ export function transformWorkloadStatToContainers(
   stat: WorkloadStat,
   recommendationAnalysis?: RecommendationAnalysisItem[]
 ): FrontendContainer[] {
-  return stat.container_stats
+  const containerStats = Array.isArray(stat.container_stats) ? stat.container_stats : [];
+  const originalResources = Array.isArray(stat.original_container_resources) ? stat.original_container_resources : [];
+  return containerStats
     .filter(cs => cs.container_type === 2 || cs.container_type === 3)
     .map(containerStat => {
-      const originalResource = stat.original_container_resources.find(
+      const originalResource = originalResources.find(
         r => r.name === containerStat.container_name
       );
 
@@ -407,7 +416,8 @@ export function transformWorkloadStatToContainers(
       let recommendedMemory = 0;
 
       if (recommendationAnalysis) {
-        const containerRecommendations = recommendationAnalysis.filter(
+        const recList = Array.isArray(recommendationAnalysis) ? recommendationAnalysis : [];
+        const containerRecommendations = recList.filter(
           item => 
             item.workload_namespace === stat.namespace &&
             item.workload_name === stat.name &&
@@ -472,13 +482,14 @@ export function transformWorkloadStatToContainers(
 export function transformRecommendationAnalysisToPodRecommendations(
   analysis: RecommendationAnalysisItem[]
 ): FrontendPodRecommendation[] {
-  return analysis.map(item => {
+  const items = Array.isArray(analysis) ? analysis : [];
+  return items.map(item => {
     const cpuRequest = item.current_requested_cpu;
     const cpuRecommended = item.recommended_cpu;
     const memRequest = item.current_requested_memory;
     const memRecommended = item.recommended_memory;
 
-    const cpuUsageParts = item.cpu_usage_7_days.split(' / ').map(parseFloat);
+    const cpuUsageParts = (item.cpu_usage_7_days ?? '').split(' / ').map(parseFloat);
     const usageP99 = cpuUsageParts.length > 1 ? `${Math.round(cpuUsageParts[1] * 100)}%` : 'N/A';
     const usageP50 = cpuUsageParts.length > 4 ? `${Math.round(cpuUsageParts[4] * 100)}%` : 'N/A';
 
@@ -503,7 +514,8 @@ export function transformStatsToOverviewMetrics(
   overrides: WorkloadOverrideInfo[] = [],
   recommendationAnalysis?: RecommendationAnalysisItem[]
 ): OverviewMetrics {
-  if (statsResponse.stats.length === 0) {
+  const stats = Array.isArray(statsResponse?.stats) ? statsResponse.stats : [];
+  if (stats.length === 0) {
     return {
       optimizationScore: 100,
       coverage: 0,
@@ -512,10 +524,13 @@ export function transformStatsToOverviewMetrics(
       reliabilityIssues: 0,
       costOptimizedWorkloads: 0,
       totalSavedPerHour: 0,
+      realizedDollars: 0,
+      unrealizedDollars: 0,
     };
   }
 
-  const overrideMap = new Map(overrides.map(o => [o.workload_id, o]));
+  const overrideList = Array.isArray(overrides) ? overrides : [];
+  const overrideMap = new Map(overrideList.map(o => [o.workload_id, o]));
   const recommendationMap = recommendationAnalysis ? buildRecommendationMap(recommendationAnalysis) : undefined;
   
   let totalPotentialCpu = 0;
@@ -527,7 +542,7 @@ export function transformStatsToOverviewMetrics(
   let costOptimizedWorkloads = 0;
   const wastePercentages: number[] = [];
 
-  for (const stat of statsResponse.stats) {
+  for (const stat of stats) {
     const workloadId = stat.workload;
     const override = overrideMap.get(workloadId);
     const enabled = override?.enabled ?? stat.continuous_optimization;
@@ -538,8 +553,10 @@ export function transformStatsToOverviewMetrics(
     let workloadRecommendedMemory = 0;
     let hasRecommendations = false;
 
-    for (const containerStat of stat.container_stats) {
-      const originalResource = stat.original_container_resources.find(
+    const statContainerStats = Array.isArray(stat.container_stats) ? stat.container_stats : [];
+    const statOriginalResources = Array.isArray(stat.original_container_resources) ? stat.original_container_resources : [];
+    for (const containerStat of statContainerStats) {
+      const originalResource = statOriginalResources.find(
         r => r.name === containerStat.container_name
       );
 
@@ -579,7 +596,8 @@ export function transformStatsToOverviewMetrics(
     let workloadTotalRecommendedMemory = 0;
 
     if (recommendationAnalysis) {
-      const workloadRecommendations = recommendationAnalysis.filter(
+      const recList = Array.isArray(recommendationAnalysis) ? recommendationAnalysis : [];
+      const workloadRecommendations = recList.filter(
         item => 
           item.workload_namespace === stat.namespace &&
           item.workload_name === stat.name
@@ -655,7 +673,7 @@ export function transformStatsToOverviewMetrics(
     : 0;
   const optimizationScore = Math.max(0, Math.round(100 - avgWaste));
 
-  const coverage = Math.round((workloadsWithRecommendations / statsResponse.stats.length) * 100);
+  const coverage = Math.round((workloadsWithRecommendations / stats.length) * 100);
 
   const potentialDollars = calculateDollarSavings(totalPotentialCpu, totalPotentialMemory);
   const realizedDollars = calculateDollarSavings(totalRealizedCpu, totalRealizedMemory);
@@ -676,6 +694,8 @@ export function transformStatsToOverviewMetrics(
     reliabilityIssues,
     costOptimizedWorkloads,
     totalSavedPerHour: realizedDollars,
+    realizedDollars,
+    unrealizedDollars: potentialDollars - realizedDollars,
   };
 }
 
@@ -685,10 +705,12 @@ export function transformStatsToWastefulWorkloads(
   limit: number = 10,
   recommendationAnalysis?: RecommendationAnalysisItem[]
 ): WastefulWorkload[] {
-  const overrideMap = new Map(overrides.map(o => [o.workload_id, o]));
+  const stats = Array.isArray(statsResponse?.stats) ? statsResponse.stats : [];
+  const overrideList = Array.isArray(overrides) ? overrides : [];
+  const overrideMap = new Map(overrideList.map(o => [o.workload_id, o]));
   const recommendationMap = recommendationAnalysis ? buildRecommendationMap(recommendationAnalysis) : undefined;
   
-  const workloadData = statsResponse.stats.map(stat => {
+  const workloadData = stats.map(stat => {
     const workloadId = stat.workload;
     const override = overrideMap.get(workloadId);
 
@@ -698,8 +720,10 @@ export function transformStatsToWastefulWorkloads(
     let workloadRecommendedMemory = 0;
     let hasRecommendations = false;
 
-    for (const containerStat of stat.container_stats) {
-      const originalResource = stat.original_container_resources.find(
+    const wastefulContainerStats = Array.isArray(stat.container_stats) ? stat.container_stats : [];
+    const wastefulOriginalResources = Array.isArray(stat.original_container_resources) ? stat.original_container_resources : [];
+    for (const containerStat of wastefulContainerStats) {
+      const originalResource = wastefulOriginalResources.find(
         r => r.name === containerStat.container_name
       );
 
@@ -731,7 +755,8 @@ export function transformStatsToWastefulWorkloads(
     let potentialMemoryDiff = 0;
 
     if (recommendationAnalysis) {
-      const workloadRecommendations = recommendationAnalysis.filter(
+      const recList = Array.isArray(recommendationAnalysis) ? recommendationAnalysis : [];
+      const workloadRecommendations = recList.filter(
         item => 
           item.workload_namespace === stat.namespace &&
           item.workload_name === stat.name
@@ -774,7 +799,8 @@ export function transformStatsToWastefulWorkloads(
     const potentialMemoryGB = potentialMemoryDiff / 1024;
     const savingsPerHour = calculateDollarSavings(potentialCpuDiff, potentialMemoryGB);
 
-    const containers = stat.container_stats.filter(cs => cs.container_type === ContainerType.SIDECAR_CONTAINER || cs.container_type === ContainerType.APP_CONTAINER).length;
+    const statContainers = Array.isArray(stat.container_stats) ? stat.container_stats : [];
+    const containers = statContainers.filter(cs => cs.container_type === ContainerType.SIDECAR_CONTAINER || cs.container_type === ContainerType.APP_CONTAINER).length;
 
     return {
       namespace: stat.namespace,
@@ -798,7 +824,8 @@ export function getContainerRecommendationsForWorkload(
   namespace: string,
   workloadName: string
 ): RecommendationAnalysisItem[] {
-  return analysis.filter(
+  const items = Array.isArray(analysis) ? analysis : [];
+  return items.filter(
     item => item.workload_namespace === namespace && item.workload_name === workloadName
   );
 }
@@ -807,7 +834,8 @@ export function getPodRecommendationsForContainer(
   analysis: RecommendationAnalysisItem[],
   containerName: string
 ): FrontendPodRecommendation[] {
-  const filtered = analysis.filter(item => item.container_name === containerName);
+  const items = Array.isArray(analysis) ? analysis : [];
+  const filtered = items.filter(item => item.container_name === containerName);
   return transformRecommendationAnalysisToPodRecommendations(filtered);
 }
 
@@ -816,8 +844,9 @@ export function getPodsForWorkload(
   namespace: string,
   workloadName: string
 ): string[] {
+  const items = Array.isArray(analysis) ? analysis : [];
   const pods = new Set<string>();
-  for (const item of analysis) {
+  for (const item of items) {
     if (item.workload_namespace === namespace && item.workload_name === workloadName) {
       pods.add(item.pod_name);
     }
@@ -829,7 +858,8 @@ export function getContainersForPod(
   analysis: RecommendationAnalysisItem[],
   podName: string
 ): FrontendContainerRecommendation[] {
-  const filtered = analysis.filter(item => item.pod_name === podName);
+  const items = Array.isArray(analysis) ? analysis : [];
+  const filtered = items.filter(item => item.pod_name === podName);
   const containerMap = new Map<string, RecommendationAnalysisItem>();
   
   for (const item of filtered) {
