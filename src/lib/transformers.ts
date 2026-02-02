@@ -15,6 +15,8 @@ export interface FrontendWorkload {
   namespace: string;
   workload: string;
   type: string;
+  /** Pod (replica) count for this workload */
+  replicas: number;
   potentialCpu: string;
   potentialMem: string;
   currentCpu: string;
@@ -22,6 +24,8 @@ export interface FrontendWorkload {
   currentMem: string;
   recommendedMem: string;
   potentialDollars: number;
+  /** Monthly cost of increasing resources when recommended > current (reliability). */
+  reliabilityCostDollars: number;
   lastUpdated: string;
   mode: 'enabled' | 'recommend-only';
   priority: 'low' | 'medium' | 'high' | 'non-evictable';
@@ -85,6 +89,12 @@ export interface OverviewMetrics {
     dollars: number;
   };
   reliabilityIssues: number;
+  /** Total cost (per month) of increasing resources for reliability-improved workloads. */
+  reliabilityIncreaseCost: {
+    cpu: number;
+    memory: number;
+    dollars: number;
+  };
   costOptimizedWorkloads: number;
   totalSavedPerHour: number;
   realizedDollars: number;
@@ -111,6 +121,20 @@ function formatMemory(mb: number): string {
     return `${Math.round(mb)}Mi`;
   }
   return `${(mb / 1024).toFixed(1)} GB`;
+}
+
+/** Format CPU for display with sign: positive → "+500m", negative → "-500m", zero → "0m". */
+function formatCpuSigned(cores: number): string {
+  if (cores === 0) return "0m";
+  if (cores < 0) return `-${formatCpu(-cores)}`;
+  return `+${formatCpu(cores)}`;
+}
+
+/** Format memory for display with sign: positive → "+256Mi", negative → "-256Mi", zero → "0Mi". */
+function formatMemorySigned(mb: number): string {
+  if (mb === 0) return "0Mi";
+  if (mb < 0) return `-${formatMemory(-mb)}`;
+  return `+${formatMemory(mb)}`;
 }
 
 function formatCpuRange(min: number, max: number): string {
@@ -208,7 +232,8 @@ export function mapPriorityToEvictionRanking(priority: 'low' | 'medium' | 'high'
   }
 }
 
-function calculateDollarSavings(cpuCores: number, memoryGB: number): number {
+/** Monthly cost (or savings) from CPU cores + memory GB. Used for current cost and savings. */
+export function calculateDollarSavings(cpuCores: number, memoryGB: number): number {
   const hoursPerMonth = 720;
   return Math.round((cpuCores * CPU_COST_PER_CORE_PER_HOUR + memoryGB * MEMORY_COST_PER_GB_PER_HOUR) * hoursPerMonth * 100) / 100;
 }
@@ -272,6 +297,8 @@ export function transformWorkloadStatToFrontend(
   let totalRecommendedMemory = 0;
   let totalPotentialCpuDiff = 0;
   let totalPotentialMemoryDiff = 0;
+  let totalReliabilityCpuDiff = 0;
+  let totalReliabilityMemoryDiffMB = 0;
 
   const analysisList = Array.isArray(recommendationAnalysis) ? recommendationAnalysis : [];
   if (analysisList.length > 0) {
@@ -329,10 +356,12 @@ export function transformWorkloadStatToFrontend(
 
       for (const [podKey, currentPod] of podCurrentTotals) {
         const recommendedPod = podRecommendedTotals.get(podKey) || { cpu: 0, memory: 0 };
-        const podCpuDiff = currentPod.cpu > recommendedPod.cpu ? currentPod.cpu - recommendedPod.cpu : 0;
-        const podMemDiff = currentPod.memory > recommendedPod.memory ? currentPod.memory - recommendedPod.memory : 0;
+        const podCpuDiff = currentPod.cpu - recommendedPod.cpu;
+        const podMemDiff = currentPod.memory - recommendedPod.memory;
         totalPotentialCpuDiff += podCpuDiff;
         totalPotentialMemoryDiff += podMemDiff;
+        totalReliabilityCpuDiff += recommendedPod.cpu > currentPod.cpu ? recommendedPod.cpu - currentPod.cpu : 0;
+        totalReliabilityMemoryDiffMB += recommendedPod.memory > currentPod.memory ? recommendedPod.memory - currentPod.memory : 0;
       }
     } else {
       recommendedCpu = formatCpu(totalCurrentCpu);
@@ -350,7 +379,9 @@ export function transformWorkloadStatToFrontend(
   }
 
   const potentialMemoryGB = totalPotentialMemoryDiff / 1024;
-  const potentialDollars = calculateDollarSavings(totalPotentialCpuDiff, potentialMemoryGB);
+  const potentialDollars = calculateDollarSavings(Math.max(0, totalPotentialCpuDiff), Math.max(0, potentialMemoryGB));
+  const reliabilityMemoryGB = totalReliabilityMemoryDiffMB / 1024;
+  const reliabilityCostDollars = calculateDollarSavings(totalReliabilityCpuDiff, reliabilityMemoryGB);
 
   const enabled = !override || override?.enabled;
   const evictionRanking = override?.eviction_ranking ?? stat.eviction_ranking;
@@ -360,13 +391,15 @@ export function transformWorkloadStatToFrontend(
     namespace: stat.namespace,
     workload: stat.name,
     type: stat.kind,
-    potentialCpu: formatCpu(totalPotentialCpuDiff),
-    potentialMem: formatMemory(totalPotentialMemoryDiff),
+    replicas: stat.replicas ?? 0,
+    potentialCpu: formatCpuSigned(-totalPotentialCpuDiff),
+    potentialMem: formatMemorySigned(-totalPotentialMemoryDiff),
     currentCpu: formatCpu(totalCurrentCpu),
     recommendedCpu,
     currentMem: formatMemory(totalCurrentMemory),
     recommendedMem,
     potentialDollars,
+    reliabilityCostDollars,
     lastUpdated: formatTimeAgo(stat.updated_at),
     mode: enabled ? 'enabled' : 'recommend-only',
     priority: mapEvictionRankingToPriority(evictionRanking),
@@ -515,6 +548,7 @@ export function transformStatsToOverviewMetrics(
   recommendationAnalysis?: RecommendationAnalysisItem[]
 ): OverviewMetrics {
   const stats = Array.isArray(statsResponse?.stats) ? statsResponse.stats : [];
+  const emptyReliabilityCost = { cpu: 0, memory: 0, dollars: 0 };
   if (stats.length === 0) {
     return {
       optimizationScore: 100,
@@ -522,6 +556,7 @@ export function transformStatsToOverviewMetrics(
       potentialSavings: { cpu: 0, memory: 0, dollars: 0 },
       realizedSavings: { cpu: 0, memory: 0, dollars: 0 },
       reliabilityIssues: 0,
+      reliabilityIncreaseCost: emptyReliabilityCost,
       costOptimizedWorkloads: 0,
       totalSavedPerHour: 0,
       realizedDollars: 0,
@@ -539,6 +574,8 @@ export function transformStatsToOverviewMetrics(
   let totalRealizedMemory = 0;
   let workloadsWithRecommendations = 0;
   let reliabilityIssues = 0;
+  let totalReliabilityCpu = 0;
+  let totalReliabilityMemoryMB = 0;
   let costOptimizedWorkloads = 0;
   const wastePercentages: number[] = [];
 
@@ -628,7 +665,9 @@ export function transformStatsToOverviewMetrics(
           workloadTotalRecommendedCpu += recommendedPod.cpu;
           workloadTotalRecommendedMemory += recommendedPod.memory;
           const podCpuDiff = currentPod.cpu > recommendedPod.cpu ? currentPod.cpu - recommendedPod.cpu : 0;
+          // const podCpuDiff =  currentPod.cpu - recommendedPod.cpu; 
           const podMemDiff = currentPod.memory > recommendedPod.memory ? currentPod.memory - recommendedPod.memory : 0;
+          // const podMemDiff =  currentPod.memory - recommendedPod.memory
           potentialCpuDiff += podCpuDiff;
           potentialMemoryDiff += podMemDiff;
         }
@@ -638,7 +677,9 @@ export function transformStatsToOverviewMetrics(
         workloadTotalRecommendedCpu = workloadRecommendedCpu;
         workloadTotalRecommendedMemory = workloadRecommendedMemory;
         potentialCpuDiff = workloadCurrentCpu > workloadRecommendedCpu ? workloadCurrentCpu - workloadRecommendedCpu : 0;
+        // potentialCpuDiff =  workloadCurrentCpu - workloadRecommendedCpu;
         potentialMemoryDiff = workloadCurrentMemory > workloadRecommendedMemory ? workloadCurrentMemory - workloadRecommendedMemory : 0;
+        // potentialMemoryDiff =  workloadCurrentMemory - workloadRecommendedMemory;
       }
     } else {
       workloadTotalCurrentCpu = workloadCurrentCpu;
@@ -646,11 +687,15 @@ export function transformStatsToOverviewMetrics(
       workloadTotalRecommendedCpu = workloadRecommendedCpu;
       workloadTotalRecommendedMemory = workloadRecommendedMemory;
       potentialCpuDiff = workloadCurrentCpu > workloadRecommendedCpu ? workloadCurrentCpu - workloadRecommendedCpu : 0;
+      // potentialCpuDiff =  workloadCurrentCpu - workloadRecommendedCpu
       potentialMemoryDiff = workloadCurrentMemory > workloadRecommendedMemory ? workloadCurrentMemory - workloadRecommendedMemory : 0;
+      // potentialMemoryDiff =  workloadCurrentMemory - workloadRecommendedMemory;
     }
 
     if (workloadTotalRecommendedCpu > workloadTotalCurrentCpu || workloadTotalRecommendedMemory > workloadTotalCurrentMemory) {
       reliabilityIssues++;
+      totalReliabilityCpu += Math.max(0, workloadTotalRecommendedCpu - workloadTotalCurrentCpu);
+      totalReliabilityMemoryMB += Math.max(0, workloadTotalRecommendedMemory - workloadTotalCurrentMemory);
     }
 
     if (workloadTotalRecommendedCpu < workloadTotalCurrentCpu || workloadTotalRecommendedMemory < workloadTotalCurrentMemory) {
@@ -677,6 +722,8 @@ export function transformStatsToOverviewMetrics(
 
   const potentialDollars = calculateDollarSavings(totalPotentialCpu, totalPotentialMemory);
   const realizedDollars = calculateDollarSavings(totalRealizedCpu, totalRealizedMemory);
+  const totalReliabilityMemoryGB = totalReliabilityMemoryMB / 1024;
+  const reliabilityIncreaseDollars = calculateDollarSavings(totalReliabilityCpu, totalReliabilityMemoryGB);
 
   return {
     optimizationScore,
@@ -692,6 +739,11 @@ export function transformStatsToOverviewMetrics(
       dollars: realizedDollars,
     },
     reliabilityIssues,
+    reliabilityIncreaseCost: {
+      cpu: Math.round(totalReliabilityCpu * 10) / 10,
+      memory: Math.round(totalReliabilityMemoryGB * 10) / 10,
+      dollars: reliabilityIncreaseDollars,
+    },
     costOptimizedWorkloads,
     totalSavedPerHour: realizedDollars,
     realizedDollars,

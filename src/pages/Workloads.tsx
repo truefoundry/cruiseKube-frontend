@@ -11,7 +11,15 @@ import {
   TrendingDown,
   Info,
   Cpu,
-  HardDrive
+  HardDrive,
+  Package,
+  Database,
+  Briefcase,
+  CalendarClock,
+  Copy,
+  CircleDot,
+  Box,
+  type LucideIcon,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
@@ -21,7 +29,8 @@ import {
   transformStatsToWorkloads, 
   FrontendWorkload,
   transformStatsToOverviewMetrics,
-  OverviewMetrics
+  OverviewMetrics,
+  calculateDollarSavings
 } from "@/lib/transformers";
 import { MetricCard } from "@/components/ui/metric-card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -40,7 +49,61 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
 import { asArray } from "@/lib/utils";
+
+const WORKLOAD_TYPE_ICONS: Record<string, LucideIcon> = {
+  Deployment: Package,
+  StatefulSet: Database,
+  DaemonSet: Cpu,
+  Job: Briefcase,
+  CronJob: CalendarClock,
+  ReplicaSet: Copy,
+  Pod: CircleDot,
+};
+
+function WorkloadTypeIcon({ type }: { type: string }) {
+  const Icon = WORKLOAD_TYPE_ICONS[type] ?? Box;
+  const displayName = type || "Workload";
+  return (
+    <TooltipProvider>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <span className="inline-flex items-center justify-center cursor-default" onClick={(e) => e.stopPropagation()}>
+            <Icon className="h-4 w-4 text-muted-foreground" />
+          </span>
+        </TooltipTrigger>
+        <TooltipContent>
+          <p>{displayName}</p>
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  );
+}
+
+function getPriorityColor(priority: string): string {
+  switch (priority) {
+    case "low": return "text-destructive";
+    case "medium": return "text-warning";
+    case "high": return "text-success";
+    case "non-evictable": return "text-primary";
+    default: return "text-muted-foreground";
+  }
+}
+
+/** Short format for "X min ago" -> "XM", "X hr ago" -> "XH", "X days ago" -> "XD", "just now" -> "now". */
+function formatTimeAgoShort(full: string): string {
+  if (!full) return "—";
+  if (full === "just now") return "now";
+  const minMatch = full.match(/^(\d+)\s*min\s*ago$/i);
+  if (minMatch) return `${minMatch[1]}M`;
+  const hrMatch = full.match(/^(\d+)\s*hr\s*ago$/i);
+  if (hrMatch) return `${hrMatch[1]}H`;
+  const dayMatch = full.match(/^(\d+)\s*days?\s*ago$/i);
+  if (dayMatch) return `${dayMatch[1]}D`;
+  return full;
+}
 
 export default function Workloads() {
   const navigate = useNavigate();
@@ -52,6 +115,7 @@ export default function Workloads() {
   const [hasRecommendations, setHasRecommendations] = useState("all");
   const [sortColumn, setSortColumn] = useState<string | null>("potentialDollars");
   const [sortDirection, setSortDirection] = useState<"asc" | "desc" | null>("desc");
+  const [verbose, setVerbose] = useState(false);
 
   const { data: statsData, isLoading: isLoadingStats, error: statsError } = useQuery({
     queryKey: ['cluster-stats', selectedClusterId],
@@ -294,7 +358,9 @@ export default function Workloads() {
           if (aValue > bValue) return sortDirection === "asc" ? 1 : -1;
           return 0;
 
+        case "replicas":
         case "potentialDollars":
+        case "reliabilityCostDollars":
           aValue = a[sortColumn as keyof FrontendWorkload] as number;
           bValue = b[sortColumn as keyof FrontendWorkload] as number;
           return sortDirection === "asc" ? aValue - bValue : bValue - aValue;
@@ -382,22 +448,13 @@ export default function Workloads() {
     );
   }
 
-  const getPriorityColor = (priority: string) => {
-    switch (priority) {
-      case "low": return "text-destructive";
-      case "medium": return "text-warning";
-      case "high": return "text-success";
-      case "non-evictable": return "text-primary";
-      default: return "text-muted-foreground";
-    }
-  };
-
   let overviewMetrics: OverviewMetrics = {
     optimizationScore: 0,
     coverage: 0,
     potentialSavings: { cpu: 0, memory: 0, dollars: 0 },
     realizedSavings: { cpu: 0, memory: 0, dollars: 0 },
     reliabilityIssues: 0,
+    reliabilityIncreaseCost: { cpu: 0, memory: 0, dollars: 0 },
     costOptimizedWorkloads: 0,
     totalSavedPerHour: 0,
     realizedDollars: 0,
@@ -411,6 +468,71 @@ export default function Workloads() {
   }
 
   const hasNoData = !isLoadingMetrics && (statsData?.stats == null || (Array.isArray(statsData?.stats) && statsData.stats.length === 0));
+
+  const currentCostDollars =
+    clusterMetrics?.cpuAllocatable != null && clusterMetrics?.memoryAllocatable != null
+      ? calculateDollarSavings(Number(clusterMetrics.cpuAllocatable), Number(clusterMetrics.memoryAllocatable))
+      : 0;
+  /** Projected cost based on request: 2× total requested CPU, 2.5× total requested memory (monthly). */
+  const projectedCostDollars =
+    clusterMetrics?.cpuRequested != null && clusterMetrics?.memoryRequested != null
+      ? calculateDollarSavings(
+          Number(clusterMetrics.cpuRequested) * 2,
+          Number(clusterMetrics.memoryRequested) * 2.5
+        )
+      : 0;
+  /** Projected savings % uses projected cost (request-based) as denominator. */
+  const projectedSavingsPct =
+    projectedCostDollars > 0
+      ? (dollars: number) => ((dollars / projectedCostDollars) * 100).toFixed(1)
+      : () => "—";
+
+  const costTooltipContent = (
+    <div className="space-y-3">
+      <p className="font-medium text-foreground">How current cost is calculated</p>
+      <p className="text-xs text-muted-foreground">
+        Monthly cost = (allocatable CPU cores × $0.029/hr + allocatable memory in GB × $0.0075/hr) × 720 hours per month.
+        Uses cluster-wide allocatable resources from Prometheus (not requested or recommendations).
+      </p>
+      <p className="font-medium text-foreground text-xs pt-1 border-t border-border">Assumptions</p>
+      <ul className="text-xs text-muted-foreground space-y-1 list-disc list-inside">
+        <li>If a workload ran in the last 24 hours, we assume it will run continuously for the next 1 month.</li>
+        <li>Current workload config is assumed to remain static for the next 1 month.</li>
+        <li>Allocatable depends on node provisioning (partially out of scope for CruiseKube); we assume allocatable/requested to remain constant in the optimisation process.</li>
+      </ul>
+    </div>
+  );
+
+  const projectedSavingsTooltipContent = (
+    <div className="space-y-3">
+      <p className="font-medium text-foreground">Projected Savings</p>
+      <p className="text-xs text-muted-foreground">
+        Monthly savings from workloads where recommendations have already been applied (cost-optimized). This is the cost saved by reducing overprovisioned CPU and memory; it does not include reliability cost.
+      </p>
+      <p className="font-medium text-foreground text-xs pt-1 border-t border-border">Calculation</p>
+      <ol className="text-xs text-muted-foreground space-y-1.5 list-decimal list-inside">
+        <li>For each cost-optimized workload: Δ CPU = current CPU − recommended CPU, Δ memory (GB) = current memory − recommended memory.</li>
+        <li>Per workload hourly savings = Δ CPU × $0.029/hr + Δ memory (GB) × $0.0075/hr.</li>
+        <li>Per workload monthly = hourly × 720 hours.</li>
+        <li>Projected Savings = sum of monthly savings across all cost-optimized workloads.</li>
+      </ol>
+      <p className="text-xs text-muted-foreground font-mono pt-1 border-t border-border/50">
+        Projected Savings = Σ (Δ CPU × 0.029 + Δ memory GB × 0.0075) × 720 / month
+      </p>
+      <p className="text-xs text-muted-foreground pt-1 border-t border-border/50">
+        The percentage shown is relative to projected cost (2× requested CPU, 2.5× requested memory), not current cost.
+      </p>
+    </div>
+  );
+
+  const projectedUnrealizedSavingsTooltipContent = (
+    <div className="space-y-3">
+      <p className="font-medium text-foreground">Projected Unrealized Savings</p>
+      <p className="text-xs text-muted-foreground">
+        Potential unrelized savings is for the workloads that are disabled from optimisation. CruiseKube does not optimise disabled workloads.
+      </p>
+    </div>
+  );
 
   return (
     <div className="p-6 space-y-6 animate-fade-in">
@@ -441,121 +563,302 @@ export default function Workloads() {
               </span>
             </div>
           )}
-          <Layers className="h-4 w-4 text-muted-foreground" />
-          <span className="text-sm text-muted-foreground">{asArray(workloads).length} workloads</span>
+          {/* <Layers className="h-4 w-4 text-muted-foreground" />
+          <span className="text-sm text-muted-foreground">{asArray(workloads).length} workloads</span> */}
         </div>
       </div>
 
-      {/* Metric Cards */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        {isLoadingMetrics ? (
-          <>
-            <div className="metric-card space-y-3">
-              <Skeleton className="h-3 w-24" />
-              <Skeleton className="h-8 w-16" />
-              <Skeleton className="h-4 w-32" />
+      {/* Row: Current cost (requested only), Realized Savings, Unrealized Savings, Workload summary */}
+      <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
+        {/* Current cost — same style as other cost cards (MetricCard layout) */}
+        <div className="metric-card border-border">
+          {isLoadingClusterMetrics ? (
+            <div className="flex items-start justify-between">
+              <div className="space-y-1">
+                <Skeleton className="h-3 w-28" />
+                <Skeleton className="h-8 w-24" />
+                <Skeleton className="h-4 w-36" />
+              </div>
+              <div className="rounded-lg bg-muted/50 p-2 text-muted-foreground">
+                <DollarSign className="h-5 w-5" />
+              </div>
             </div>
-            <div className="metric-card space-y-3">
-              <Skeleton className="h-3 w-24" />
-              <Skeleton className="h-8 w-16" />
-              <Skeleton className="h-4 w-32" />
+          ) : (
+            <div className="flex items-start justify-between">
+              <div className="space-y-1">
+                <div className="flex items-center gap-1.5">
+                  <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Current cost</p>
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <button type="button" className="inline-flex text-muted-foreground hover:text-foreground focus:outline-none" onClick={(e) => e.stopPropagation()} aria-label="How current cost is calculated">
+                          <Info className="h-3.5 w-3.5" />
+                        </button>
+                      </TooltipTrigger>
+                      <TooltipContent side="bottom" className="max-w-sm p-4 text-left">
+                        {costTooltipContent}
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                </div>
+                <p className="font-mono text-2xl font-semibold tracking-tight text-foreground">
+                  ${(clusterMetrics?.cpuAllocatable != null && clusterMetrics?.memoryAllocatable != null
+                    ? calculateDollarSavings(Number(clusterMetrics.cpuAllocatable), Number(clusterMetrics.memoryAllocatable)) * 2
+                    : 0
+                  ).toLocaleString()}
+                  <span className="text-sm font-normal text-muted-foreground ml-1">/month</span>
+                </p>
+                <p className="text-sm text-muted-foreground">Based on allocatable CPU + Memory</p>
+              </div>
+              <div className="rounded-lg bg-muted/50 p-2 text-muted-foreground">
+                <DollarSign className="h-5 w-5" />
+              </div>
             </div>
-            <div className="metric-card space-y-3">
-              <Skeleton className="h-3 w-24" />
-              <Skeleton className="h-8 w-20" />
-              <Skeleton className="h-4 w-32" />
-            </div>
-          </>
-        ) : (
-          <>
-            <MetricCard
-              title="Realized Savings"
-              value={`$${overviewMetrics.realizedDollars.toLocaleString()}`}
-              subtitle="Per month savings"
-              icon={DollarSign}
-              variant="success"
-            />
-            <MetricCard
-              title="Unrealized Savings"
-              value={`$${overviewMetrics.unrealizedDollars.toLocaleString()}`}
-              subtitle="Per month savings"
-              icon={DollarSign}
-              variant="success"
-            />
-            <MetricCard
-              title="Reliability Improved"
-              value={overviewMetrics.reliabilityIssues}
-              subtitle="Workloads with improvements applied"
-              icon={AlertTriangle}
-              variant={overviewMetrics.reliabilityIssues > 10 ? "warning" : "default"}
-            />
-            <MetricCard
-              title="Cost Optimized"
-              value={overviewMetrics.costOptimizedWorkloads}
-              subtitle="Workloads with savings applied"
-              icon={TrendingDown}
-              variant="success"
-            />
-          </>
-        )}
-      </div>
+          )}
+        </div>
 
-      {/* Cluster Resource Metrics */}
-      <div className="grid gap-4 md:grid-cols-3 lg:grid-cols-6">
-        {isLoadingClusterMetrics ? (
-          <>
-            {[...Array(6)].map((_, i) => (
-              <div key={i} className="metric-card space-y-3">
+        {/* Projected Savings — custom layout with centered percentage */}
+        {isLoadingMetrics ? (
+          <div className="metric-card border-border">
+            <div className="flex items-start justify-between">
+              <div className="space-y-1">
                 <Skeleton className="h-3 w-24" />
                 <Skeleton className="h-8 w-20" />
                 <Skeleton className="h-4 w-32" />
               </div>
-            ))}
+              <div className="rounded-lg bg-muted/50 p-2 text-muted-foreground">
+                <DollarSign className="h-5 w-5" />
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className="metric-card border-border flex flex-col">
+            <div className="flex items-start justify-between flex-1 min-h-0">
+              <div className="space-y-1 min-w-0 flex-1">
+                <div className="flex items-center gap-1.5">
+                  <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Projected Savings</p>
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <button type="button" className="inline-flex text-muted-foreground hover:text-foreground focus:outline-none shrink-0" aria-label="Projected Savings calculation">
+                          <Info className="h-3.5 w-3.5" />
+                        </button>
+                      </TooltipTrigger>
+                      <TooltipContent side="bottom" className="max-w-sm p-4 text-left">
+                        {projectedSavingsTooltipContent}
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                </div>
+                <p className="font-mono text-2xl font-semibold tracking-tight text-foreground">
+                  ${overviewMetrics.realizedDollars.toLocaleString()}
+                  <span className="text-sm font-normal text-muted-foreground ml-1">/month</span>
+                </p>
+              </div>
+              <div className="rounded-lg bg-muted/50 p-2 text-muted-foreground shrink-0">
+                <DollarSign className="h-5 w-5" />
+              </div>
+            </div>
+            <p className="text-sm text-muted-foreground text-center w-full mt-1 pt-1 border-t border-border/50">
+              {projectedCostDollars > 0 ? (
+                <span className="font-medium text-foreground">{projectedSavingsPct(overviewMetrics.realizedDollars)}% of projected cost</span>
+              ) : (
+                "Per month savings"
+              )}
+            </p>
+            <p className="text-xs text-muted-foreground text-center w-full mt-0.5">
+              Percentage based on projected cost (2× requested CPU, 2.5× requested memory).
+            </p>
+          </div>
+        )}
+
+        {/* Potential Unrealized Savings */}
+        {isLoadingMetrics ? (
+          <div className="metric-card border-border">
+            <div className="flex items-start justify-between">
+              <div className="space-y-1">
+                <Skeleton className="h-3 w-24" />
+                <Skeleton className="h-8 w-20" />
+                <Skeleton className="h-4 w-32" />
+              </div>
+              <div className="rounded-lg bg-muted/50 p-2 text-muted-foreground">
+                <DollarSign className="h-5 w-5" />
+              </div>
+            </div>
+          </div>
+        ) : (
+          <MetricCard
+            title="Projected Unrealized Savings"
+            value={`$${overviewMetrics.unrealizedDollars.toLocaleString()}`}
+            subtitle={projectedCostDollars > 0 ? `Per month savings · ${projectedSavingsPct(overviewMetrics.unrealizedDollars)}% of projected cost` : "Per month savings"}
+            icon={DollarSign}
+            titleTooltip={projectedUnrealizedSavingsTooltipContent}
+            variant="default"
+          />
+        )}
+
+        {/* Workload summary: Total, Reliability Improved, Cost Optimized */}
+        <div className="metric-card border-border">
+          <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground mb-3">Workload summary</p>
+          <table className="w-full text-sm">
+            <tbody>
+            <tr className="border-b border-border/50">
+                <td className="py-2 pr-4 text-muted-foreground">
+                <div className="flex items-center gap-1.5">
+                  Cost Optimization
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Info className="h-3.5 w-3.5 shrink-0 cursor-help text-muted-foreground" />
+                      </TooltipTrigger>
+                      <TooltipContent side="right" className="max-w-xs">
+                        <p>When a resource is overprovisioned we recommend removing resources from it. Cost optimized is the number of workloads that are overprovisioned.</p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                  </div>
+                </td>
+                <td className="py-2 text-right">
+                  <span className="font-mono font-semibold">{overviewMetrics.costOptimizedWorkloads}</span>
+                </td>
+              </tr>
+              <tr className="border-b border-border/50">
+                <td className="py-2 pr-4 text-muted-foreground align-top">
+                  <div className="flex items-center gap-1.5">
+                    <span>Reliability Improvement</span>
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Info className="h-3.5 w-3.5 shrink-0 cursor-help text-muted-foreground" />
+                        </TooltipTrigger>
+                        <TooltipContent side="right" className="max-w-xs">
+                          <p>When a resource is underprovisioned we recommend adding more resources to it. Reliability cost is the extra cost to apply those recommendations.</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                  </div>
+                </td>
+                <td className="py-2 text-right align-top">
+                  <div className="flex flex-col items-end gap-0.5">
+                    <span className="font-mono font-semibold">{overviewMetrics.reliabilityIssues}</span>
+                    <span className="text-xs text-muted-foreground">
+                      ${overviewMetrics.reliabilityIncreaseCost.dollars.toLocaleString()}/month
+                    </span>
+                  </div>
+                </td>
+              </tr>
+              <tr>
+                <td className="py-2 pr-4 text-muted-foreground">
+                  <div className="flex items-center gap-1.5">
+                  Already Optimized
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Info className="h-3.5 w-3.5 shrink-0 cursor-help text-muted-foreground" />
+                      </TooltipTrigger>
+                      <TooltipContent side="right" className="max-w-xs">
+                        <p>Resources that are already at the recommended level.</p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                  </div>
+                </td>
+                <td className="py-2 font-mono font-semibold text-right">{Math.max(0, asArray(workloads).length - overviewMetrics.costOptimizedWorkloads)}</td>
+              </tr>
+              <tr className="border-b border-border/50">
+                <td className="py-2 pr-4 ">Total workloads</td>
+                <td className="py-2 font-mono font-semibold text-right">{asArray(workloads).length}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* Cluster Resource Metrics: CPU & Memory Utilised / Requested / Allocatable */}
+      <div className="grid gap-4 md:grid-cols-2">
+        {isLoadingClusterMetrics ? (
+          <>
+            <div className="metric-card space-y-4">
+              <Skeleton className="h-6 w-24" />
+              <Skeleton className="h-4 w-full" />
+              <Skeleton className="h-4 w-full" />
+              <Skeleton className="h-4 w-full" />
+            </div>
+            <div className="metric-card space-y-4">
+              <Skeleton className="h-6 w-24" />
+              <Skeleton className="h-4 w-full" />
+              <Skeleton className="h-4 w-full" />
+              <Skeleton className="h-4 w-full" />
+            </div>
           </>
         ) : (
           <>
-            <MetricCard
-              title="CPU Utilised"
-              value={formatCpuValue(clusterMetrics?.cpuUtilised || null)}
-              subtitle="Current CPU usage"
-              icon={Cpu}
-              variant="default"
-            />
-            <MetricCard
-              title="CPU Requested"
-              value={formatCpuValue(clusterMetrics?.cpuRequested || null)}
-              subtitle="Total CPU requests"
-              icon={Cpu}
-              variant="default"
-            />
-            <MetricCard
-              title="CPU Allocatable"
-              value={formatCpuValue(clusterMetrics?.cpuAllocatable || null)}
-              subtitle="Total CPU capacity"
-              icon={Cpu}
-              variant="default"
-            />
-            <MetricCard
-              title="Memory Utilised"
-              value={formatMemoryValue(clusterMetrics?.memoryUtilised || null)}
-              subtitle="Current memory usage"
-              icon={HardDrive}
-              variant="default"
-            />
-            <MetricCard
-              title="Memory Requested"
-              value={formatMemoryValue(clusterMetrics?.memoryRequested || null)}
-              subtitle="Total memory requests"
-              icon={HardDrive}
-              variant="default"
-            />
-            <MetricCard
-              title="Memory Allocatable"
-              value={formatMemoryValue(clusterMetrics?.memoryAllocatable || null)}
-              subtitle="Total memory capacity"
-              icon={HardDrive}
-              variant="default"
-            />
+            {/* CPU: single stacked bar (Utilised | Requested−Utilised | Free) */}
+            <div className="metric-card border-border">
+              <div className="flex items-center justify-between gap-2 mb-3">
+                <div className="flex items-center gap-2">
+                  <div className="rounded-lg bg-muted/50 p-2 text-muted-foreground">
+                    <Cpu className="h-5 w-5" />
+                  </div>
+                  <span className="text-xs font-medium uppercase tracking-wider text-muted-foreground">CPU</span>
+                </div>
+                <span className="font-mono text-sm font-semibold">{formatCpuValue(clusterMetrics?.cpuAllocatable ?? null)} allocatable</span>
+              </div>
+              {(() => {
+                const alloc = Number(clusterMetrics?.cpuAllocatable ?? 0);
+                const used = Number(clusterMetrics?.cpuUtilised ?? 0);
+                const req = Number(clusterMetrics?.cpuRequested ?? 0);
+                const pctUsed = alloc > 0 ? Math.min(100, (used / alloc) * 100) : 0;
+                const pctReserved = alloc > 0 ? Math.min(100 - pctUsed, (Math.max(0, req - used) / alloc) * 100) : 0;
+                const pctFree = Math.max(0, 100 - pctUsed - pctReserved);
+                return (
+                  <>
+                    <div className="flex h-6 w-full overflow-hidden rounded-md bg-muted/60">
+                      {pctUsed > 0 && <div className="h-full bg-primary transition-all" style={{ width: `${pctUsed}%` }} title={`Utilised: ${formatCpuValue(clusterMetrics?.cpuUtilised ?? null)}`} />}
+                      {pctReserved > 0 && <div className="h-full bg-primary/50 transition-all" style={{ width: `${pctReserved}%` }} title={`Requested (unused): ${(req - used).toFixed(2)} cores`} />}
+                      {pctFree > 0 && <div className="h-full flex-1 bg-transparent" style={{ width: `${pctFree}%` }} title="Free" />}
+                    </div>
+                    <div className="flex justify-between text-sm text-muted-foreground mt-2">
+                    <span>Utilised <span className="text-foreground">{formatCpuValue(clusterMetrics?.cpuUtilised ?? null)}</span></span>
+                    <span>Requested <span className="text-foreground">{formatCpuValue(clusterMetrics?.cpuRequested ?? null)}</span></span>
+                    </div>
+                  </>
+                );
+              })()}
+            </div>
+            {/* Memory: single stacked bar */}
+            <div className="metric-card border-border">
+              <div className="flex items-center justify-between gap-2 mb-3">
+                <div className="flex items-center gap-2">
+                  <div className="rounded-lg bg-muted/50 p-2 text-muted-foreground">
+                    <HardDrive className="h-5 w-5" />
+                  </div>
+                  <span className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Memory</span>
+                </div>
+                <span className="font-mono text-sm font-semibold">{formatMemoryValue(clusterMetrics?.memoryAllocatable ?? null)} allocatable</span>
+              </div>
+              {(() => {
+                const alloc = Number(clusterMetrics?.memoryAllocatable ?? 0);
+                const used = Number(clusterMetrics?.memoryUtilised ?? 0);
+                const req = Number(clusterMetrics?.memoryRequested ?? 0);
+                const pctUsed = alloc > 0 ? Math.min(100, (used / alloc) * 100) : 0;
+                const pctReserved = alloc > 0 ? Math.min(100 - pctUsed, (Math.max(0, req - used) / alloc) * 100) : 0;
+                const pctFree = Math.max(0, 100 - pctUsed - pctReserved);
+                return (
+                  <>
+                    <div className="flex h-6 w-full overflow-hidden rounded-md bg-muted/60">
+                      {pctUsed > 0 && <div className="h-full bg-primary transition-all" style={{ width: `${pctUsed}%` }} title={`Utilised: ${formatMemoryValue(clusterMetrics?.memoryUtilised ?? null)}`} />}
+                      {pctReserved > 0 && <div className="h-full bg-primary/50 transition-all" style={{ width: `${pctReserved}%` }} title={`Requested (unused): ${(req - used).toFixed(2)} GB`} />}
+                      {pctFree > 0 && <div className="h-full flex-1 bg-transparent" style={{ width: `${pctFree}%` }} title="Free" />}
+                    </div>
+                    <div className="flex justify-between text-sm text-muted-foreground mt-2">
+                      <span>Utilised <span className="text-foreground">{formatMemoryValue(clusterMetrics?.memoryUtilised ?? null)}</span></span>
+                      <span>Requested <span className="text-foreground">{formatMemoryValue(clusterMetrics?.memoryRequested ?? null)}</span></span>
+                    </div>
+                  </>
+                );
+              })()}
+            </div>
           </>
         )}
       </div>
@@ -607,221 +910,229 @@ export default function Workloads() {
             <SelectItem value="non-evictable">Non-evictable</SelectItem>
           </SelectContent>
         </Select>
+
+        <div className="flex items-center gap-2">
+          <Switch
+            id="verbose-columns"
+            checked={verbose}
+            onCheckedChange={setVerbose}
+            onClick={(e) => e.stopPropagation()}
+          />
+          <Label htmlFor="verbose-columns" className="text-sm cursor-pointer select-none" onClick={(e) => e.stopPropagation()}>
+            Verbose (show all columns)
+          </Label>
+        </div>
       </div>
 
       {/* Table */}
       <div className="metric-card overflow-hidden">
         <div className="overflow-x-auto">
-          <table className="data-table">
+          <table className="data-table border-collapse">
             <thead>
               <tr>
-                <th 
-                  className="cursor-pointer select-none hover:bg-muted/50 transition-colors"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleSort("namespace");
-                  }}
+                <th rowSpan={2} className="w-10 text-muted-foreground font-normal align-top pt-4">#</th>
+                {verbose && (
+                  <>
+                    <th rowSpan={2}
+                      className="cursor-pointer select-none hover:bg-muted/50 transition-colors align-top pt-4"
+                      onClick={(e) => { e.stopPropagation(); handleSort("lastUpdated"); }}
+                    >
+                      <div className="flex items-center gap-1">
+                        Updated
+                        {sortColumn === "lastUpdated" && (sortDirection === "asc" ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />)}
+                      </div>
+                    </th>
+                    <th rowSpan={2}
+                      className="cursor-pointer select-none hover:bg-muted/50 transition-colors align-top pt-4"
+                      onClick={(e) => { e.stopPropagation(); handleSort("type"); }}
+                    >
+                      <div className="flex items-center gap-1">
+                        Type
+                        {sortColumn === "type" && (sortDirection === "asc" ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />)}
+                      </div>
+                    </th>
+                  </>
+                )}
+                <th rowSpan={2}
+                  className="cursor-pointer select-none hover:bg-muted/50 transition-colors align-top pt-4"
+                  onClick={(e) => { e.stopPropagation(); handleSort("namespace"); }}
                 >
                   <div className="flex items-center gap-1">
                     Namespace
-                    {sortColumn === "namespace" && (
-                      sortDirection === "asc" ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />
-                    )}
+                    {sortColumn === "namespace" && (sortDirection === "asc" ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />)}
                   </div>
                 </th>
-                <th 
-                  className="cursor-pointer select-none hover:bg-muted/50 transition-colors"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleSort("workload");
-                  }}
+                <th rowSpan={2}
+                  className="cursor-pointer select-none hover:bg-muted/50 transition-colors align-top pt-4"
+                  onClick={(e) => { e.stopPropagation(); handleSort("workload"); }}
                 >
                   <div className="flex items-center gap-1">
                     Workload
-                    {sortColumn === "workload" && (
-                      sortDirection === "asc" ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />
-                    )}
+                    {sortColumn === "workload" && (sortDirection === "asc" ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />)}
                   </div>
                 </th>
-                <th 
-                  className="cursor-pointer select-none hover:bg-muted/50 transition-colors"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleSort("type");
-                  }}
+                <th rowSpan={2}
+                  className="cursor-pointer select-none hover:bg-muted/50 transition-colors align-top pt-4 w-20"
+                  onClick={(e) => { e.stopPropagation(); handleSort("replicas"); }}
                 >
                   <div className="flex items-center gap-1">
-                    Type
-                    {sortColumn === "type" && (
-                      sortDirection === "asc" ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />
-                    )}
+                    Pods
+                    {sortColumn === "replicas" && (sortDirection === "asc" ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />)}
                   </div>
                 </th>
-                <th 
-                  className="cursor-pointer select-none hover:bg-muted/50 transition-colors"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleSort("currentCpu");
-                  }}
-                >
-                  <div className="flex items-center gap-1">
-                    Current CPU
-                    {sortColumn === "currentCpu" && (
-                      sortDirection === "asc" ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />
-                    )}
-                  </div>
+                <th colSpan={3} className="border-t border-l border-r border-b-0 border-border bg-muted/40 text-center font-medium align-top pt-3 pb-0 px-0">
+                  <span className="inline-flex items-center gap-1.5">
+                    <Cpu className="h-4 w-4" />
+                    CPU
+                  </span>
                 </th>
-                <th 
-                  className="cursor-pointer select-none hover:bg-muted/50 transition-colors"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleSort("recommendedCpu");
-                  }}
-                >
-                  <div className="flex items-center gap-1">
-                    Recommended CPU
-                    {sortColumn === "recommendedCpu" && (
-                      sortDirection === "asc" ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />
-                    )}
-                  </div>
+                <th colSpan={3} className="border-t border-l border-r border-b-0 border-border bg-muted/40 text-center font-medium align-top pt-3 pb-0 px-0">
+                  <span className="inline-flex items-center gap-1.5">
+                    <HardDrive className="h-4 w-4" />
+                    Memory
+                  </span>
                 </th>
-                <th 
-                  className="cursor-pointer select-none hover:bg-muted/50 transition-colors"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleSort("potentialCpu");
-                  }}
+                <th rowSpan={2}
+                  className="cursor-pointer select-none hover:bg-muted/50 transition-colors align-top pt-4"
+                  onClick={(e) => { e.stopPropagation(); handleSort("potentialDollars"); }}
                 >
                   <div className="flex items-center gap-1">
-                    CPU Savings
-                    {sortColumn === "potentialCpu" && (
-                      sortDirection === "asc" ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />
-                    )}
-                  </div>
-                </th>
-                <th 
-                  className="cursor-pointer select-none hover:bg-muted/50 transition-colors"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleSort("currentMem");
-                  }}
-                >
-                  <div className="flex items-center gap-1">
-                    Current Memory
-                    {sortColumn === "currentMem" && (
-                      sortDirection === "asc" ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />
-                    )}
-                  </div>
-                </th>
-                <th 
-                  className="cursor-pointer select-none hover:bg-muted/50 transition-colors"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleSort("recommendedMem");
-                  }}
-                >
-                  <div className="flex items-center gap-1">
-                    Recommended Memory
-                    {sortColumn === "recommendedMem" && (
-                      sortDirection === "asc" ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />
-                    )}
-                  </div>
-                </th>
-                <th 
-                  className="cursor-pointer select-none hover:bg-muted/50 transition-colors"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleSort("potentialMem");
-                  }}
-                >
-                  <div className="flex items-center gap-1">
-                    Memory Savings
-                    {sortColumn === "potentialMem" && (
-                      sortDirection === "asc" ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />
-                    )}
-                  </div>
-                </th>
-                <th 
-                  className="cursor-pointer select-none hover:bg-muted/50 transition-colors"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleSort("potentialDollars");
-                  }}
-                >
-                  <div className="flex items-center gap-1">
-                    $/month
-                    {sortColumn === "potentialDollars" && (
-                      sortDirection === "asc" ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />
-                    )}
-                  </div>
-                </th>
-                <th 
-                  className="cursor-pointer select-none hover:bg-muted/50 transition-colors"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleSort("lastUpdated");
-                  }}
-                >
-                  <div className="flex items-center gap-1">
-                    Updated
-                    {sortColumn === "lastUpdated" && (
-                      sortDirection === "asc" ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />
-                    )}
-                  </div>
-                </th>
-                <th 
-                  className="cursor-pointer select-none hover:bg-muted/50 transition-colors"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleSort("mode");
-                  }}
-                >
-                  <div className="flex items-center gap-1">
-                    Mode
-                    {sortColumn === "mode" && (
-                      sortDirection === "asc" ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />
-                    )}
+                  Projected Saving/M
+                    {sortColumn === "potentialDollars" && (sortDirection === "asc" ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />)}
                     <TooltipProvider>
                       <Tooltip>
                         <TooltipTrigger asChild onClick={(e) => e.stopPropagation()}>
                           <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
                         </TooltipTrigger>
-                        <TooltipContent>
-                          <p className="max-w-xs">Enables auto-apply of recommendations. When Cruise is enabled, CruiseKube will automatically apply resource recommendations.</p>
+                        <TooltipContent side="bottom" className="max-w-xs">
+                          <p>Saving/month doesn&apos;t include the cost of reliability, and contains only the cost saved on reduced resources.</p>
                         </TooltipContent>
                       </Tooltip>
                     </TooltipProvider>
                   </div>
                 </th>
-                <th 
-                  className="cursor-pointer select-none hover:bg-muted/50 transition-colors"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleSort("priority");
-                  }}
+                <th rowSpan={2}
+                  className="cursor-pointer select-none hover:bg-muted/50 transition-colors align-top pt-4"
+                  onClick={(e) => { e.stopPropagation(); handleSort("reliabilityCostDollars"); }}
                 >
                   <div className="flex items-center gap-1">
-                    Priority
-                    {sortColumn === "priority" && (
-                      sortDirection === "asc" ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />
-                    )}
+                    Reliability Cost/M
+                    {sortColumn === "reliabilityCostDollars" && (sortDirection === "asc" ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />)}
                     <TooltipProvider>
                       <Tooltip>
                         <TooltipTrigger asChild onClick={(e) => e.stopPropagation()}>
                           <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
                         </TooltipTrigger>
-                        <TooltipContent>
-                          <p className="max-w-xs">Determines eviction priority during optimization. Higher priority workloads have a lower chance of being evicted when the algorithm needs to optimize resources.</p>
+                        <TooltipContent side="bottom" className="max-w-xs">
+                          <p>When a resource is underprovisioned we recommend adding more resources to it; this is the cost it will add.</p>
                         </TooltipContent>
                       </Tooltip>
                     </TooltipProvider>
                   </div>
                 </th>
-                <th></th>
+                {verbose && (
+                  <>
+                    <th rowSpan={2}
+                      className="cursor-pointer select-none hover:bg-muted/50 transition-colors align-top pt-4"
+                      onClick={(e) => { e.stopPropagation(); handleSort("mode"); }}
+                    >
+                      <div className="flex items-center gap-1">
+                        Mode
+                        {sortColumn === "mode" && (sortDirection === "asc" ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />)}
+                        <TooltipProvider>
+                          <Tooltip>
+                            <TooltipTrigger asChild onClick={(e) => e.stopPropagation()}>
+                              <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              <p className="max-w-xs">Enables auto-apply of recommendations. When Cruise is enabled, CruiseKube will automatically apply resource recommendations.</p>
+                            </TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
+                      </div>
+                    </th>
+                    <th rowSpan={2}
+                      className="cursor-pointer select-none hover:bg-muted/50 transition-colors align-top pt-4"
+                      onClick={(e) => { e.stopPropagation(); handleSort("priority"); }}
+                    >
+                      <div className="flex items-center gap-1">
+                        Priority
+                        {sortColumn === "priority" && (sortDirection === "asc" ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />)}
+                        <TooltipProvider>
+                          <Tooltip>
+                            <TooltipTrigger asChild onClick={(e) => e.stopPropagation()}>
+                              <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              <p className="max-w-xs">Determines eviction priority during optimization. Higher priority workloads have a lower chance of being evicted when the algorithm needs to optimize resources.</p>
+                            </TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
+                      </div>
+                    </th>
+                  </>
+                )}
+                <th rowSpan={2}></th>
+              </tr>
+              <tr>
+                <th
+                  className="cursor-pointer select-none hover:bg-muted/30 transition-colors border-b border-l border-border bg-muted/30"
+                  onClick={(e) => { e.stopPropagation(); handleSort("currentCpu"); }}
+                >
+                  <div className="flex items-center gap-1">
+                    Current
+                    {sortColumn === "currentCpu" && (sortDirection === "asc" ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />)}
+                  </div>
+                </th>
+                <th
+                  className="cursor-pointer select-none hover:bg-muted/30 transition-colors border-b border-border bg-muted/30"
+                  onClick={(e) => { e.stopPropagation(); handleSort("recommendedCpu"); }}
+                >
+                  <div className="flex items-center gap-1">
+                    Recommended
+                    {sortColumn === "recommendedCpu" && (sortDirection === "asc" ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />)}
+                  </div>
+                </th>
+                <th
+                  className="cursor-pointer select-none hover:bg-muted/30 transition-colors border-b border-r border-border bg-muted/30"
+                  onClick={(e) => { e.stopPropagation(); handleSort("potentialCpu"); }}
+                >
+                  <div className="flex items-center gap-1">
+                    Savings
+                    {sortColumn === "potentialCpu" && (sortDirection === "asc" ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />)}
+                  </div>
+                </th>
+                <th
+                  className="cursor-pointer select-none hover:bg-muted/30 transition-colors border-b border-l border-border bg-muted/30"
+                  onClick={(e) => { e.stopPropagation(); handleSort("currentMem"); }}
+                >
+                  <div className="flex items-center gap-1">
+                    Current
+                    {sortColumn === "currentMem" && (sortDirection === "asc" ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />)}
+                  </div>
+                </th>
+                <th
+                  className="cursor-pointer select-none hover:bg-muted/30 transition-colors border-b border-border bg-muted/30"
+                  onClick={(e) => { e.stopPropagation(); handleSort("recommendedMem"); }}
+                >
+                  <div className="flex items-center gap-1">
+                    Recommended
+                    {sortColumn === "recommendedMem" && (sortDirection === "asc" ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />)}
+                  </div>
+                </th>
+                <th
+                  className="cursor-pointer select-none hover:bg-muted/30 transition-colors border-b border-r border-border bg-muted/30"
+                  onClick={(e) => { e.stopPropagation(); handleSort("potentialMem"); }}
+                >
+                  <div className="flex items-center gap-1">
+                    Savings
+                    {sortColumn === "potentialMem" && (sortDirection === "asc" ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />)}
+                  </div>
+                </th>
               </tr>
             </thead>
             <tbody>
-              {asArray(sortedWorkloads).map((workload) => (
+              {asArray(sortedWorkloads).map((workload, index) => (
                 <tr 
                   key={workload.id} 
                   className="group cursor-pointer hover:bg-muted/50 transition-colors"
@@ -839,36 +1150,58 @@ export default function Workloads() {
                     }
                   }}
                 >
+                  <td className="text-muted-foreground text-xs tabular-nums w-10">{index + 1}</td>
+                  {verbose && (
+                    <>
+                      <td className="text-muted-foreground text-xs">
+                        <TooltipProvider>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <span className="inline-flex items-center gap-1 cursor-default" onClick={(e) => e.stopPropagation()}>
+                                <Clock className="h-3 w-3 shrink-0" />
+                                {formatTimeAgoShort(workload.lastUpdated)}
+                              </span>
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              <p>{workload.lastUpdated || "—"}</p>
+                            </TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
+                      </td>
+                      <td className="text-muted-foreground">
+                        <WorkloadTypeIcon type={workload.type} />
+                      </td>
+                    </>
+                  )}
                   <td className="font-mono text-xs">{workload.namespace}</td>
                   <td>
                     <span className="font-medium">{workload.workload}</span>
                   </td>
-                  <td className="text-muted-foreground text-xs">{workload.type}</td>
-                  <td className="font-mono text-sm">{workload.currentCpu}</td>
-                  <td className="font-mono text-sm">{workload.recommendedCpu}</td>
-                  <td className="font-mono text-sm">{workload.potentialCpu}</td>
-                  <td className="font-mono text-sm">{workload.currentMem}</td>
-                  <td className="font-mono text-sm">{workload.recommendedMem}</td>
-                  <td className="font-mono text-sm">{workload.potentialMem}</td>
-                  <td className="font-mono text-sm text-primary">${workload.potentialDollars.toFixed(2)}</td>
-                  <td className="text-muted-foreground text-xs">
-                    <div className="flex items-center gap-1">
-                      <Clock className="h-3 w-3" />
-                      {workload.lastUpdated}
-                    </div>
-                  </td>
-                  <td>
-                    <span className={`text-xs font-medium ${
-                      workload.mode === "enabled" ? "text-success" : "text-muted-foreground"
-                    }`}>
-                      {workload.mode === "enabled" ? "Cruise" : "Recommend"}
-                    </span>
-                  </td>
-                  <td>
-                    <span className={`text-xs font-medium capitalize ${getPriorityColor(workload.priority)}`}>
-                      {workload.priority}
-                    </span>
-                  </td>
+                  <td className="font-mono text-sm tabular-nums text-right">{workload.replicas}</td>
+                  <td className={`font-mono text-sm bg-muted/20 border-l border-b border-border ${index === 0 ? "border-t" : ""}`}>{workload.currentCpu}</td>
+                  <td className={`font-mono text-sm bg-muted/20 border-b border-border ${index === 0 ? "border-t" : ""}`}>{workload.recommendedCpu}</td>
+                  <td className={`font-mono text-sm bg-muted/20 border-r border-b border-border ${workload.potentialCpu.startsWith("+") ? "text-amber-600 dark:text-amber-400" : ""} ${index === 0 ? "border-t" : ""}`}>{workload.potentialCpu === "0m" ? "—" : workload.potentialCpu}</td>
+                  <td className={`font-mono text-sm bg-muted/20 border-l border-b border-border ${index === 0 ? "border-t" : ""}`}>{workload.currentMem}</td>
+                  <td className={`font-mono text-sm bg-muted/20 border-b border-border ${index === 0 ? "border-t" : ""}`}>{workload.recommendedMem}</td>
+                  <td className={`font-mono text-sm bg-muted/20 border-r border-b border-border ${workload.potentialMem.startsWith("+") ? "text-amber-600 dark:text-amber-400" : ""} ${index === 0 ? "border-t" : ""}`}>{workload.potentialMem === "0Mi" ? "—" : workload.potentialMem}</td>
+                  <td className="font-mono text-sm text-primary">{workload.potentialDollars === 0 ? "—" : `$${workload.potentialDollars.toFixed(2)}`}</td>
+                  <td className="font-mono text-sm">{workload.reliabilityCostDollars > 0 ? `$${workload.reliabilityCostDollars.toFixed(2)}` : "—"}</td>
+                  {verbose && (
+                    <>
+                      <td>
+                        <span className={`text-xs font-medium ${
+                          workload.mode === "enabled" ? "text-success" : "text-muted-foreground"
+                        }`}>
+                          {workload.mode === "enabled" ? "Cruise" : "Recommend"}
+                        </span>
+                      </td>
+                      <td>
+                        <span className={`text-xs font-medium capitalize ${getPriorityColor(workload.priority)}`}>
+                          {workload.priority}
+                        </span>
+                      </td>
+                    </>
+                  )}
                   <td>
                     <ChevronRight className="h-4 w-4 text-muted-foreground group-hover:text-foreground transition-colors" />
                   </td>

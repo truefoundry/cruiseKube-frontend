@@ -138,6 +138,7 @@ export interface WorkloadAnalysisItem {
 export interface PrometheusConfig {
   url: string;
   connected: boolean;
+  applyRecommendationDryRun: boolean;
   error?: string;
 }
 
@@ -264,8 +265,9 @@ class ApiClient {
     });
   }
 
-  async getPrometheusConfig(clusterID: string): Promise<PrometheusConfig> {
-    return this.request<PrometheusConfig>(`/clusters/${clusterID}/prometheus-config`);
+  /** Fetches cluster config (Prometheus, applyRecommendationDryRun). Endpoint: GET /clusters/:clusterID/config */
+  async getConfig(clusterID: string): Promise<PrometheusConfig> {
+    return this.request<PrometheusConfig>(`/clusters/${clusterID}/config`);
   }
 
   async queryPrometheus(clusterID: string, query: string): Promise<PrometheusQueryResult> {
