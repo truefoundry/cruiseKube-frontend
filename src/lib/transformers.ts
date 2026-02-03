@@ -15,6 +15,8 @@ export interface FrontendWorkload {
   namespace: string;
   workload: string;
   type: string;
+  /** Pod (replica) count for this workload */
+  replicas: number;
   potentialCpu: string;
   potentialMem: string;
   currentCpu: string;
@@ -22,6 +24,8 @@ export interface FrontendWorkload {
   currentMem: string;
   recommendedMem: string;
   potentialDollars: number;
+  /** Monthly cost of increasing resources when recommended > current (reliability). */
+  reliabilityCostDollars: number;
   lastUpdated: string;
   mode: 'enabled' | 'recommend-only';
   priority: 'low' | 'medium' | 'high' | 'non-evictable';
@@ -85,8 +89,19 @@ export interface OverviewMetrics {
     dollars: number;
   };
   reliabilityIssues: number;
+  /** Total cost (per month) of increasing resources for reliability-improved workloads. */
+  reliabilityIncreaseCost: {
+    cpu: number;
+    memory: number;
+    dollars: number;
+  };
+  /** Count of workloads that are overprovisioned and have recommend mode on (continuous optimization off). */
+  costOptimizedWorkloadsRecommendOnly: number;
+  /** Count of workloads that are overprovisioned and have cruise mode (continuous optimization) enabled. */
   costOptimizedWorkloads: number;
   totalSavedPerHour: number;
+  realizedDollars: number;
+  unrealizedDollars: number;
 }
 
 export interface WastefulWorkload {
@@ -111,6 +126,20 @@ function formatMemory(mb: number): string {
   return `${(mb / 1024).toFixed(1)} GB`;
 }
 
+/** Format CPU for display with sign: positive → "+500m", negative → "-500m", zero → "0m". */
+function formatCpuSigned(cores: number): string {
+  if (cores === 0) return "0m";
+  if (cores < 0) return `-${formatCpu(-cores)}`;
+  return `+${formatCpu(cores)}`;
+}
+
+/** Format memory for display with sign: positive → "+256Mi", negative → "-256Mi", zero → "0Mi". */
+function formatMemorySigned(mb: number): string {
+  if (mb === 0) return "0Mi";
+  if (mb < 0) return `-${formatMemory(-mb)}`;
+  return `+${formatMemory(mb)}`;
+}
+
 function formatCpuRange(min: number, max: number): string {
   return `${formatCpu(min)}-${formatCpu(max)}`;
 }
@@ -122,10 +151,13 @@ function formatMemoryRange(min: number, max: number): string {
 export type RecommendationMap = Map<string, { cpu: number[]; memory: number[] }>;
 
 export function buildRecommendationMap(analysis: RecommendationAnalysisItem[]): RecommendationMap {
+  /** Map key: "namespace:workload:container"; value: arrays of recommended CPU and memory per container. */
   const map = new Map<string, { cpu: number[]; memory: number[] }>();
-  
-  for (const item of analysis) {
+  const items = Array.isArray(analysis) ? analysis : [];
+  for (const item of items) {
+    /** Composite key for this container's recommendations. */
     const key = `${item.workload_namespace}:${item.workload_name}:${item.container_name}`;
+    /** Existing entry for this key (multiple pods can share the same container name). */
     const existing = map.get(key);
     
     if (existing) {
@@ -206,7 +238,8 @@ export function mapPriorityToEvictionRanking(priority: 'low' | 'medium' | 'high'
   }
 }
 
-function calculateDollarSavings(cpuCores: number, memoryGB: number): number {
+/** Monthly cost (or savings) from CPU cores + memory GB. Used for current cost and savings. */
+export function calculateDollarSavings(cpuCores: number, memoryGB: number): number {
   const hoursPerMonth = 720;
   return Math.round((cpuCores * CPU_COST_PER_CORE_PER_HOUR + memoryGB * MEMORY_COST_PER_GB_PER_HOUR) * hoursPerMonth * 100) / 100;
 }
@@ -230,16 +263,23 @@ export function transformWorkloadStatToFrontend(
   override?: WorkloadOverrideInfo,
   recommendationAnalysis?: RecommendationAnalysisItem[]
 ): FrontendWorkload {
+  /** Composite workload id (e.g. namespace/name). */
   const workloadId = stat.workload;
-  
+
+  /** Sum of current CPU (cores) and memory (MB) across app/sidecar containers; max for init. */
   let totalCurrentCpu = 0;
   let totalCurrentMemory = 0;
+  /** True if any container has a CPU or memory recommendation. */
   let hasRecommendations = false;
 
+  /** Lookup by "namespace:workload:container" for recommended CPU/memory from analysis. */
   const recommendationMap = recommendationAnalysis ? buildRecommendationMap(recommendationAnalysis) : undefined;
+  /** This workload's container stats and original resource requests. */
+  const containerStats = Array.isArray(stat.container_stats) ? stat.container_stats : [];
+  const originalResources = Array.isArray(stat.original_container_resources) ? stat.original_container_resources : [];
 
-  for (const containerStat of stat.container_stats) {
-    const originalResource = stat.original_container_resources.find(
+  for (const containerStat of containerStats) {
+    const originalResource = originalResources.find(
       r => r.name === containerStat.container_name
     );
 
@@ -265,24 +305,33 @@ export function transformWorkloadStatToFrontend(
 
   let recommendedCpu: string;
   let recommendedMem: string;
+  /** Max recommended memory (MB) across pods for display. */
   let totalRecommendedMemory = 0;
+  /** Sum of (current − recommended) for down-size; potential savings in CPU cores and memory MB. */
   let totalPotentialCpuDiff = 0;
   let totalPotentialMemoryDiff = 0;
+  /** Sum of (recommended − current) for up-size; reliability cost in CPU cores and memory MB. */
+  let totalReliabilityCpuDiff = 0;
+  let totalReliabilityMemoryDiffMB = 0;
 
-  if (recommendationAnalysis) {
-    const workloadRecommendations = recommendationAnalysis.filter(
+  const analysisList = Array.isArray(recommendationAnalysis) ? recommendationAnalysis : [];
+  if (analysisList.length > 0) {
+    /** Analysis items for this workload (namespace + name match). */
+    const workloadRecommendations = analysisList.filter(
       item => 
         item.workload_namespace === stat.namespace &&
         item.workload_name === stat.name
     );
 
     if (workloadRecommendations.length > 0) {
+      /** Per-pod current requested CPU (cores) and memory (MB). */
       const podCurrentTotals = new Map<string, { cpu: number; memory: number }>();
+      /** Per-pod recommended CPU (cores) and memory (MB). */
       const podRecommendedTotals = new Map<string, { cpu: number; memory: number }>();
 
       for (const item of workloadRecommendations) {
         const podKey = item.pod_name;
-        
+
         const currentExisting = podCurrentTotals.get(podKey) || { cpu: 0, memory: 0 };
         currentExisting.cpu += item.current_requested_cpu;
         currentExisting.memory += item.current_requested_memory;
@@ -324,10 +373,12 @@ export function transformWorkloadStatToFrontend(
 
       for (const [podKey, currentPod] of podCurrentTotals) {
         const recommendedPod = podRecommendedTotals.get(podKey) || { cpu: 0, memory: 0 };
-        const podCpuDiff = currentPod.cpu > recommendedPod.cpu ? currentPod.cpu - recommendedPod.cpu : 0;
-        const podMemDiff = currentPod.memory > recommendedPod.memory ? currentPod.memory - recommendedPod.memory : 0;
+        const podCpuDiff = currentPod.cpu - recommendedPod.cpu;
+        const podMemDiff = currentPod.memory - recommendedPod.memory;
         totalPotentialCpuDiff += podCpuDiff;
         totalPotentialMemoryDiff += podMemDiff;
+        totalReliabilityCpuDiff += recommendedPod.cpu > currentPod.cpu ? recommendedPod.cpu - currentPod.cpu : 0;
+        totalReliabilityMemoryDiffMB += recommendedPod.memory > currentPod.memory ? recommendedPod.memory - currentPod.memory : 0;
       }
     } else {
       recommendedCpu = formatCpu(totalCurrentCpu);
@@ -345,7 +396,9 @@ export function transformWorkloadStatToFrontend(
   }
 
   const potentialMemoryGB = totalPotentialMemoryDiff / 1024;
-  const potentialDollars = calculateDollarSavings(totalPotentialCpuDiff, potentialMemoryGB);
+  const potentialDollars = calculateDollarSavings(Math.max(0, totalPotentialCpuDiff), Math.max(0, potentialMemoryGB));
+  const reliabilityMemoryGB = totalReliabilityMemoryDiffMB / 1024;
+  const reliabilityCostDollars = calculateDollarSavings(totalReliabilityCpuDiff, reliabilityMemoryGB);
 
   const enabled = !override || override?.enabled;
   const evictionRanking = override?.eviction_ranking ?? stat.eviction_ranking;
@@ -355,13 +408,15 @@ export function transformWorkloadStatToFrontend(
     namespace: stat.namespace,
     workload: stat.name,
     type: stat.kind,
-    potentialCpu: formatCpu(totalPotentialCpuDiff),
-    potentialMem: formatMemory(totalPotentialMemoryDiff),
+    replicas: stat.replicas ?? 0,
+    potentialCpu: formatCpuSigned(-totalPotentialCpuDiff),
+    potentialMem: formatMemorySigned(-totalPotentialMemoryDiff),
     currentCpu: formatCpu(totalCurrentCpu),
     recommendedCpu,
     currentMem: formatMemory(totalCurrentMemory),
     recommendedMem,
     potentialDollars,
+    reliabilityCostDollars,
     lastUpdated: formatTimeAgo(stat.updated_at),
     mode: enabled ? 'enabled' : 'recommend-only',
     priority: mapEvictionRankingToPriority(evictionRanking),
@@ -374,9 +429,11 @@ export function transformStatsToWorkloads(
   overrides: WorkloadOverrideInfo[] = [],
   recommendationAnalysis?: RecommendationAnalysisItem[]
 ): FrontendWorkload[] {
-  const overrideMap = new Map(overrides.map(o => [o.workload_id, o]));
+  const stats = Array.isArray(statsResponse?.stats) ? statsResponse.stats : [];
+  const overrideList = Array.isArray(overrides) ? overrides : [];
+  const overrideMap = new Map(overrideList.map(o => [o.workload_id, o]));
   
-  return statsResponse.stats.map(stat => {
+  return stats.map(stat => {
     const workloadId = stat.workload;
     const override = overrideMap.get(workloadId);
     return transformWorkloadStatToFrontend(stat, override, recommendationAnalysis);
@@ -387,10 +444,12 @@ export function transformWorkloadStatToContainers(
   stat: WorkloadStat,
   recommendationAnalysis?: RecommendationAnalysisItem[]
 ): FrontendContainer[] {
-  return stat.container_stats
+  const containerStats = Array.isArray(stat.container_stats) ? stat.container_stats : [];
+  const originalResources = Array.isArray(stat.original_container_resources) ? stat.original_container_resources : [];
+  return containerStats
     .filter(cs => cs.container_type === 2 || cs.container_type === 3)
     .map(containerStat => {
-      const originalResource = stat.original_container_resources.find(
+      const originalResource = originalResources.find(
         r => r.name === containerStat.container_name
       );
 
@@ -407,7 +466,8 @@ export function transformWorkloadStatToContainers(
       let recommendedMemory = 0;
 
       if (recommendationAnalysis) {
-        const containerRecommendations = recommendationAnalysis.filter(
+        const recList = Array.isArray(recommendationAnalysis) ? recommendationAnalysis : [];
+        const containerRecommendations = recList.filter(
           item => 
             item.workload_namespace === stat.namespace &&
             item.workload_name === stat.name &&
@@ -472,13 +532,14 @@ export function transformWorkloadStatToContainers(
 export function transformRecommendationAnalysisToPodRecommendations(
   analysis: RecommendationAnalysisItem[]
 ): FrontendPodRecommendation[] {
-  return analysis.map(item => {
+  const items = Array.isArray(analysis) ? analysis : [];
+  return items.map(item => {
     const cpuRequest = item.current_requested_cpu;
     const cpuRecommended = item.recommended_cpu;
     const memRequest = item.current_requested_memory;
     const memRecommended = item.recommended_memory;
 
-    const cpuUsageParts = item.cpu_usage_7_days.split(' / ').map(parseFloat);
+    const cpuUsageParts = (item.cpu_usage_7_days ?? '').split(' / ').map(parseFloat);
     const usageP99 = cpuUsageParts.length > 1 ? `${Math.round(cpuUsageParts[1] * 100)}%` : 'N/A';
     const usageP50 = cpuUsageParts.length > 4 ? `${Math.round(cpuUsageParts[4] * 100)}%` : 'N/A';
 
@@ -503,43 +564,72 @@ export function transformStatsToOverviewMetrics(
   overrides: WorkloadOverrideInfo[] = [],
   recommendationAnalysis?: RecommendationAnalysisItem[]
 ): OverviewMetrics {
-  if (statsResponse.stats.length === 0) {
+  const stats = Array.isArray(statsResponse?.stats) ? statsResponse.stats : [];
+  const emptyReliabilityCost = { cpu: 0, memory: 0, dollars: 0 };
+  if (stats.length === 0) {
     return {
       optimizationScore: 100,
       coverage: 0,
       potentialSavings: { cpu: 0, memory: 0, dollars: 0 },
       realizedSavings: { cpu: 0, memory: 0, dollars: 0 },
       reliabilityIssues: 0,
+      reliabilityIncreaseCost: emptyReliabilityCost,
+      costOptimizedWorkloadsRecommendOnly: 0,
       costOptimizedWorkloads: 0,
       totalSavedPerHour: 0,
+      realizedDollars: 0,
+      unrealizedDollars: 0,
     };
   }
 
-  const overrideMap = new Map(overrides.map(o => [o.workload_id, o]));
+  /** Normalized list of user overrides (continuous_optimization, eviction_ranking) per workload. */
+  const overrideList = Array.isArray(overrides) ? overrides : [];
+  /** Lookup by workload_id for quick override resolution in the stats loop. */
+  const overrideMap = new Map(overrideList.map(o => [o.workload_id, o]));
+  /** Lookup by "namespace:workload:container" for recommended CPU/memory from recommendation analysis. */
   const recommendationMap = recommendationAnalysis ? buildRecommendationMap(recommendationAnalysis) : undefined;
-  
+
+  /** Cluster-wide totals: potential savings (current − recommended) in cores and GB. */
   let totalPotentialCpu = 0;
   let totalPotentialMemory = 0;
+  /** Cluster-wide realized savings (potential only for workloads with optimization enabled). */
   let totalRealizedCpu = 0;
   let totalRealizedMemory = 0;
+  /** Count of workloads that have at least one CPU or memory recommendation. */
   let workloadsWithRecommendations = 0;
+  /** Count of workloads where recommended > current (underprovisioned; reliability improvement). */
   let reliabilityIssues = 0;
+  /** Sum of (recommended − current) CPU/memory for reliability-improved workloads (MB for memory). */
+  let totalReliabilityCpu = 0;
+  let totalReliabilityMemoryMB = 0;
+  /** Count of workloads where recommended < current and recommend mode is on (continuous optimization off). */
+  let costOptimizedWorkloadsRecommendOnly = 0;
+  /** Count of workloads where recommended < current and cruise mode (continuous optimization) is enabled. */
   let costOptimizedWorkloads = 0;
+  /** Per-workload waste percentage for optimization score (100 − avg). */
   const wastePercentages: number[] = [];
 
-  for (const stat of statsResponse.stats) {
+  for (const stat of stats) {
+    /** Composite workload id used for override lookup. */
     const workloadId = stat.workload;
+    /** User override for this workload, if any. */
     const override = overrideMap.get(workloadId);
+    /** Whether cost optimization is enabled (override or stat default). */
     const enabled = override?.enabled ?? stat.continuous_optimization;
 
+    /** Aggregated current/recommended CPU and memory for this workload (from container stats + recommendationMap). */
     let workloadCurrentCpu = 0;
     let workloadRecommendedCpu = 0;
     let workloadCurrentMemory = 0;
     let workloadRecommendedMemory = 0;
+    /** True if any container has a CPU or memory recommendation. */
     let hasRecommendations = false;
 
-    for (const containerStat of stat.container_stats) {
-      const originalResource = stat.original_container_resources.find(
+    /** This workload's container stats and original resource requests for aggregation. */
+    const statContainerStats = Array.isArray(stat.container_stats) ? stat.container_stats : [];
+    const statOriginalResources = Array.isArray(stat.original_container_resources) ? stat.original_container_resources : [];
+    for (const containerStat of statContainerStats) {
+      const originalResource = statOriginalResources.find(
         r => r.name === containerStat.container_name
       );
 
@@ -571,27 +661,33 @@ export function transformStatsToOverviewMetrics(
       workloadsWithRecommendations++;
     }
 
+    /** Savings from down-sizing: current − recommended (CPU cores, memory in same unit as requests). */
     let potentialCpuDiff = 0;
     let potentialMemoryDiff = 0;
+    /** Totals used when recommendation analysis is present (per-pod aggregation). */
     let workloadTotalCurrentCpu = 0;
     let workloadTotalCurrentMemory = 0;
     let workloadTotalRecommendedCpu = 0;
     let workloadTotalRecommendedMemory = 0;
 
     if (recommendationAnalysis) {
-      const workloadRecommendations = recommendationAnalysis.filter(
+      const recList = Array.isArray(recommendationAnalysis) ? recommendationAnalysis : [];
+      /** Recommendation analysis items for this workload (namespace + name match). */
+      const workloadRecommendations = recList.filter(
         item => 
           item.workload_namespace === stat.namespace &&
           item.workload_name === stat.name
       );
 
       if (workloadRecommendations.length > 0) {
+        /** Per-pod current requested CPU (cores) and memory (MB) from analysis. */
         const podCurrentTotals = new Map<string, { cpu: number; memory: number }>();
+        /** Per-pod recommended CPU (cores) and memory (MB) from analysis. */
         const podRecommendedTotals = new Map<string, { cpu: number; memory: number }>();
 
         for (const item of workloadRecommendations) {
           const podKey = item.pod_name;
-          
+
           const currentExisting = podCurrentTotals.get(podKey) || { cpu: 0, memory: 0 };
           currentExisting.cpu += item.current_requested_cpu;
           currentExisting.memory += item.current_requested_memory;
@@ -610,7 +706,9 @@ export function transformStatsToOverviewMetrics(
           workloadTotalRecommendedCpu += recommendedPod.cpu;
           workloadTotalRecommendedMemory += recommendedPod.memory;
           const podCpuDiff = currentPod.cpu > recommendedPod.cpu ? currentPod.cpu - recommendedPod.cpu : 0;
+          // const podCpuDiff =  currentPod.cpu - recommendedPod.cpu; 
           const podMemDiff = currentPod.memory > recommendedPod.memory ? currentPod.memory - recommendedPod.memory : 0;
+          // const podMemDiff =  currentPod.memory - recommendedPod.memory
           potentialCpuDiff += podCpuDiff;
           potentialMemoryDiff += podMemDiff;
         }
@@ -620,7 +718,9 @@ export function transformStatsToOverviewMetrics(
         workloadTotalRecommendedCpu = workloadRecommendedCpu;
         workloadTotalRecommendedMemory = workloadRecommendedMemory;
         potentialCpuDiff = workloadCurrentCpu > workloadRecommendedCpu ? workloadCurrentCpu - workloadRecommendedCpu : 0;
+        // potentialCpuDiff =  workloadCurrentCpu - workloadRecommendedCpu;
         potentialMemoryDiff = workloadCurrentMemory > workloadRecommendedMemory ? workloadCurrentMemory - workloadRecommendedMemory : 0;
+        // potentialMemoryDiff =  workloadCurrentMemory - workloadRecommendedMemory;
       }
     } else {
       workloadTotalCurrentCpu = workloadCurrentCpu;
@@ -628,15 +728,23 @@ export function transformStatsToOverviewMetrics(
       workloadTotalRecommendedCpu = workloadRecommendedCpu;
       workloadTotalRecommendedMemory = workloadRecommendedMemory;
       potentialCpuDiff = workloadCurrentCpu > workloadRecommendedCpu ? workloadCurrentCpu - workloadRecommendedCpu : 0;
+      // potentialCpuDiff =  workloadCurrentCpu - workloadRecommendedCpu
       potentialMemoryDiff = workloadCurrentMemory > workloadRecommendedMemory ? workloadCurrentMemory - workloadRecommendedMemory : 0;
+      // potentialMemoryDiff =  workloadCurrentMemory - workloadRecommendedMemory;
     }
 
     if (workloadTotalRecommendedCpu > workloadTotalCurrentCpu || workloadTotalRecommendedMemory > workloadTotalCurrentMemory) {
       reliabilityIssues++;
+      totalReliabilityCpu += Math.max(0, workloadTotalRecommendedCpu - workloadTotalCurrentCpu);
+      totalReliabilityMemoryMB += Math.max(0, workloadTotalRecommendedMemory - workloadTotalCurrentMemory);
     }
 
     if (workloadTotalRecommendedCpu < workloadTotalCurrentCpu || workloadTotalRecommendedMemory < workloadTotalCurrentMemory) {
-      costOptimizedWorkloads++;
+      if (!enabled) {
+        costOptimizedWorkloadsRecommendOnly++;
+      } else {
+        costOptimizedWorkloads++;
+      }
     }
 
     const potentialMemoryGB = potentialMemoryDiff / 1024;
@@ -650,15 +758,21 @@ export function transformStatsToOverviewMetrics(
     }
   }
 
+  /** Average waste percentage across workloads; optimization score = 100 − avgWaste. */
   const avgWaste = wastePercentages.length > 0
     ? wastePercentages.reduce((sum, w) => sum + w, 0) / wastePercentages.length
     : 0;
   const optimizationScore = Math.max(0, Math.round(100 - avgWaste));
 
-  const coverage = Math.round((workloadsWithRecommendations / statsResponse.stats.length) * 100);
+  /** Percentage of workloads that have at least one recommendation. */
+  const coverage = Math.round((workloadsWithRecommendations / stats.length) * 100);
 
+  /** Monthly potential savings (all workloads) and realized savings (optimization enabled only). */
   const potentialDollars = calculateDollarSavings(totalPotentialCpu, totalPotentialMemory);
   const realizedDollars = calculateDollarSavings(totalRealizedCpu, totalRealizedMemory);
+  const totalReliabilityMemoryGB = totalReliabilityMemoryMB / 1024;
+  /** Monthly cost to apply all reliability (up-size) recommendations. */
+  const reliabilityIncreaseDollars = calculateDollarSavings(totalReliabilityCpu, totalReliabilityMemoryGB);
 
   return {
     optimizationScore,
@@ -674,8 +788,16 @@ export function transformStatsToOverviewMetrics(
       dollars: realizedDollars,
     },
     reliabilityIssues,
+    reliabilityIncreaseCost: {
+      cpu: Math.round(totalReliabilityCpu * 10) / 10,
+      memory: Math.round(totalReliabilityMemoryGB * 10) / 10,
+      dollars: reliabilityIncreaseDollars,
+    },
+    costOptimizedWorkloadsRecommendOnly,
     costOptimizedWorkloads,
     totalSavedPerHour: realizedDollars,
+    realizedDollars,
+    unrealizedDollars: potentialDollars - realizedDollars,
   };
 }
 
@@ -685,10 +807,14 @@ export function transformStatsToWastefulWorkloads(
   limit: number = 10,
   recommendationAnalysis?: RecommendationAnalysisItem[]
 ): WastefulWorkload[] {
-  const overrideMap = new Map(overrides.map(o => [o.workload_id, o]));
+  const stats = Array.isArray(statsResponse?.stats) ? statsResponse.stats : [];
+  /** Normalized overrides; lookup by workload_id for continuous_optimization. */
+  const overrideList = Array.isArray(overrides) ? overrides : [];
+  const overrideMap = new Map(overrideList.map(o => [o.workload_id, o]));
+  /** Lookup by "namespace:workload:container" for recommended CPU/memory. */
   const recommendationMap = recommendationAnalysis ? buildRecommendationMap(recommendationAnalysis) : undefined;
-  
-  const workloadData = statsResponse.stats.map(stat => {
+
+  const workloadData = stats.map(stat => {
     const workloadId = stat.workload;
     const override = overrideMap.get(workloadId);
 
@@ -698,8 +824,10 @@ export function transformStatsToWastefulWorkloads(
     let workloadRecommendedMemory = 0;
     let hasRecommendations = false;
 
-    for (const containerStat of stat.container_stats) {
-      const originalResource = stat.original_container_resources.find(
+    const wastefulContainerStats = Array.isArray(stat.container_stats) ? stat.container_stats : [];
+    const wastefulOriginalResources = Array.isArray(stat.original_container_resources) ? stat.original_container_resources : [];
+    for (const containerStat of wastefulContainerStats) {
+      const originalResource = wastefulOriginalResources.find(
         r => r.name === containerStat.container_name
       );
 
@@ -731,19 +859,23 @@ export function transformStatsToWastefulWorkloads(
     let potentialMemoryDiff = 0;
 
     if (recommendationAnalysis) {
-      const workloadRecommendations = recommendationAnalysis.filter(
+      const recList = Array.isArray(recommendationAnalysis) ? recommendationAnalysis : [];
+      /** Recommendation analysis items for this workload (namespace + name match). */
+      const workloadRecommendations = recList.filter(
         item => 
           item.workload_namespace === stat.namespace &&
           item.workload_name === stat.name
       );
 
       if (workloadRecommendations.length > 0) {
+        /** Per-pod current requested CPU (cores) and memory (MB) from analysis. */
         const podCurrentTotals = new Map<string, { cpu: number; memory: number }>();
+        /** Per-pod recommended CPU (cores) and memory (MB) from analysis. */
         const podRecommendedTotals = new Map<string, { cpu: number; memory: number }>();
 
         for (const item of workloadRecommendations) {
           const podKey = item.pod_name;
-          
+
           const currentExisting = podCurrentTotals.get(podKey) || { cpu: 0, memory: 0 };
           currentExisting.cpu += item.current_requested_cpu;
           currentExisting.memory += item.current_requested_memory;
@@ -774,7 +906,8 @@ export function transformStatsToWastefulWorkloads(
     const potentialMemoryGB = potentialMemoryDiff / 1024;
     const savingsPerHour = calculateDollarSavings(potentialCpuDiff, potentialMemoryGB);
 
-    const containers = stat.container_stats.filter(cs => cs.container_type === ContainerType.SIDECAR_CONTAINER || cs.container_type === ContainerType.APP_CONTAINER).length;
+    const statContainers = Array.isArray(stat.container_stats) ? stat.container_stats : [];
+    const containers = statContainers.filter(cs => cs.container_type === ContainerType.SIDECAR_CONTAINER || cs.container_type === ContainerType.APP_CONTAINER).length;
 
     return {
       namespace: stat.namespace,
@@ -798,7 +931,8 @@ export function getContainerRecommendationsForWorkload(
   namespace: string,
   workloadName: string
 ): RecommendationAnalysisItem[] {
-  return analysis.filter(
+  const items = Array.isArray(analysis) ? analysis : [];
+  return items.filter(
     item => item.workload_namespace === namespace && item.workload_name === workloadName
   );
 }
@@ -807,7 +941,8 @@ export function getPodRecommendationsForContainer(
   analysis: RecommendationAnalysisItem[],
   containerName: string
 ): FrontendPodRecommendation[] {
-  const filtered = analysis.filter(item => item.container_name === containerName);
+  const items = Array.isArray(analysis) ? analysis : [];
+  const filtered = items.filter(item => item.container_name === containerName);
   return transformRecommendationAnalysisToPodRecommendations(filtered);
 }
 
@@ -816,8 +951,9 @@ export function getPodsForWorkload(
   namespace: string,
   workloadName: string
 ): string[] {
+  const items = Array.isArray(analysis) ? analysis : [];
   const pods = new Set<string>();
-  for (const item of analysis) {
+  for (const item of items) {
     if (item.workload_namespace === namespace && item.workload_name === workloadName) {
       pods.add(item.pod_name);
     }
@@ -829,7 +965,8 @@ export function getContainersForPod(
   analysis: RecommendationAnalysisItem[],
   podName: string
 ): FrontendContainerRecommendation[] {
-  const filtered = analysis.filter(item => item.pod_name === podName);
+  const items = Array.isArray(analysis) ? analysis : [];
+  const filtered = items.filter(item => item.pod_name === podName);
   const containerMap = new Map<string, RecommendationAnalysisItem>();
   
   for (const item of filtered) {

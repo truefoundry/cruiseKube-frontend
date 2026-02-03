@@ -1,9 +1,9 @@
 import { 
   Layers, 
   Settings,
-  Cpu
 } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
+import { cn } from "@/lib/utils";
 import {
   Sidebar,
   SidebarContent,
@@ -29,20 +29,20 @@ export function AppSidebar() {
   return (
     <Sidebar collapsible="icon" className="border-r border-sidebar-border">
       <SidebarHeader className="border-b border-sidebar-border p-4">
-        <div className="flex items-center gap-3">
-          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary/10">
-            <Cpu className="h-5 w-5 text-primary" />
+        <div className={cn("flex items-center gap-3", isCollapsed && "justify-center")}>
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-lg ">
+            <img src="/logo.png" alt="CruiseKube" className="h-8 w-8 object-contain" />
           </div>
           {!isCollapsed && (
-            <div className="flex flex-col">
-              <span className="font-semibold text-sidebar-accent-foreground">CruiseKube</span>
+            <div className="flex flex-col min-w-0">
+              <span className="font-semibold text-sidebar-accent-foreground truncate">CruiseKube</span>
               <span className="text-xs text-sidebar-foreground">K8s Optimizer</span>
             </div>
           )}
         </div>
       </SidebarHeader>
       
-      <SidebarContent className="p-2">
+      <SidebarContent className="">
         <SidebarGroup>
           <SidebarGroupContent>
             <SidebarMenu>
@@ -52,7 +52,10 @@ export function AppSidebar() {
                     <NavLink
                       to={item.url}
                       end={item.url === "/"}
-                      className="flex items-center gap-3 rounded-md px-3 py-2 text-sidebar-foreground transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+                      className={cn(
+                        "flex items-center gap-3 rounded-md px-3 py-2 text-sidebar-foreground transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+                        isCollapsed && "justify-center"
+                      )}
                       activeClassName="bg-sidebar-accent text-primary"
                     >
                       <item.icon className="h-4 w-4 shrink-0" />

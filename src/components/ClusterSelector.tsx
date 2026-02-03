@@ -1,4 +1,5 @@
 import { useCluster } from "@/contexts/ClusterContext";
+import { asArray } from "@/lib/utils";
 import {
   Select,
   SelectContent,
@@ -11,6 +12,7 @@ import { Loader2 } from "lucide-react";
 
 export function ClusterSelector() {
   const { clusters, selectedClusterId, setSelectedClusterId, isLoading } = useCluster();
+  const clusterList = asArray(clusters);
 
   if (isLoading) {
     return (
@@ -21,13 +23,13 @@ export function ClusterSelector() {
     );
   }
 
-  if (clusters.length === 0) {
+  if (clusterList.length === 0) {
     return (
       <div className="text-sm text-muted-foreground">No clusters available</div>
     );
   }
 
-  const selectedCluster = clusters.find((c) => c.id === selectedClusterId);
+  const selectedCluster = clusterList.find((c) => c.id === selectedClusterId);
 
   return (
     <div className="flex items-center gap-2">
@@ -43,7 +45,7 @@ export function ClusterSelector() {
             </SelectValue>
           </SelectTrigger>
           <SelectContent>
-            {clusters.map((cluster) => (
+            {clusterList.map((cluster) => (
               <SelectItem key={cluster.id} value={cluster.id}>
                 <div className="flex items-center gap-2">
                   <span>{cluster.name}</span>

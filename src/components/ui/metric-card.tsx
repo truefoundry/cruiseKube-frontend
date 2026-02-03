@@ -1,11 +1,19 @@
 import { cn } from "@/lib/utils";
-import { LucideIcon } from "lucide-react";
+import { Info, LucideIcon } from "lucide-react";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 interface MetricCardProps {
   title: string;
   value: string | number;
   subtitle?: string;
   icon?: LucideIcon;
+  /** Optional tooltip content (e.g. same as current cost) shown next to title via Info icon */
+  titleTooltip?: React.ReactNode;
   trend?: {
     value: number;
     isPositive: boolean;
@@ -19,15 +27,16 @@ export function MetricCard({
   value,
   subtitle,
   icon: Icon,
+  titleTooltip,
   trend,
   variant = "default",
   className,
 }: MetricCardProps) {
   const variantStyles = {
     default: "border-border",
-    success: "border-success/30 glow-success",
-    warning: "border-warning/30 glow-warning",
-    destructive: "border-destructive/30 glow-destructive",
+    success: "border-success/30 ",
+    warning: "border-warning/30 ",
+    destructive: "border-destructive/30 ",
   };
 
   const iconStyles = {
@@ -41,9 +50,25 @@ export function MetricCard({
     <div className={cn("metric-card", variantStyles[variant], className)}>
       <div className="flex items-start justify-between">
         <div className="space-y-1">
-          <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-            {title}
-          </p>
+          <div className="flex items-center gap-1.5">
+            <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+              {title}
+            </p>
+            {titleTooltip != null && (
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <button type="button" className="inline-flex text-muted-foreground hover:text-foreground focus:outline-none" aria-label="Info">
+                      <Info className="h-3.5 w-3.5" />
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom" className="max-w-sm p-4 text-left">
+                    {titleTooltip}
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            )}
+          </div>
           <p className="font-mono text-2xl font-semibold tracking-tight text-foreground">
             {value}
           </p>

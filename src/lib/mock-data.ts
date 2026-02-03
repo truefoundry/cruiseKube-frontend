@@ -14,6 +14,7 @@ export const overviewMetrics = {
     dollars: 189,
   },
   reliabilityIssues: 12,
+  reliabilityIncreaseCost: { cpu: 2.5, memory: 4.2, dollars: 85 },
   totalSavedPerHour: 189,
 };
 

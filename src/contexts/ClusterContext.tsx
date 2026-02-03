@@ -25,7 +25,7 @@ export function ClusterProvider({ children }: { children: ReactNode }) {
     queryFn: () => apiClient.getClusters(),
   });
 
-  const clusters = data?.clusters || [];
+  const clusters = Array.isArray(data?.clusters) ? data.clusters : [];
 
   useEffect(() => {
     if (clusters.length > 0 && !selectedClusterId) {

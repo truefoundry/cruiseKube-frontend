@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { ClusterProvider } from "@/contexts/ClusterContext";
+import { ConfigProvider } from "@/contexts/ConfigContext";
 import Workloads from "./pages/Workloads";
 import WorkloadDetail from "./pages/WorkloadDetail";
 import Policies from "./pages/Policies";
@@ -16,18 +17,20 @@ const App = () => (
   <QueryClientProvider client={queryClient}>
     <TooltipProvider>
       <ClusterProvider>
-        <Toaster />
-        <Sonner />
-        <BrowserRouter>
-          <Routes>
-            <Route element={<AppLayout />}>
-              <Route path="/" element={<Workloads />} />
-              <Route path="/workloads/:namespace/:workloadName" element={<WorkloadDetail />} />
-              <Route path="/policies" element={<Policies />} />
-            </Route>
-            <Route path="*" element={<NotFound />} />
-          </Routes>
-        </BrowserRouter>
+        <ConfigProvider>
+          <Toaster />
+          <Sonner />
+          <BrowserRouter>
+            <Routes>
+              <Route element={<AppLayout />}>
+                <Route path="/" element={<Workloads />} />
+                <Route path="/workloads/:namespace/:workloadName" element={<WorkloadDetail />} />
+                <Route path="/policies" element={<Policies />} />
+              </Route>
+              <Route path="*" element={<NotFound />} />
+            </Routes>
+          </BrowserRouter>
+        </ConfigProvider>
       </ClusterProvider>
     </TooltipProvider>
   </QueryClientProvider>

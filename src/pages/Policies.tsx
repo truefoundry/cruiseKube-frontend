@@ -25,13 +25,16 @@ import {
 } from "@/components/ui/tooltip";
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { apiClient, WorkloadOverrideInfo, Overrides } from "@/lib/api";
+import { apiClient, WorkloadOverrideInfo, Overrides, type PrometheusConfig } from "@/lib/api";
 import { mapEvictionRankingToPriority, mapPriorityToEvictionRanking } from "@/lib/transformers";
 import { useCluster } from "@/contexts/ClusterContext";
+import { useConfig } from "@/contexts/ConfigContext";
 import { toast } from "@/hooks/use-toast";
+import { asArray } from "@/lib/utils";
 
 export default function Policies() {
   const { selectedClusterId } = useCluster();
+  const { config: prometheusConfig, isLoading: prometheusConfigLoading, refetch: refetchPrometheusConfig } = useConfig();
   const queryClient = useQueryClient();
   const [updatingWorkloads, setUpdatingWorkloads] = useState<Set<string>>(new Set());
   const [search, setSearch] = useState("");
@@ -41,15 +44,6 @@ export default function Policies() {
     queryFn: () => {
       if (!selectedClusterId) throw new Error('No cluster selected');
       return apiClient.getWorkloads(selectedClusterId);
-    },
-    enabled: !!selectedClusterId,
-  });
-
-  const { data: prometheusConfig, isLoading: prometheusConfigLoading, refetch: refetchPrometheusConfig } = useQuery({
-    queryKey: ['prometheus-config', selectedClusterId],
-    queryFn: () => {
-      if (!selectedClusterId) throw new Error('No cluster selected');
-      return apiClient.getPrometheusConfig(selectedClusterId);
     },
     enabled: !!selectedClusterId,
   });
@@ -114,8 +108,9 @@ export default function Policies() {
 
   const testConnection = async () => {
     try {
-      const result = await refetchPrometheusConfig();
-      if (result.data?.connected) {
+      await refetchPrometheusConfig();
+      const data = queryClient.getQueryData<PrometheusConfig>(['config', selectedClusterId]);
+      if (data?.connected) {
         toast({
           title: "Connection successful",
           description: "Successfully connected to Prometheus",
@@ -123,7 +118,7 @@ export default function Policies() {
       } else {
         toast({
           title: "Connection failed",
-          description: result.data?.error || "Failed to connect to Prometheus",
+          description: data?.error || "Failed to connect to Prometheus",
           variant: "destructive",
         });
       }
@@ -164,7 +159,7 @@ export default function Policies() {
     );
   }
 
-  const workloadsList = (workloads || []).filter((w) => {
+  const workloadsList = asArray(workloads).filter((w) => {
     const matchesSearch = 
       w.name.toLowerCase().includes(search.toLowerCase()) ||
       w.namespace.toLowerCase().includes(search.toLowerCase());
@@ -246,7 +241,7 @@ export default function Policies() {
                       </td>
                     </tr>
                   ) : (
-                    workloadsList.map((workload) => {
+                    asArray(workloadsList).map((workload) => {
                       const isUpdating = updatingWorkloads.has(workload.workload_id);
                       const currentPriority = getWorkloadPriority(workload);
                       return (

@@ -11,6 +11,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useCluster } from "@/contexts/ClusterContext";
 import { apiClient } from "@/lib/api";
 import { transformWorkloadStatToFrontend, getPodsForWorkload, getContainersForPod, FrontendContainerRecommendation } from "@/lib/transformers";
+import { asArray } from "@/lib/utils";
 
 export default function WorkloadDetail() {
   const { namespace, workloadName } = useParams();
@@ -31,21 +32,22 @@ export default function WorkloadDetail() {
   const isLoading = isLoadingStats || isLoadingAnalysis;
   const error = statsError || analysisError;
 
-  const workloadStat = statsData?.stats.find(
+  const statsList = Array.isArray(statsData?.stats) ? statsData.stats : [];
+  const workloadStat = statsList.find(
     (s) => s.namespace === namespace && s.name === workloadName
   );
 
   const workload = workloadStat ? transformWorkloadStatToFrontend(workloadStat, undefined, recommendationAnalysis?.analysis) : null;
 
   const pods = (recommendationAnalysis?.analysis && namespace && workloadName) 
-    ? getPodsForWorkload(recommendationAnalysis.analysis, namespace, workloadName)
+    ? getPodsForWorkload(recommendationAnalysis.analysis ?? [], namespace, workloadName)
     : [];
 
   const getContainerRecommendations = (podName: string): FrontendContainerRecommendation[] => {
     if (!recommendationAnalysis?.analysis) {
       return [];
     }
-    return getContainersForPod(recommendationAnalysis.analysis, podName);
+    return getContainersForPod(recommendationAnalysis.analysis ?? [], podName);
   };
 
   if (!selectedClusterId) {
@@ -215,7 +217,7 @@ export default function WorkloadDetail() {
                   </td>
                 </tr>
               ) : (
-                pods.map((podName) => {
+                asArray(pods).map((podName) => {
                   const containerRecommendations = getContainerRecommendations(podName);
                   
                   return (
@@ -225,8 +227,8 @@ export default function WorkloadDetail() {
                           {podName}
                         </td>
                       </tr>
-                      {containerRecommendations.length > 0 ? (
-                        containerRecommendations.map((container) => (
+                      {asArray(containerRecommendations).length > 0 ? (
+                        asArray(containerRecommendations).map((container) => (
                           <tr key={`${podName}-${container.container}`}>
                             <td></td>
                             <td className="font-medium">{container.container}</td>
