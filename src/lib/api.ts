@@ -215,6 +215,7 @@ class ApiClient {
     if (data == null) {
       return { stats: [] };
     }
+    /** Normalized stats array (workload stats with container_stats, original_container_resources). */
     const stats = data.stats != null && Array.isArray(data.stats) ? data.stats : [];
     return { ...data, stats };
   }
@@ -240,7 +241,9 @@ class ApiClient {
     if (data == null) {
       return { analysis: [], summary: defaultSummary };
     }
+    /** Normalized analysis array (per-container recommendation items). */
     const analysis = data.analysis != null && Array.isArray(data.analysis) ? data.analysis : [];
+    /** Summary totals (current requests, differences) from the API. */
     const summary = data.summary ?? defaultSummary;
     return { ...data, analysis, summary };
   }

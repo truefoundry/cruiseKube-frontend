@@ -15,10 +15,10 @@ export function AppLayout() {
   const { applyRecommendationDryRun, isLoading: configLoading } = useConfig();
 
   return (
-    <SidebarProvider>
+    <SidebarProvider defaultOpen={false}>
       <div className="flex min-h-screen w-full">
         <AppSidebar />
-        <div className="flex flex-1 flex-col">
+        <div className="flex min-w-0 flex-1 flex-col">
           <header className="border-b border-border px-6 py-4">
             <div className="flex items-center justify-between gap-4">
               <div className="flex items-center gap-3">
@@ -34,6 +34,17 @@ export function AppLayout() {
                       </TooltipTrigger>
                       <TooltipContent side="bottom" className="max-w-xs">
                         <p>Recommendations are shown but not applied. Application is in dry-run / recommend-only mode.</p>
+                        <p className="mt-2">
+                          <a
+                            href="https://cruisekube.com/src/gs-installation/#uninstall"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-primary underline hover:no-underline"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            How to remove dry run
+                          </a>
+                        </p>
                       </TooltipContent>
                     </Tooltip>
                   </TooltipProvider>
@@ -41,7 +52,7 @@ export function AppLayout() {
               </div>
             </div>
           </header>
-          <main className="flex-1 overflow-auto">
+          <main className="min-w-0 flex-1 overflow-auto">
             <Outlet />
           </main>
         </div>

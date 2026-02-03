@@ -455,6 +455,7 @@ export default function Workloads() {
     realizedSavings: { cpu: 0, memory: 0, dollars: 0 },
     reliabilityIssues: 0,
     reliabilityIncreaseCost: { cpu: 0, memory: 0, dollars: 0 },
+    costOptimizedWorkloadsRecommendOnly: 0,
     costOptimizedWorkloads: 0,
     totalSavedPerHour: 0,
     realizedDollars: 0,
@@ -467,8 +468,10 @@ export default function Workloads() {
     overviewMetrics = transformStatsToOverviewMetrics(statsData, workloadsList, analysisList);
   }
 
+  /** True when cluster has no stats/workload data to show. */
   const hasNoData = !isLoadingMetrics && (statsData?.stats == null || (Array.isArray(statsData?.stats) && statsData.stats.length === 0));
 
+  /** Monthly cost from allocatable CPU + memory (used for Current cost card and savings % vs current cost). */
   const currentCostDollars =
     clusterMetrics?.cpuAllocatable != null && clusterMetrics?.memoryAllocatable != null
       ? calculateDollarSavings(Number(clusterMetrics.cpuAllocatable), Number(clusterMetrics.memoryAllocatable))
@@ -507,35 +510,26 @@ export default function Workloads() {
     <div className="space-y-3">
       <p className="font-medium text-foreground">Projected Savings</p>
       <p className="text-xs text-muted-foreground">
-        Monthly savings from workloads where recommendations have already been applied (cost-optimized). This is the cost saved by reducing overprovisioned CPU and memory; it does not include reliability cost.
+        Net monthly savings: savings from downsizing overprovisioned workloads that have Cruise mode on, minus the monthly cost to apply reliability (upsize) recommendations. Shown value = Cruise-mode savings − reliability improvement cost.
       </p>
       <p className="font-medium text-foreground text-xs pt-1 border-t border-border">Calculation</p>
       <ol className="text-xs text-muted-foreground space-y-1.5 list-decimal list-inside">
-        <li>For each cost-optimized workload: Δ CPU = current CPU − recommended CPU, Δ memory (GB) = current memory − recommended memory.</li>
+        <li>For each overprovisioned workload with Cruise mode on: Δ CPU = current − recommended (cores), Δ memory (GB) = (current − recommended) / 1024.</li>
         <li>Per workload hourly savings = Δ CPU × $0.029/hr + Δ memory (GB) × $0.0075/hr.</li>
-        <li>Per workload monthly = hourly × 720 hours.</li>
-        <li>Projected Savings = sum of monthly savings across all cost-optimized workloads.</li>
+        <li>Per workload monthly = hourly × 720 hours. Cruise-mode total = sum over those workloads.</li>
+        <li>Projected Savings (shown) = Cruise-mode total − reliability improvement cost ($/month).</li>
       </ol>
       <p className="text-xs text-muted-foreground font-mono pt-1 border-t border-border/50">
-        Projected Savings = Σ (Δ CPU × 0.029 + Δ memory GB × 0.0075) × 720 / month
+        Shown = Σ (Cruise-mode Δ CPU × 0.029 + Δ memory GB × 0.0075) × 720 − reliability cost
       </p>
       <p className="text-xs text-muted-foreground pt-1 border-t border-border/50">
-        The percentage shown is relative to projected cost (2× requested CPU, 2.5× requested memory), not current cost.
-      </p>
-    </div>
-  );
-
-  const projectedUnrealizedSavingsTooltipContent = (
-    <div className="space-y-3">
-      <p className="font-medium text-foreground">Projected Unrealized Savings</p>
-      <p className="text-xs text-muted-foreground">
-        Potential unrelized savings is for the workloads that are disabled from optimisation. CruiseKube does not optimise disabled workloads.
+        The percentage is relative to projected cost (2× requested CPU, 2.5× requested memory), not current cost.
       </p>
     </div>
   );
 
   return (
-    <div className="p-6 space-y-6 animate-fade-in">
+    <div className="min-w-0 w-full max-w-full p-4 space-y-6 animate-fade-in">
       {/* Error / empty data banner */}
       {hasNoData && (
         <Alert variant="default" className="border-amber-500/50 bg-amber-500/10 [&>svg]:text-amber-600 dark:[&>svg]:text-amber-400">
@@ -547,12 +541,12 @@ export default function Workloads() {
         </Alert>
       )}
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold text-foreground">Workloads & Recommendations</h1>
-          <p className="text-sm text-muted-foreground">Container-aware workload list with optimization recommendations</p>
+      <div className="flex min-w-0 flex-wrap items-center justify-between gap-4">
+        <div className="min-w-0 flex-1">
+          <h1 className="truncate text-2xl font-semibold text-foreground">Workloads & Recommendations</h1>
+          <p className="truncate text-sm text-muted-foreground">Container-aware workload list with optimization recommendations</p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex shrink-0 items-center gap-2">
           {statsData && (statsData.stats ?? []).length > 0 && (
             <div className="flex items-center gap-2 text-xs text-muted-foreground">
               <span className="h-2 w-2 rounded-full bg-success animate-pulse" />
@@ -568,7 +562,7 @@ export default function Workloads() {
         </div>
       </div>
 
-      {/* Row: Current cost (requested only), Realized Savings, Unrealized Savings, Workload summary */}
+      {/* Row: Current cost, Projected Savings, Potential savings + Workload summary */}
       <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
         {/* Current cost — same style as other cost cards (MetricCard layout) */}
         <div className="metric-card border-border">
@@ -603,7 +597,7 @@ export default function Workloads() {
                 </div>
                 <p className="font-mono text-2xl font-semibold tracking-tight text-foreground">
                   ${(clusterMetrics?.cpuAllocatable != null && clusterMetrics?.memoryAllocatable != null
-                    ? calculateDollarSavings(Number(clusterMetrics.cpuAllocatable), Number(clusterMetrics.memoryAllocatable)) * 2
+                    ? calculateDollarSavings(Number(clusterMetrics.cpuAllocatable), Number(clusterMetrics.memoryAllocatable))
                     : 0
                   ).toLocaleString()}
                   <span className="text-sm font-normal text-muted-foreground ml-1">/month</span>
@@ -651,7 +645,7 @@ export default function Workloads() {
                   </TooltipProvider>
                 </div>
                 <p className="font-mono text-2xl font-semibold tracking-tight text-foreground">
-                  ${overviewMetrics.realizedDollars.toLocaleString()}
+                  ${(overviewMetrics.realizedDollars - overviewMetrics.reliabilityIncreaseCost.dollars).toLocaleString()}
                   <span className="text-sm font-normal text-muted-foreground ml-1">/month</span>
                 </p>
               </div>
@@ -661,7 +655,7 @@ export default function Workloads() {
             </div>
             <p className="text-sm text-muted-foreground text-center w-full mt-1 pt-1 border-t border-border/50">
               {projectedCostDollars > 0 ? (
-                <span className="font-medium text-foreground">{projectedSavingsPct(overviewMetrics.realizedDollars)}% of projected cost</span>
+                <span className="font-medium text-foreground">{projectedSavingsPct(overviewMetrics.realizedDollars - overviewMetrics.reliabilityIncreaseCost.dollars)}% of projected cost</span>
               ) : (
                 "Per month savings"
               )}
@@ -672,106 +666,89 @@ export default function Workloads() {
           </div>
         )}
 
-        {/* Potential Unrealized Savings */}
+        {/* Workload summary — spans 2 columns on lg */}
         {isLoadingMetrics ? (
-          <div className="metric-card border-border">
-            <div className="flex items-start justify-between">
-              <div className="space-y-1">
-                <Skeleton className="h-3 w-24" />
-                <Skeleton className="h-8 w-20" />
-                <Skeleton className="h-4 w-32" />
+          <div className="metric-card border-border lg:col-span-2">
+            <Skeleton className="h-4 w-32 mb-3" />
+            <Skeleton className="h-4 w-full mb-2" />
+            <Skeleton className="h-4 w-full mb-2" />
+            <Skeleton className="h-4 w-full" />
+          </div>
+        ) : (
+          <div className="metric-card border-border lg:col-span-2">
+            <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground mb-2">Workload summary</p>
+            <div className="space-y-1.5 text-sm">
+              <div className="flex items-center justify-between gap-2">
+                <span className="font-medium text-foreground">Total workloads</span>
+                <span className="font-mono font-semibold tabular-nums">{asArray(workloads).length}</span>
               </div>
-              <div className="rounded-lg bg-muted/50 p-2 text-muted-foreground">
-                <DollarSign className="h-5 w-5" />
+              <div className="flex items-center justify-between gap-2">
+                <span className="flex items-center gap-1 text-muted-foreground">
+                  Already optimized
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Info className="h-3 w-3 shrink-0 cursor-help" />
+                      </TooltipTrigger>
+                      <TooltipContent side="right" className="max-w-xs">
+                        <p>Workloads already at the recommended resource level (no change needed).</p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                </span>
+                <span className="font-mono tabular-nums">{Math.max(0, asArray(workloads).length - overviewMetrics.costOptimizedWorkloadsRecommendOnly - overviewMetrics.costOptimizedWorkloads)}</span>
+              </div>
+              <div className="flex items-center justify-between gap-2">
+                <span className="flex items-center gap-1 text-muted-foreground">
+                  Cost optimization (Cruise mode)
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Info className="h-3 w-3 shrink-0 cursor-help" />
+                      </TooltipTrigger>
+                      <TooltipContent side="right" className="max-w-xs">
+                        <p>Overprovisioned workloads with Cruise mode on: optimization applied automatically. Savings per month.</p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                </span>
+                <span className="font-mono tabular-nums">${overviewMetrics.realizedDollars.toLocaleString()}/mo · {overviewMetrics.costOptimizedWorkloads}</span>
+              </div>
+              <div className="flex items-center justify-between gap-2">
+                <span className="flex items-center gap-1 text-muted-foreground">
+                  Cost optimization (Recommend only)
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Info className="h-3 w-3 shrink-0 cursor-help" />
+                      </TooltipTrigger>
+                      <TooltipContent side="right" className="max-w-xs">
+                        <p>Overprovisioned workloads in Recommend-only mode. Potential savings if recommendations are applied.</p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                </span>
+                <span className="font-mono tabular-nums">${overviewMetrics.unrealizedDollars.toLocaleString()}/mo · {overviewMetrics.costOptimizedWorkloadsRecommendOnly}</span>
+              </div>
+              <div className="flex items-center justify-between gap-2">
+                <span className="flex items-center gap-1 text-muted-foreground">
+                  Reliability improvement cost
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Info className="h-3 w-3 shrink-0 cursor-help" />
+                      </TooltipTrigger>
+                      <TooltipContent side="right" className="max-w-xs">
+                        <p>Underprovisioned workloads: extra monthly cost to apply recommendations (add CPU/memory).</p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                </span>
+                <span className="font-mono tabular-nums">${overviewMetrics.reliabilityIncreaseCost.dollars.toLocaleString()}/mo · {overviewMetrics.reliabilityIssues}</span>
               </div>
             </div>
           </div>
-        ) : (
-          <MetricCard
-            title="Projected Unrealized Savings"
-            value={`$${overviewMetrics.unrealizedDollars.toLocaleString()}`}
-            subtitle={projectedCostDollars > 0 ? `Per month savings · ${projectedSavingsPct(overviewMetrics.unrealizedDollars)}% of projected cost` : "Per month savings"}
-            icon={DollarSign}
-            titleTooltip={projectedUnrealizedSavingsTooltipContent}
-            variant="default"
-          />
         )}
-
-        {/* Workload summary: Total, Reliability Improved, Cost Optimized */}
-        <div className="metric-card border-border">
-          <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground mb-3">Workload summary</p>
-          <table className="w-full text-sm">
-            <tbody>
-            <tr className="border-b border-border/50">
-                <td className="py-2 pr-4 text-muted-foreground">
-                <div className="flex items-center gap-1.5">
-                  Cost Optimization
-                  <TooltipProvider>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Info className="h-3.5 w-3.5 shrink-0 cursor-help text-muted-foreground" />
-                      </TooltipTrigger>
-                      <TooltipContent side="right" className="max-w-xs">
-                        <p>When a resource is overprovisioned we recommend removing resources from it. Cost optimized is the number of workloads that are overprovisioned.</p>
-                      </TooltipContent>
-                    </Tooltip>
-                  </TooltipProvider>
-                  </div>
-                </td>
-                <td className="py-2 text-right">
-                  <span className="font-mono font-semibold">{overviewMetrics.costOptimizedWorkloads}</span>
-                </td>
-              </tr>
-              <tr className="border-b border-border/50">
-                <td className="py-2 pr-4 text-muted-foreground align-top">
-                  <div className="flex items-center gap-1.5">
-                    <span>Reliability Improvement</span>
-                    <TooltipProvider>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <Info className="h-3.5 w-3.5 shrink-0 cursor-help text-muted-foreground" />
-                        </TooltipTrigger>
-                        <TooltipContent side="right" className="max-w-xs">
-                          <p>When a resource is underprovisioned we recommend adding more resources to it. Reliability cost is the extra cost to apply those recommendations.</p>
-                        </TooltipContent>
-                      </Tooltip>
-                    </TooltipProvider>
-                  </div>
-                </td>
-                <td className="py-2 text-right align-top">
-                  <div className="flex flex-col items-end gap-0.5">
-                    <span className="font-mono font-semibold">{overviewMetrics.reliabilityIssues}</span>
-                    <span className="text-xs text-muted-foreground">
-                      ${overviewMetrics.reliabilityIncreaseCost.dollars.toLocaleString()}/month
-                    </span>
-                  </div>
-                </td>
-              </tr>
-              <tr>
-                <td className="py-2 pr-4 text-muted-foreground">
-                  <div className="flex items-center gap-1.5">
-                  Already Optimized
-                  <TooltipProvider>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Info className="h-3.5 w-3.5 shrink-0 cursor-help text-muted-foreground" />
-                      </TooltipTrigger>
-                      <TooltipContent side="right" className="max-w-xs">
-                        <p>Resources that are already at the recommended level.</p>
-                      </TooltipContent>
-                    </Tooltip>
-                  </TooltipProvider>
-                  </div>
-                </td>
-                <td className="py-2 font-mono font-semibold text-right">{Math.max(0, asArray(workloads).length - overviewMetrics.costOptimizedWorkloads)}</td>
-              </tr>
-              <tr className="border-b border-border/50">
-                <td className="py-2 pr-4 ">Total workloads</td>
-                <td className="py-2 font-mono font-semibold text-right">{asArray(workloads).length}</td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
       </div>
 
       {/* Cluster Resource Metrics: CPU & Memory Utilised / Requested / Allocatable */}
@@ -925,12 +902,11 @@ export default function Workloads() {
       </div>
 
       {/* Table */}
-      <div className="metric-card overflow-hidden">
+      <div className=" overflow-hidden">
         <div className="overflow-x-auto">
           <table className="data-table border-collapse">
             <thead>
               <tr>
-                <th rowSpan={2} className="w-10 text-muted-foreground font-normal align-top pt-4">#</th>
                 {verbose && (
                   <>
                     <th rowSpan={2}
@@ -1150,7 +1126,6 @@ export default function Workloads() {
                     }
                   }}
                 >
-                  <td className="text-muted-foreground text-xs tabular-nums w-10">{index + 1}</td>
                   {verbose && (
                     <>
                       <td className="text-muted-foreground text-xs">
