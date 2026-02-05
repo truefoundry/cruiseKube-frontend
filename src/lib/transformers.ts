@@ -6,9 +6,7 @@ import {
   RecommendationAnalysisResponse,
   WorkloadOverrideInfo,
 } from './api';
-
-const CPU_COST_PER_CORE_PER_HOUR = 0.029;
-const MEMORY_COST_PER_GB_PER_HOUR = 0.0075;
+import { getCpuPricePerCorePerHour, getMemoryPricePerGbPerHour } from './pricing';
 
 export interface FrontendWorkload {
   id: string;
@@ -30,6 +28,9 @@ export interface FrontendWorkload {
   mode: 'enabled' | 'recommend-only';
   priority: 'low' | 'medium' | 'high' | 'non-evictable';
   hasRecommendations: boolean;
+  /** True when workload is excluded from optimization; reason in excludedReason. */
+  excluded?: boolean;
+  excludedReason?: string;
 }
 
 export interface FrontendContainer {
@@ -241,7 +242,9 @@ export function mapPriorityToEvictionRanking(priority: 'low' | 'medium' | 'high'
 /** Monthly cost (or savings) from CPU cores + memory GB. Used for current cost and savings. */
 export function calculateDollarSavings(cpuCores: number, memoryGB: number): number {
   const hoursPerMonth = 720;
-  return Math.round((cpuCores * CPU_COST_PER_CORE_PER_HOUR + memoryGB * MEMORY_COST_PER_GB_PER_HOUR) * hoursPerMonth * 100) / 100;
+  const cpuPrice = getCpuPricePerCorePerHour();
+  const memoryPrice = getMemoryPricePerGbPerHour();
+  return Math.round((cpuCores * cpuPrice + memoryGB * memoryPrice) * hoursPerMonth * 100) / 100;
 }
 
 function formatTimeAgo(timestamp: string): string {
@@ -421,6 +424,8 @@ export function transformWorkloadStatToFrontend(
     mode: enabled ? 'enabled' : 'recommend-only',
     priority: mapEvictionRankingToPriority(evictionRanking),
     hasRecommendations,
+    excluded: stat.metadata?.excluded ?? false,
+    excludedReason: stat.metadata?.excluded_reason,
   };
 }
 

@@ -4,7 +4,8 @@ import {
   XCircle,
   Loader2,
   Search,
-  Info
+  Info,
+  DollarSign
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -31,6 +32,7 @@ import { useCluster } from "@/contexts/ClusterContext";
 import { useConfig } from "@/contexts/ConfigContext";
 import { toast } from "@/hooks/use-toast";
 import { asArray } from "@/lib/utils";
+import { getResourcePricing, setResourcePricing, DEFAULT_CPU, DEFAULT_MEMORY } from "@/lib/pricing";
 
 export default function Policies() {
   const { selectedClusterId } = useCluster();
@@ -38,6 +40,8 @@ export default function Policies() {
   const queryClient = useQueryClient();
   const [updatingWorkloads, setUpdatingWorkloads] = useState<Set<string>>(new Set());
   const [search, setSearch] = useState("");
+  const [cpuPrice, setCpuPrice] = useState<string>(() => String(getResourcePricing().cpuPerCorePerHour));
+  const [memoryPrice, setMemoryPrice] = useState<string>(() => String(getResourcePricing().memoryPerGbPerHour));
 
   const { data: workloads, isLoading: workloadsLoading, error: workloadsError } = useQuery({
     queryKey: ['workloads', selectedClusterId],
@@ -177,6 +181,7 @@ export default function Policies() {
       <Tabs defaultValue="mode" className="space-y-6">
         <TabsList className="bg-muted/50">
           <TabsTrigger value="mode">CruiseKube Mode & Priority</TabsTrigger>
+          <TabsTrigger value="pricing">Resource Pricing</TabsTrigger>
           <TabsTrigger value="prometheus">Prometheus Config</TabsTrigger>
         </TabsList>
 
@@ -291,6 +296,70 @@ export default function Policies() {
                   )}
                 </tbody>
               </table>
+            </div>
+          </div>
+        </TabsContent>
+
+        {/* Resource Pricing Tab */}
+        <TabsContent value="pricing" className="space-y-6">
+          <div className="metric-card">
+            <div className="flex items-center gap-2 mb-4">
+              <DollarSign className="h-4 w-4 text-muted-foreground" />
+              <h3 className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                Resource Pricing
+              </h3>
+            </div>
+            <p className="text-sm text-muted-foreground mb-4">
+              Set hourly prices for CPU and Memory used in cost calculations on the Workloads page. Values are stored in your browser only.
+            </p>
+            <div className="space-y-4 max-w-md">
+              <div>
+                <label className="text-sm font-medium text-foreground">CPU ($/core/hour)</label>
+                <Input
+                  type="number"
+                  min="0"
+                  step="0.001"
+                  value={cpuPrice}
+                  onChange={(e) => setCpuPrice(e.target.value)}
+                  className="bg-muted/50 mt-2"
+                  placeholder={String(DEFAULT_CPU)}
+                />
+                <p className="text-xs text-muted-foreground mt-1">Default: ${DEFAULT_CPU}/core/hour</p>
+              </div>
+              <div>
+                <label className="text-sm font-medium text-foreground">Memory ($/GB/hour)</label>
+                <Input
+                  type="number"
+                  min="0"
+                  step="0.001"
+                  value={memoryPrice}
+                  onChange={(e) => setMemoryPrice(e.target.value)}
+                  className="bg-muted/50 mt-2"
+                  placeholder={String(DEFAULT_MEMORY)}
+                />
+                <p className="text-xs text-muted-foreground mt-1">Default: ${DEFAULT_MEMORY}/GB/hour</p>
+              </div>
+              <Button
+                onClick={() => {
+                  const cpu = parseFloat(cpuPrice);
+                  const mem = parseFloat(memoryPrice);
+                  if (Number.isNaN(cpu) || cpu < 0 || Number.isNaN(mem) || mem < 0) {
+                    toast({
+                      title: "Invalid values",
+                      description: "Please enter valid non-negative numbers for CPU and Memory price.",
+                      variant: "destructive",
+                    });
+                    return;
+                  }
+                  setResourcePricing({ cpuPerCorePerHour: cpu, memoryPerGbPerHour: mem });
+                  toast({
+                    title: "Saved",
+                    description: "Resource pricing has been saved. Cost figures on Workloads will use these values.",
+                  });
+                }}
+              >
+                Save to browser storage
+              </Button>
             </div>
           </div>
         </TabsContent>

@@ -32,6 +32,7 @@ import {
   OverviewMetrics,
   calculateDollarSavings
 } from "@/lib/transformers";
+import { getResourcePricing } from "@/lib/pricing";
 import { MetricCard } from "@/components/ui/metric-card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
@@ -49,6 +50,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { asArray } from "@/lib/utils";
@@ -471,31 +473,76 @@ export default function Workloads() {
   /** True when cluster has no stats/workload data to show. */
   const hasNoData = !isLoadingMetrics && (statsData?.stats == null || (Array.isArray(statsData?.stats) && statsData.stats.length === 0));
 
-  /** Monthly cost from allocatable CPU + memory (used for Current cost card and savings % vs current cost). */
-  const currentCostDollars =
-    clusterMetrics?.cpuAllocatable != null && clusterMetrics?.memoryAllocatable != null
-      ? calculateDollarSavings(Number(clusterMetrics.cpuAllocatable), Number(clusterMetrics.memoryAllocatable))
-      : 0;
-  /** Projected cost based on request: 2× total requested CPU, 2.5× total requested memory (monthly). */
-  const projectedCostDollars =
-    clusterMetrics?.cpuRequested != null && clusterMetrics?.memoryRequested != null
-      ? calculateDollarSavings(
-          Number(clusterMetrics.cpuRequested) * 2,
-          Number(clusterMetrics.memoryRequested) * 2.5
-        )
-      : 0;
-  /** Projected savings % uses projected cost (request-based) as denominator. */
-  const projectedSavingsPct =
-    projectedCostDollars > 0
-      ? (dollars: number) => ((dollars / projectedCostDollars) * 100).toFixed(1)
-      : () => "—";
+  /** All cost and projected calculations in one place. */
+  const {
+    currentCostDollars,
+    projectedCostDollars,
+    projectedSavingsFromCapacityDollars,
+    projectedSavingsPct,
+  } = (() => {
+    const cpuOptRequested = Number(clusterMetrics?.cpuRequested ?? 0);
+    const cpuOptAllocatable = Number(clusterMetrics?.cpuAllocatable ?? 0);
+    const memOptRequested = Number(clusterMetrics?.memoryRequested ?? 0);
+    const memOptAllocatable = Number(clusterMetrics?.memoryAllocatable ?? 0);
 
+    const cpuUnoptRequested = cpuOptRequested * 2;
+    const memUnoptRequested = memOptRequested * 2.5;
+
+    const cpuUnoptAllocatable =
+      cpuOptRequested > 0 ? (cpuUnoptRequested * cpuOptAllocatable) / cpuOptRequested : 0;
+    const memUnoptAllocatable =
+      memOptRequested > 0 ? (memUnoptRequested * memOptAllocatable) / memOptRequested : 0;
+
+    const hasAllocatable =
+      clusterMetrics?.cpuAllocatable != null && clusterMetrics?.memoryAllocatable != null;
+    const currentCostDollars = hasAllocatable
+      ? calculateDollarSavings(cpuOptAllocatable, memOptAllocatable)
+      : 0;
+    const projectedCostDollars = hasAllocatable
+      ? calculateDollarSavings(cpuUnoptAllocatable, memUnoptAllocatable)
+      : 0;
+    const projectedSavingsFromCapacityDollars = Math.max(0, projectedCostDollars - currentCostDollars);
+    const projectedSavingsPct =
+      projectedCostDollars > 0
+        ? (dollars: number) => ((dollars / projectedCostDollars) * 100).toFixed(1)
+        : () => "—";
+
+    const log = {
+      "Cluster (optimised)": {
+        "CPU requested (cores)": cpuOptRequested,
+        "CPU allocatable (cores)": cpuOptAllocatable,
+        "Memory requested (GB)": memOptRequested,
+        "Memory allocatable (GB)": memOptAllocatable,
+      },
+      "Unoptimised (ratio-derived)": {
+        "CPU requested (2×)": cpuUnoptRequested,
+        "Memory requested (2.5×)": memUnoptRequested,
+        "CPU allocatable": cpuUnoptAllocatable,
+        "Memory allocatable (GB)": memUnoptAllocatable,
+      },
+      "Cost ($/month)": {
+        "Current (allocatable)": currentCostDollars,
+        "Projected (unoptimised allocatable)": projectedCostDollars,
+        "Projected savings (capacity)": projectedSavingsFromCapacityDollars,
+      },
+    };
+    console.log("[Workloads] Cost & projected calculations", log);
+
+    return {
+      currentCostDollars,
+      projectedCostDollars,
+      projectedSavingsFromCapacityDollars,
+      projectedSavingsPct,
+    };
+  })();
+
+  const pricing = getResourcePricing();
   const costTooltipContent = (
     <div className="space-y-3">
       <p className="font-medium text-foreground">How current cost is calculated</p>
       <p className="text-xs text-muted-foreground">
-        Monthly cost = (allocatable CPU cores × $0.029/hr + allocatable memory in GB × $0.0075/hr) × 720 hours per month.
-        Uses cluster-wide allocatable resources from Prometheus (not requested or recommendations).
+        Monthly cost = (allocatable CPU cores × ${pricing.cpuPerCorePerHour}/hr + allocatable memory in GB × ${pricing.memoryPerGbPerHour}/hr) × 720 hours per month.
+        Uses cluster-wide allocatable resources from Prometheus (not requested or recommendations). Configure prices in Policies &amp; Configuration → Resource Pricing.
       </p>
       <p className="font-medium text-foreground text-xs pt-1 border-t border-border">Assumptions</p>
       <ul className="text-xs text-muted-foreground space-y-1 list-disc list-inside">
@@ -515,15 +562,15 @@ export default function Workloads() {
       <p className="font-medium text-foreground text-xs pt-1 border-t border-border">Calculation</p>
       <ol className="text-xs text-muted-foreground space-y-1.5 list-decimal list-inside">
         <li>For each overprovisioned workload with Cruise mode on: Δ CPU = current − recommended (cores), Δ memory (GB) = (current − recommended) / 1024.</li>
-        <li>Per workload hourly savings = Δ CPU × $0.029/hr + Δ memory (GB) × $0.0075/hr.</li>
+        <li>Per workload hourly savings = Δ CPU × ${pricing.cpuPerCorePerHour}/hr + Δ memory (GB) × ${pricing.memoryPerGbPerHour}/hr.</li>
         <li>Per workload monthly = hourly × 720 hours. Cruise-mode total = sum over those workloads.</li>
         <li>Projected Savings (shown) = Cruise-mode total − reliability improvement cost ($/month).</li>
       </ol>
       <p className="text-xs text-muted-foreground font-mono pt-1 border-t border-border/50">
-        Shown = Σ (Cruise-mode Δ CPU × 0.029 + Δ memory GB × 0.0075) × 720 − reliability cost
+        Shown = Σ (Cruise-mode Δ CPU × {pricing.cpuPerCorePerHour} + Δ memory GB × {pricing.memoryPerGbPerHour}) × 720 − reliability cost
       </p>
       <p className="text-xs text-muted-foreground pt-1 border-t border-border/50">
-        The percentage is relative to projected cost (2× requested CPU, 2.5× requested memory), not current cost.
+        The percentage is relative to projected cost (unoptimised cluster cost from requested/allocated ratio), not current cost.
       </p>
     </div>
   );
@@ -596,10 +643,7 @@ export default function Workloads() {
                   </TooltipProvider>
                 </div>
                 <p className="font-mono text-2xl font-semibold tracking-tight text-foreground">
-                  ${(clusterMetrics?.cpuAllocatable != null && clusterMetrics?.memoryAllocatable != null
-                    ? calculateDollarSavings(Number(clusterMetrics.cpuAllocatable), Number(clusterMetrics.memoryAllocatable))
-                    : 0
-                  ).toLocaleString()}
+                  ${currentCostDollars.toLocaleString()}
                   <span className="text-sm font-normal text-muted-foreground ml-1">/month</span>
                 </p>
                 <p className="text-sm text-muted-foreground">Based on allocatable CPU + Memory</p>
@@ -661,7 +705,8 @@ export default function Workloads() {
               )}
             </p>
             <p className="text-xs text-muted-foreground text-center w-full mt-0.5">
-              Percentage based on projected cost (2× requested CPU, 2.5× requested memory).
+              Percentage based on projected cost (unoptimised allocated from requested/allocated ratio).
+              Projected cost = ${projectedCostDollars.toLocaleString()}
             </p>
           </div>
         )}
@@ -1111,7 +1156,11 @@ export default function Workloads() {
               {asArray(sortedWorkloads).map((workload, index) => (
                 <tr 
                   key={workload.id} 
-                  className="group cursor-pointer hover:bg-muted/50 transition-colors"
+                  className={`group cursor-pointer transition-colors ${
+                    workload.excluded
+                      ? "bg-muted/40 hover:bg-muted/50 border-l-2 border-l-amber-500 dark:border-l-amber-400"
+                      : "hover:bg-muted/50"
+                  }`}
                   onClick={(e) => {
                     e.preventDefault();
                     e.stopPropagation();
@@ -1150,7 +1199,28 @@ export default function Workloads() {
                   )}
                   <td className="font-mono text-xs">{workload.namespace}</td>
                   <td>
-                    <span className="font-medium">{workload.workload}</span>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className={`font-medium ${workload.excluded ? "text-muted-foreground" : ""}`}>{workload.workload}</span>
+                      {workload.excluded && (
+                        <TooltipProvider>
+                          <Tooltip>
+                            <TooltipTrigger asChild onClick={(e) => e.stopPropagation()}>
+                              <Badge variant="secondary" className="text-xs font-normal bg-amber-500/15 text-amber-700 dark:text-amber-400/90 border border-amber-500/30">
+                                Excluded
+                              </Badge>
+                            </TooltipTrigger>
+                            <TooltipContent side="top" className="max-w-sm">
+                              <p className="font-medium">Excluded from optimization</p>
+                              {workload.excludedReason ? (
+                                <p className="text-sm text-muted-foreground mt-0.5">{workload.excludedReason}</p>
+                              ) : (
+                                <p className="text-sm text-muted-foreground mt-0.5">This workload is not included in recommendations.</p>
+                              )}
+                            </TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
+                      )}
+                    </div>
                   </td>
                   <td className="font-mono text-sm tabular-nums text-right">{workload.replicas}</td>
                   <td className={`font-mono text-sm bg-muted/20 border-l border-b border-border ${index === 0 ? "border-t" : ""}`}>{workload.currentCpu}</td>

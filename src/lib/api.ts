@@ -64,6 +64,11 @@ export interface ContainerStats {
   simple_predictions_memory?: SimplePrediction;
 }
 
+export interface WorkloadStatMetadata {
+  excluded: boolean;
+  excluded_reason?: string;
+}
+
 export interface WorkloadStat {
   workload: string;
   kind: string;
@@ -84,6 +89,7 @@ export interface WorkloadStat {
     memory_request?: number;
     memory_limit?: number;
   }>;
+  metadata?: WorkloadStatMetadata;
 }
 
 export interface StatsResponse {
