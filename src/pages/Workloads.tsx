@@ -107,6 +107,22 @@ function formatTimeAgoShort(full: string): string {
   return full;
 }
 
+/** Renders short time (e.g. 5M, 2H, 1D) with the unit (m, h, d) in a smaller size. */
+function TimeAgoShort({ value }: { value: string }) {
+  const short = formatTimeAgoShort(value);
+  const match = short.match(/^(\d+)([MHD])$/);
+  if (match) {
+    const unit = match[2].toLowerCase();
+    return (
+      <>
+        <span>{match[1]}</span>
+        <span className="text-[0.65rem] align-sub opacity-90">{unit}</span>
+      </>
+    );
+  }
+  return <>{short}</>;
+}
+
 export default function Workloads() {
   const navigate = useNavigate();
   const { selectedClusterId } = useCluster();
@@ -1183,7 +1199,7 @@ export default function Workloads() {
                             <TooltipTrigger asChild>
                               <span className="inline-flex items-center gap-1 cursor-default" onClick={(e) => e.stopPropagation()}>
                                 <Clock className="h-3 w-3 shrink-0" />
-                                {formatTimeAgoShort(workload.lastUpdated)}
+                                <TimeAgoShort value={workload.lastUpdated} />
                               </span>
                             </TooltipTrigger>
                             <TooltipContent>
