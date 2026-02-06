@@ -5,6 +5,7 @@ import {
   RecommendationAnalysisItem,
   RecommendationAnalysisResponse,
   WorkloadOverrideInfo,
+  EXCLUDED_CODE_LABELS,
 } from './api';
 import { getCpuPricePerCorePerHour, getMemoryPricePerGbPerHour } from './pricing';
 
@@ -425,7 +426,12 @@ export function transformWorkloadStatToFrontend(
     priority: mapEvictionRankingToPriority(evictionRanking),
     hasRecommendations,
     excluded: stat.metadata?.excluded ?? false,
-    excludedReason: stat.metadata?.excluded_reason,
+    excludedReason:
+      Array.isArray(stat.metadata?.excluded_codes) && stat.metadata.excluded_codes.length > 0
+        ? stat.metadata.excluded_codes
+            .map((code) => EXCLUDED_CODE_LABELS[code] ?? code)
+            .join(", ")
+        : undefined,
   };
 }
 
@@ -964,6 +970,15 @@ export function getPodsForWorkload(
     }
   }
   return Array.from(pods).sort();
+}
+
+export function getNodeNameForPod(
+  analysis: RecommendationAnalysisItem[],
+  podName: string
+): string | undefined {
+  const items = Array.isArray(analysis) ? analysis : [];
+  const item = items.find((i) => i.pod_name === podName);
+  return item?.node_name;
 }
 
 export function getContainersForPod(

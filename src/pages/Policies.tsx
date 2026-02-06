@@ -358,7 +358,7 @@ export default function Policies() {
                   });
                 }}
               >
-                Save to browser storage
+                Save 
               </Button>
             </div>
           </div>

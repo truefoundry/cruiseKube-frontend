@@ -539,7 +539,7 @@ export default function Workloads() {
       "Cost ($/month)": {
         "Current (allocatable)": currentCostDollars,
         "Projected (unoptimised allocatable)": projectedCostDollars,
-        "Projected savings (capacity)": projectedSavingsFromCapacityDollars,
+        "Possible savings (capacity)": projectedSavingsFromCapacityDollars,
       },
     };
     console.log("[Workloads] Cost & projected calculations", log);
@@ -571,7 +571,7 @@ export default function Workloads() {
 
   const projectedSavingsTooltipContent = (
     <div className="space-y-3">
-      <p className="font-medium text-foreground">Projected Savings</p>
+      <p className="font-medium text-foreground">Possible Savings</p>
       <p className="text-xs text-muted-foreground">
         Net monthly savings: savings from downsizing overprovisioned workloads that have Cruise mode on, minus the monthly cost to apply reliability (upsize) recommendations. Shown value = Cruise-mode savings − reliability improvement cost.
       </p>
@@ -580,7 +580,7 @@ export default function Workloads() {
         <li>For each overprovisioned workload with Cruise mode on: Δ CPU = current − recommended (cores), Δ memory (GB) = (current − recommended) / 1024.</li>
         <li>Per workload hourly savings = Δ CPU × ${pricing.cpuPerCorePerHour}/hr + Δ memory (GB) × ${pricing.memoryPerGbPerHour}/hr.</li>
         <li>Per workload monthly = hourly × 720 hours. Cruise-mode total = sum over those workloads.</li>
-        <li>Projected Savings (shown) = Cruise-mode total − reliability improvement cost ($/month).</li>
+        <li>Possible Savings (shown) = Cruise-mode total − reliability improvement cost ($/month).</li>
       </ol>
       <p className="text-xs text-muted-foreground font-mono pt-1 border-t border-border/50">
         Shown = Σ (Cruise-mode Δ CPU × {pricing.cpuPerCorePerHour} + Δ memory GB × {pricing.memoryPerGbPerHour}) × 720 − reliability cost
@@ -625,7 +625,7 @@ export default function Workloads() {
         </div>
       </div>
 
-      {/* Row: Current cost, Projected Savings, Potential savings + Workload summary */}
+      {/* Row: Current cost, Possible Savings, Reliability improvement cost, Workload summary (right) */}
       <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
         {/* Current cost — same style as other cost cards (MetricCard layout) */}
         <div className="metric-card border-border">
@@ -671,7 +671,7 @@ export default function Workloads() {
           )}
         </div>
 
-        {/* Projected Savings — custom layout with centered percentage */}
+        {/* Possible Savings — custom layout with centered percentage */}
         {isLoadingMetrics ? (
           <div className="metric-card border-border">
             <div className="flex items-start justify-between">
@@ -690,7 +690,7 @@ export default function Workloads() {
             <div className="flex items-start justify-between flex-1 min-h-0">
               <div className="space-y-1 min-w-0 flex-1">
                 <div className="flex items-center gap-1.5">
-                  <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Projected Savings</p>
+                  <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Possible Savings</p>
                   <TooltipProvider>
                     <Tooltip>
                       <TooltipTrigger asChild>
@@ -727,73 +727,18 @@ export default function Workloads() {
           </div>
         )}
 
-        {/* Workload summary — spans 2 columns on lg */}
+        {/* Reliability improvement cost — own box */}
         {isLoadingMetrics ? (
-          <div className="metric-card border-border lg:col-span-2">
-            <Skeleton className="h-4 w-32 mb-3" />
-            <Skeleton className="h-4 w-full mb-2" />
-            <Skeleton className="h-4 w-full mb-2" />
-            <Skeleton className="h-4 w-full" />
+          <div className="metric-card border-border">
+            <Skeleton className="h-3 w-28 mb-2" />
+            <Skeleton className="h-8 w-20" />
           </div>
         ) : (
-          <div className="metric-card border-border lg:col-span-2">
-            <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground mb-2">Workload summary</p>
-            <div className="space-y-1.5 text-sm">
-              <div className="flex items-center justify-between gap-2">
-                <span className="font-medium text-foreground">Total workloads</span>
-                <span className="font-mono font-semibold tabular-nums">{asArray(workloads).length}</span>
-              </div>
-              <div className="flex items-center justify-between gap-2">
-                <span className="flex items-center gap-1 text-muted-foreground">
-                  Already optimized
-                  <TooltipProvider>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Info className="h-3 w-3 shrink-0 cursor-help" />
-                      </TooltipTrigger>
-                      <TooltipContent side="right" className="max-w-xs">
-                        <p>Workloads already at the recommended resource level (no change needed).</p>
-                      </TooltipContent>
-                    </Tooltip>
-                  </TooltipProvider>
-                </span>
-                <span className="font-mono tabular-nums">{Math.max(0, asArray(workloads).length - overviewMetrics.costOptimizedWorkloadsRecommendOnly - overviewMetrics.costOptimizedWorkloads)}</span>
-              </div>
-              <div className="flex items-center justify-between gap-2">
-                <span className="flex items-center gap-1 text-muted-foreground">
-                  Cost optimization (Cruise mode)
-                  <TooltipProvider>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Info className="h-3 w-3 shrink-0 cursor-help" />
-                      </TooltipTrigger>
-                      <TooltipContent side="right" className="max-w-xs">
-                        <p>Overprovisioned workloads with Cruise mode on: optimization applied automatically. Savings per month.</p>
-                      </TooltipContent>
-                    </Tooltip>
-                  </TooltipProvider>
-                </span>
-                <span className="font-mono tabular-nums">${overviewMetrics.realizedDollars.toLocaleString()}/mo · {overviewMetrics.costOptimizedWorkloads}</span>
-              </div>
-              <div className="flex items-center justify-between gap-2">
-                <span className="flex items-center gap-1 text-muted-foreground">
-                  Cost optimization (Recommend only)
-                  <TooltipProvider>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Info className="h-3 w-3 shrink-0 cursor-help" />
-                      </TooltipTrigger>
-                      <TooltipContent side="right" className="max-w-xs">
-                        <p>Overprovisioned workloads in Recommend-only mode. Potential savings if recommendations are applied.</p>
-                      </TooltipContent>
-                    </Tooltip>
-                  </TooltipProvider>
-                </span>
-                <span className="font-mono tabular-nums">${overviewMetrics.unrealizedDollars.toLocaleString()}/mo · {overviewMetrics.costOptimizedWorkloadsRecommendOnly}</span>
-              </div>
-              <div className="flex items-center justify-between gap-2">
-                <span className="flex items-center gap-1 text-muted-foreground">
-                  Reliability improvement cost
+          <div className="metric-card border-border">
+            <div className="flex items-start justify-between gap-2">
+              <div className="space-y-1 min-w-0">
+                <div className="flex items-center gap-1.5">
+                  <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Reliability improvement cost</p>
                   <TooltipProvider>
                     <Tooltip>
                       <TooltipTrigger asChild>
@@ -804,8 +749,83 @@ export default function Workloads() {
                       </TooltipContent>
                     </Tooltip>
                   </TooltipProvider>
+                </div>
+                <p className="font-mono text-2xl font-semibold tracking-tight text-foreground">
+                  ${overviewMetrics.reliabilityIncreaseCost.dollars.toLocaleString()}
+                  <span className="text-sm font-normal text-muted-foreground ml-1">/month</span>
+                </p>
+                <p className="text-sm text-muted-foreground">{overviewMetrics.reliabilityIssues} workload{overviewMetrics.reliabilityIssues !== 1 ? "s" : ""} underprovisioned</p>
+              </div>
+              <div className="rounded-lg bg-muted/50 p-2 text-muted-foreground shrink-0">
+                <DollarSign className="h-5 w-5" />
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Workload summary — right most */}
+        {isLoadingMetrics ? (
+          <div className="metric-card border-border">
+            <Skeleton className="h-4 w-32 mb-3" />
+            <Skeleton className="h-4 w-full mb-2" />
+            <Skeleton className="h-4 w-full mb-2" />
+            <Skeleton className="h-4 w-full" />
+          </div>
+        ) : (
+          <div className="metric-card border-border">
+            <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground mb-2">Workload summary</p>
+            <div className="space-y-1.5 text-sm">
+              <div className="flex items-center justify-between gap-2">
+                <span className="font-medium text-foreground">Total</span>
+                <span className="font-mono font-semibold tabular-nums">{asArray(workloads).length}</span>
+              </div>
+              <div className="flex items-center justify-between gap-2">
+                <span className="flex items-center gap-1 text-muted-foreground">
+                  Skipped Workloads
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Info className="h-3 w-3 shrink-0 cursor-help" />
+                      </TooltipTrigger>
+                      <TooltipContent side="left" className="max-w-xs">
+                        <p>Workloads already at the recommended resource level (no change needed).</p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
                 </span>
-                <span className="font-mono tabular-nums">${overviewMetrics.reliabilityIncreaseCost.dollars.toLocaleString()}/mo · {overviewMetrics.reliabilityIssues}</span>
+                <span className="font-mono tabular-nums">{Math.max(0, asArray(workloads).length - overviewMetrics.costOptimizedWorkloadsRecommendOnly - overviewMetrics.costOptimizedWorkloads)}</span>
+              </div>
+              <div className="flex items-center justify-between gap-2">
+                <span className="flex items-center gap-1 text-muted-foreground">
+                  Cruise mode
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Info className="h-3 w-3 shrink-0 cursor-help" />
+                      </TooltipTrigger>
+                      <TooltipContent side="left" className="max-w-xs">
+                        <p>Overprovisioned workloads with Cruise mode on: optimization applied automatically. Savings per month.</p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                </span>
+                <span className="font-mono tabular-nums">${overviewMetrics.realizedDollars.toLocaleString()}/mo · {overviewMetrics.costOptimizedWorkloads}</span>
+              </div>
+              <div className="flex items-center justify-between gap-2">
+                <span className="flex items-center gap-1 text-muted-foreground">
+                  Recommend only
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Info className="h-3 w-3 shrink-0 cursor-help" />
+                      </TooltipTrigger>
+                      <TooltipContent side="left" className="max-w-xs">
+                        <p>Overprovisioned workloads in Recommend-only mode. Potential savings if recommendations are applied.</p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                </span>
+                <span className="font-mono tabular-nums">${overviewMetrics.unrealizedDollars.toLocaleString()}/mo · {overviewMetrics.costOptimizedWorkloadsRecommendOnly}</span>
               </div>
             </div>
           </div>
@@ -1034,7 +1054,7 @@ export default function Workloads() {
                   onClick={(e) => { e.stopPropagation(); handleSort("potentialDollars"); }}
                 >
                   <div className="flex items-center gap-1">
-                  Projected Saving/M
+                  Possible Saving/M
                     {sortColumn === "potentialDollars" && (sortDirection === "asc" ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />)}
                     <TooltipProvider>
                       <Tooltip>
@@ -1067,27 +1087,27 @@ export default function Workloads() {
                     </TooltipProvider>
                   </div>
                 </th>
+                <th rowSpan={2}
+                  className="cursor-pointer select-none hover:bg-muted/50 transition-colors align-top pt-4"
+                  onClick={(e) => { e.stopPropagation(); handleSort("mode"); }}
+                >
+                  <div className="flex items-center gap-1">
+                    Mode
+                    {sortColumn === "mode" && (sortDirection === "asc" ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />)}
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger asChild onClick={(e) => e.stopPropagation()}>
+                          <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          <p className="max-w-xs">Enables auto-apply of recommendations. When Cruise is enabled, CruiseKube will automatically apply resource recommendations.</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                  </div>
+                </th>
                 {verbose && (
                   <>
-                    <th rowSpan={2}
-                      className="cursor-pointer select-none hover:bg-muted/50 transition-colors align-top pt-4"
-                      onClick={(e) => { e.stopPropagation(); handleSort("mode"); }}
-                    >
-                      <div className="flex items-center gap-1">
-                        Mode
-                        {sortColumn === "mode" && (sortDirection === "asc" ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />)}
-                        <TooltipProvider>
-                          <Tooltip>
-                            <TooltipTrigger asChild onClick={(e) => e.stopPropagation()}>
-                              <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
-                            </TooltipTrigger>
-                            <TooltipContent>
-                              <p className="max-w-xs">Enables auto-apply of recommendations. When Cruise is enabled, CruiseKube will automatically apply resource recommendations.</p>
-                            </TooltipContent>
-                          </Tooltip>
-                        </TooltipProvider>
-                      </div>
-                    </th>
                     <th rowSpan={2}
                       className="cursor-pointer select-none hover:bg-muted/50 transition-colors align-top pt-4"
                       onClick={(e) => { e.stopPropagation(); handleSort("priority"); }}
@@ -1172,19 +1192,20 @@ export default function Workloads() {
               {asArray(sortedWorkloads).map((workload, index) => (
                 <tr 
                   key={workload.id} 
-                  className={`group cursor-pointer transition-colors ${
+                  className={`group transition-colors ${
                     workload.excluded
-                      ? "bg-muted/40 hover:bg-muted/50 border-l-2 border-l-amber-500 dark:border-l-amber-400"
-                      : "hover:bg-muted/50"
+                      ? "opacity-60 bg-muted/50 border-l-2 border-l-muted-foreground/40 cursor-not-allowed hover:bg-muted/50"
+                      : "cursor-pointer hover:bg-muted/50"
                   }`}
                   onClick={(e) => {
                     e.preventDefault();
                     e.stopPropagation();
-                    navigate(`/workloads/${workload.namespace}/${workload.workload}`);
+                    if (!workload.excluded) navigate(`/workloads/${workload.namespace}/${workload.workload}`);
                   }}
                   role="button"
                   tabIndex={0}
                   onKeyDown={(e) => {
+                    if (workload.excluded) return;
                     if (e.key === 'Enter' || e.key === ' ') {
                       e.preventDefault();
                       navigate(`/workloads/${workload.namespace}/${workload.workload}`);
@@ -1215,26 +1236,19 @@ export default function Workloads() {
                   )}
                   <td className="font-mono text-xs">{workload.namespace}</td>
                   <td>
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className={`font-medium ${workload.excluded ? "text-muted-foreground" : ""}`}>{workload.workload}</span>
+                    <div className="flex flex-col gap-0.5">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className={`font-medium ${workload.excluded ? "text-muted-foreground" : ""}`}>{workload.workload}</span>
+                        {workload.excluded && (
+                          <Badge variant="secondary" className="text-xs font-normal bg-muted text-muted-foreground border border-border">
+                            Excluded
+                          </Badge>
+                        )}
+                      </div>
                       {workload.excluded && (
-                        <TooltipProvider>
-                          <Tooltip>
-                            <TooltipTrigger asChild onClick={(e) => e.stopPropagation()}>
-                              <Badge variant="secondary" className="text-xs font-normal bg-amber-500/15 text-amber-700 dark:text-amber-400/90 border border-amber-500/30">
-                                Excluded
-                              </Badge>
-                            </TooltipTrigger>
-                            <TooltipContent side="top" className="max-w-sm">
-                              <p className="font-medium">Excluded from optimization</p>
-                              {workload.excludedReason ? (
-                                <p className="text-sm text-muted-foreground mt-0.5">{workload.excludedReason}</p>
-                              ) : (
-                                <p className="text-sm text-muted-foreground mt-0.5">This workload is not included in recommendations.</p>
-                              )}
-                            </TooltipContent>
-                          </Tooltip>
-                        </TooltipProvider>
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                          {workload.excludedReason || "Excluded from optimization"}
+                        </p>
                       )}
                     </div>
                   </td>
@@ -1247,15 +1261,15 @@ export default function Workloads() {
                   <td className={`font-mono text-sm bg-muted/20 border-r border-b border-border ${workload.potentialMem.startsWith("+") ? "text-amber-600 dark:text-amber-400" : ""} ${index === 0 ? "border-t" : ""}`}>{workload.potentialMem === "0Mi" ? "—" : workload.potentialMem}</td>
                   <td className="font-mono text-sm text-primary">{workload.potentialDollars === 0 ? "—" : `$${workload.potentialDollars.toFixed(2)}`}</td>
                   <td className="font-mono text-sm">{workload.reliabilityCostDollars > 0 ? `$${workload.reliabilityCostDollars.toFixed(2)}` : "—"}</td>
+                  <td>
+                    <span className={`text-xs font-medium ${
+                      workload.mode === "enabled" ? "text-success" : "text-muted-foreground"
+                    }`}>
+                      {workload.mode === "enabled" ? "Cruise" : "Recommend"}
+                    </span>
+                  </td>
                   {verbose && (
                     <>
-                      <td>
-                        <span className={`text-xs font-medium ${
-                          workload.mode === "enabled" ? "text-success" : "text-muted-foreground"
-                        }`}>
-                          {workload.mode === "enabled" ? "Cruise" : "Recommend"}
-                        </span>
-                      </td>
                       <td>
                         <span className={`text-xs font-medium capitalize ${getPriorityColor(workload.priority)}`}>
                           {workload.priority}

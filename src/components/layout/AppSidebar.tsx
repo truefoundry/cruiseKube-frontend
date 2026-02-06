@@ -35,7 +35,12 @@ export function AppSidebar() {
           </div>
           {!isCollapsed && (
             <div className="flex flex-col min-w-0">
-              <span className="font-semibold text-sidebar-accent-foreground truncate">CruiseKube</span>
+              <div className="flex items-center gap-2">
+                <span className="font-semibold text-sidebar-accent-foreground truncate">CruiseKube</span>
+                <span className="shrink-0 rounded bg-sidebar-accent px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-sidebar-accent-foreground/80">
+                  Beta
+                </span>
+              </div>
               <span className="text-xs text-sidebar-foreground">K8s Optimizer</span>
             </div>
           )}

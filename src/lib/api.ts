@@ -45,6 +45,11 @@ export interface ContainerStats {
     p50: number;
     p75: number;
   };
+  psi_adjusted_usage?: {
+    max: number;
+    p50: number;
+    p75: number;
+  };
   memory_stats?: {
     max: number;
     p75: number;
@@ -64,9 +69,36 @@ export interface ContainerStats {
   simple_predictions_memory?: SimplePrediction;
 }
 
+/** Known exclusion reason codes from the backend. */
+export const EXCLUDED_CODES = {
+  GPU_WORKLOAD: "GPU_WORKLOAD",
+  MEMORY_HPA: "MEMORY_HPA",
+  CPU_HPA: "CPU_HPA",
+} as const;
+export type ExcludedCode = (typeof EXCLUDED_CODES)[keyof typeof EXCLUDED_CODES];
+
+/** Human-readable labels for excluded codes. Unknown codes are shown as-is. */
+export const EXCLUDED_CODE_LABELS: Record<string, string> = {
+  [EXCLUDED_CODES.GPU_WORKLOAD]: "GPU workload",
+  [EXCLUDED_CODES.MEMORY_HPA]: "Memory HPA",
+  [EXCLUDED_CODES.CPU_HPA]: "CPU HPA",
+};
+
 export interface WorkloadStatMetadata {
   excluded: boolean;
-  excluded_reason?: string;
+  /** Known values: GPU_WORKLOAD, MEMORY_HPA, CPU_HPA */
+  excluded_codes?: string[];
+}
+
+export interface WorkloadStatConstraints {
+  blocking: boolean;
+  pdb: boolean;
+  do_not_disrupt_annotation: boolean;
+  volume: boolean;
+  affinity: boolean;
+  topology_spread_constraint: boolean;
+  pod_anti_affinity: boolean;
+  excluded_annotation: boolean;
 }
 
 export interface WorkloadStat {
@@ -78,6 +110,8 @@ export interface WorkloadStat {
   updated_at: string;
   continuous_optimization: boolean;
   is_horizontally_autoscaled_on_cpu: boolean;
+  is_horizontally_autoscaled_on_memory: boolean;
+  constraints?: WorkloadStatConstraints;
   eviction_ranking: number;
   replicas: number;
   container_stats: ContainerStats[];
