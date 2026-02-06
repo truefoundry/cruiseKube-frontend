@@ -705,7 +705,7 @@ export default function Workloads() {
                   </TooltipProvider>
                 </div>
                 <p className="font-mono text-2xl font-semibold tracking-tight text-foreground">
-                  ${(overviewMetrics.realizedDollars - overviewMetrics.reliabilityIncreaseCost.dollars).toLocaleString()}
+                  ${(overviewMetrics.realizedDollars + overviewMetrics.unrealizedDollars).toLocaleString()}
                   <span className="text-sm font-normal text-muted-foreground ml-1">/month</span>
                 </p>
               </div>
@@ -715,7 +715,7 @@ export default function Workloads() {
             </div>
             <p className="text-sm text-muted-foreground text-center w-full mt-1 pt-1 border-t border-border/50">
               {projectedCostDollars > 0 ? (
-                <span className="font-medium text-foreground">{projectedSavingsPct(overviewMetrics.realizedDollars - overviewMetrics.reliabilityIncreaseCost.dollars)}% of projected cost</span>
+                <span className="font-medium text-foreground">{projectedSavingsPct(overviewMetrics.realizedDollars + overviewMetrics.unrealizedDollars)}% of projected cost</span>
               ) : (
                 "Per month savings"
               )}
