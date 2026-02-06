@@ -781,7 +781,7 @@ export default function Workloads() {
               </div>
               <div className="flex items-center justify-between gap-2">
                 <span className="flex items-center gap-1 text-muted-foreground">
-                  Skipped Workloads
+                  Skipped 
                   <TooltipProvider>
                     <Tooltip>
                       <TooltipTrigger asChild>
@@ -797,7 +797,7 @@ export default function Workloads() {
               </div>
               <div className="flex items-center justify-between gap-2">
                 <span className="flex items-center gap-1 text-muted-foreground">
-                  Cruise mode
+                  Optimized 
                   <TooltipProvider>
                     <Tooltip>
                       <TooltipTrigger asChild>
@@ -813,7 +813,7 @@ export default function Workloads() {
               </div>
               <div className="flex items-center justify-between gap-2">
                 <span className="flex items-center gap-1 text-muted-foreground">
-                  Recommend only
+                  Recommended 
                   <TooltipProvider>
                     <Tooltip>
                       <TooltipTrigger asChild>
