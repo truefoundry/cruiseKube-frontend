@@ -5,6 +5,7 @@ import {
   RecommendationAnalysisItem,
   RecommendationAnalysisResponse,
   WorkloadOverrideInfo,
+  EXCLUDED_CODES,
   EXCLUDED_CODE_LABELS,
 } from './api';
 import { getCpuPricePerCorePerHour, getMemoryPricePerGbPerHour } from './pricing';
@@ -104,6 +105,10 @@ export interface OverviewMetrics {
   totalSavedPerHour: number;
   realizedDollars: number;
   unrealizedDollars: number;
+  /** Original container requested from stats (cluster-wide). CPU in cores, memory in GB. */
+  requestedFromStats: { cpu: number; memoryGB: number };
+  /** Recommended requested from stats (cluster-wide). CPU in cores, memory in GB. */
+  recommendedFromStats: { cpu: number; memoryGB: number };
 }
 
 export interface WastefulWorkload {
@@ -590,6 +595,8 @@ export function transformStatsToOverviewMetrics(
       totalSavedPerHour: 0,
       realizedDollars: 0,
       unrealizedDollars: 0,
+      requestedFromStats: { cpu: 0, memoryGB: 0 },
+      recommendedFromStats: { cpu: 0, memoryGB: 0 },
     };
   }
 
@@ -619,8 +626,18 @@ export function transformStatsToOverviewMetrics(
   let costOptimizedWorkloads = 0;
   /** Per-workload waste percentage for optimization score (100 − avg). */
   const wastePercentages: number[] = [];
+  /** Cluster-wide totals from stats: original container requested and recommended requested (for Workload/Optimized cost). */
+  let totalRequestedCpuFromStats = 0;
+  let totalRequestedMemoryMBFromStats = 0;
+  let totalRecommendedCpuFromStats = 0;
+  let totalRecommendedMemoryMBFromStats = 0;
+  /** Number of stats that are not GPU-excluded (for coverage denominator). */
+  let nonGpuStatsCount = 0;
 
   for (const stat of stats) {
+    /** Do not count or consider stats for workloads excluded due to GPU. */
+    const isGpuExcluded = stat.metadata?.excluded_codes?.includes(EXCLUDED_CODES.GPU_WORKLOAD) ?? false;
+
     /** Composite workload id used for override lookup. */
     const workloadId = stat.workload;
     /** User override for this workload, if any. */
@@ -668,7 +685,7 @@ export function transformStatsToOverviewMetrics(
       }
     }
 
-    if (hasRecommendations) {
+    if (hasRecommendations && !isGpuExcluded) {
       workloadsWithRecommendations++;
     }
 
@@ -744,28 +761,36 @@ export function transformStatsToOverviewMetrics(
       // potentialMemoryDiff =  workloadCurrentMemory - workloadRecommendedMemory;
     }
 
-    if (workloadTotalRecommendedCpu > workloadTotalCurrentCpu || workloadTotalRecommendedMemory > workloadTotalCurrentMemory) {
-      reliabilityIssues++;
-      totalReliabilityCpu += Math.max(0, workloadTotalRecommendedCpu - workloadTotalCurrentCpu);
-      totalReliabilityMemoryMB += Math.max(0, workloadTotalRecommendedMemory - workloadTotalCurrentMemory);
-    }
-
-    if (workloadTotalRecommendedCpu < workloadTotalCurrentCpu || workloadTotalRecommendedMemory < workloadTotalCurrentMemory) {
-      if (!enabled) {
-        costOptimizedWorkloadsRecommendOnly++;
-      } else {
-        costOptimizedWorkloads++;
+    if (!isGpuExcluded) {
+      if (workloadTotalRecommendedCpu > workloadTotalCurrentCpu || workloadTotalRecommendedMemory > workloadTotalCurrentMemory) {
+        reliabilityIssues++;
+        totalReliabilityCpu += Math.max(0, workloadTotalRecommendedCpu - workloadTotalCurrentCpu);
+        totalReliabilityMemoryMB += Math.max(0, workloadTotalRecommendedMemory - workloadTotalCurrentMemory);
       }
-    }
 
-    const potentialMemoryGB = potentialMemoryDiff / 1024;
+      if (workloadTotalRecommendedCpu < workloadTotalCurrentCpu || workloadTotalRecommendedMemory < workloadTotalCurrentMemory) {
+        if (!enabled) {
+          costOptimizedWorkloadsRecommendOnly++;
+        } else {
+          costOptimizedWorkloads++;
+        }
+      }
 
-    totalPotentialCpu += potentialCpuDiff;
-    totalPotentialMemory += potentialMemoryGB;
+      const potentialMemoryGB = potentialMemoryDiff / 1024;
+      totalPotentialCpu += potentialCpuDiff;
+      totalPotentialMemory += potentialMemoryGB;
 
-    if (enabled) {
-      totalRealizedCpu += potentialCpuDiff;
-      totalRealizedMemory += potentialMemoryGB;
+      totalRequestedCpuFromStats += workloadTotalCurrentCpu;
+      totalRequestedMemoryMBFromStats += workloadTotalCurrentMemory;
+      totalRecommendedCpuFromStats += workloadTotalRecommendedCpu;
+      totalRecommendedMemoryMBFromStats += workloadTotalRecommendedMemory;
+
+      if (enabled) {
+        totalRealizedCpu += potentialCpuDiff;
+        totalRealizedMemory += potentialMemoryGB;
+      }
+
+      nonGpuStatsCount++;
     }
   }
 
@@ -775,8 +800,8 @@ export function transformStatsToOverviewMetrics(
     : 0;
   const optimizationScore = Math.max(0, Math.round(100 - avgWaste));
 
-  /** Percentage of workloads that have at least one recommendation. */
-  const coverage = Math.round((workloadsWithRecommendations / stats.length) * 100);
+  /** Percentage of non-GPU workloads that have at least one recommendation. */
+  const coverage = nonGpuStatsCount > 0 ? Math.round((workloadsWithRecommendations / nonGpuStatsCount) * 100) : 0;
 
   /** Monthly potential savings (all workloads) and realized savings (optimization enabled only). */
   const potentialDollars = calculateDollarSavings(totalPotentialCpu, totalPotentialMemory);
@@ -809,6 +834,14 @@ export function transformStatsToOverviewMetrics(
     totalSavedPerHour: realizedDollars,
     realizedDollars,
     unrealizedDollars: potentialDollars - realizedDollars,
+    requestedFromStats: {
+      cpu: Math.round(totalRequestedCpuFromStats * 100) / 100,
+      memoryGB: Math.round((totalRequestedMemoryMBFromStats / 1024) * 100) / 100,
+    },
+    recommendedFromStats: {
+      cpu: Math.round(totalRecommendedCpuFromStats * 100) / 100,
+      memoryGB: Math.round((totalRecommendedMemoryMBFromStats / 1024) * 100) / 100,
+    },
   };
 }
 

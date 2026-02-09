@@ -43,11 +43,15 @@ export function getMemoryPricePerGbPerHour(): number {
 /** Get both prices at once (consistent snapshot). */
 export function getResourcePricing(): ResourcePricing {
   const stored = readFromStorage();
-  stored.cpuPerCorePerHour = stored.cpuPerCorePerHour / 2;
-  stored.memoryPerGbPerHour = stored.memoryPerGbPerHour / 2;
-  return stored ?? {
-    cpuPerCorePerHour: DEFAULT_CPU_PER_CORE_PER_HOUR / 2,
-    memoryPerGbPerHour: DEFAULT_MEMORY_PER_GB_PER_HOUR / 2,
+  if (!stored) {
+    return {
+      cpuPerCorePerHour: DEFAULT_CPU_PER_CORE_PER_HOUR / 2,
+      memoryPerGbPerHour: DEFAULT_MEMORY_PER_GB_PER_HOUR / 2,
+    };
+  }
+  return {
+    cpuPerCorePerHour: stored.cpuPerCorePerHour / 2,
+    memoryPerGbPerHour: stored.memoryPerGbPerHour / 2,
   };
 }
 
