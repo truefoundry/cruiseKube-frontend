@@ -10,7 +10,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useQuery } from "@tanstack/react-query";
 import { useCluster } from "@/contexts/ClusterContext";
 import { apiClient } from "@/lib/api";
-import { transformWorkloadStatToFrontend, getPodsForWorkload, getContainersForPod, FrontendContainerRecommendation } from "@/lib/transformers";
+import { transformWorkloadStatToFrontend, getPodsForWorkload, getContainersForPod, getNodeNameForPod, FrontendContainerRecommendation } from "@/lib/transformers";
 import { asArray } from "@/lib/utils";
 
 export default function WorkloadDetail() {
@@ -202,6 +202,7 @@ export default function WorkloadDetail() {
             <thead>
               <tr>
                 <th>Pod</th>
+                <th>Node</th>
                 <th>Container Name</th>
                 <th>CPU Request</th>
                 <th>CPU Recommended</th>
@@ -212,24 +213,27 @@ export default function WorkloadDetail() {
             <tbody>
               {pods.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="text-center text-muted-foreground py-8">
+                  <td colSpan={7} className="text-center text-muted-foreground py-8">
                     No pods found for this workload
                   </td>
                 </tr>
               ) : (
                 asArray(pods).map((podName) => {
                   const containerRecommendations = getContainerRecommendations(podName);
-                  
+                  const nodeName = recommendationAnalysis?.analysis
+                    ? getNodeNameForPod(recommendationAnalysis.analysis, podName)
+                    : undefined;
                   return (
                     <>
                       <tr key={`pod-${podName}`} className="bg-muted/50">
-                        <td colSpan={6} className="font-mono text-sm font-medium py-2 px-4">
-                          {podName}
-                        </td>
+                        <td className="font-mono text-sm font-medium py-2 px-4">{podName}</td>
+                        <td className="font-mono text-xs text-muted-foreground py-2 px-4">{nodeName ?? "—"}</td>
+                        <td colSpan={5}></td>
                       </tr>
                       {asArray(containerRecommendations).length > 0 ? (
                         asArray(containerRecommendations).map((container) => (
                           <tr key={`${podName}-${container.container}`}>
+                            <td></td>
                             <td></td>
                             <td className="font-medium">{container.container}</td>
                             <td className="font-mono text-sm">{container.cpuRequest}</td>
@@ -240,7 +244,7 @@ export default function WorkloadDetail() {
                         ))
                       ) : (
                         <tr key={`${podName}-empty`}>
-                          <td colSpan={6} className="text-muted-foreground text-sm py-2 px-4">
+                          <td colSpan={7} className="text-muted-foreground text-sm py-2 px-4">
                             No containers found
                           </td>
                         </tr>

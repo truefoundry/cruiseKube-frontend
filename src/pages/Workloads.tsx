@@ -32,6 +32,7 @@ import {
   OverviewMetrics,
   calculateDollarSavings
 } from "@/lib/transformers";
+import { getResourcePricing, getCpuPricePerCorePerHour, getMemoryPricePerGbPerHour } from "@/lib/pricing";
 import { MetricCard } from "@/components/ui/metric-card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
@@ -49,6 +50,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { asArray } from "@/lib/utils";
@@ -103,6 +105,22 @@ function formatTimeAgoShort(full: string): string {
   const dayMatch = full.match(/^(\d+)\s*days?\s*ago$/i);
   if (dayMatch) return `${dayMatch[1]}D`;
   return full;
+}
+
+/** Renders short time (e.g. 5M, 2H, 1D) with the unit (m, h, d) in a smaller size. */
+function TimeAgoShort({ value }: { value: string }) {
+  const short = formatTimeAgoShort(value);
+  const match = short.match(/^(\d+)([MHD])$/);
+  if (match) {
+    const unit = match[2].toLowerCase();
+    return (
+      <>
+        <span>{match[1]}</span>
+        <span className="text-[0.65rem] align-sub opacity-90">{unit}</span>
+      </>
+    );
+  }
+  return <>{short}</>;
 }
 
 export default function Workloads() {
@@ -460,6 +478,8 @@ export default function Workloads() {
     totalSavedPerHour: 0,
     realizedDollars: 0,
     unrealizedDollars: 0,
+    requestedFromStats: { cpu: 0, memoryGB: 0 },
+    recommendedFromStats: { cpu: 0, memoryGB: 0 },
   };
 
   if (statsData) {
@@ -471,288 +491,404 @@ export default function Workloads() {
   /** True when cluster has no stats/workload data to show. */
   const hasNoData = !isLoadingMetrics && (statsData?.stats == null || (Array.isArray(statsData?.stats) && statsData.stats.length === 0));
 
-  /** Monthly cost from allocatable CPU + memory (used for Current cost card and savings % vs current cost). */
-  const currentCostDollars =
-    clusterMetrics?.cpuAllocatable != null && clusterMetrics?.memoryAllocatable != null
-      ? calculateDollarSavings(Number(clusterMetrics.cpuAllocatable), Number(clusterMetrics.memoryAllocatable))
-      : 0;
-  /** Projected cost based on request: 2× total requested CPU, 2.5× total requested memory (monthly). */
-  const projectedCostDollars =
-    clusterMetrics?.cpuRequested != null && clusterMetrics?.memoryRequested != null
-      ? calculateDollarSavings(
-          Number(clusterMetrics.cpuRequested) * 2,
-          Number(clusterMetrics.memoryRequested) * 2.5
-        )
-      : 0;
-  /** Projected savings % uses projected cost (request-based) as denominator. */
-  const projectedSavingsPct =
-    projectedCostDollars > 0
-      ? (dollars: number) => ((dollars / projectedCostDollars) * 100).toFixed(1)
-      : () => "—";
+  /** Cost calculations: allocatable, workload (requested), optimized (recommended) — used for the 3 top cards and tooltips. */
+  const {
+    currentCostDollars,
+    workloadCostDollars,
+    optimizedCostDollars,
+    currentSavingsDollars,
+    possibleSavingsDollars,
+    possibleSavingsPctOfWorkload,
+    costInputs: costInputsForTooltip,
+  } = (() => {
+    const cpuRequested = Number(clusterMetrics?.cpuRequested ?? 0);
+    const cpuAllocatable = Number(clusterMetrics?.cpuAllocatable ?? 0);
+    const memRequested = Number(clusterMetrics?.memoryRequested ?? 0);
+    const memAllocatable = Number(clusterMetrics?.memoryAllocatable ?? 0);
 
-  const costTooltipContent = (
-    <div className="space-y-3">
-      <p className="font-medium text-foreground">How current cost is calculated</p>
+    const hasRequested = clusterMetrics?.cpuRequested != null && clusterMetrics?.memoryRequested != null;
+    const hasAllocatable = clusterMetrics?.cpuAllocatable != null && clusterMetrics?.memoryAllocatable != null;
+
+    /** Req_alloc_ratio = prom_requested / prom_allocatable (per resource). Avoid div by zero: use 1 if allocatable is 0. */
+    const reqAllocRatioCpu = cpuAllocatable > 0 ? cpuRequested / cpuAllocatable : 1;
+    const reqAllocRatioMem = memAllocatable > 0 ? memRequested / memAllocatable : 1;
+
+    const hoursPerMonth = 720;
+    const cpuPrice = getCpuPricePerCorePerHour();
+    const memPrice = getMemoryPricePerGbPerHour();
+
+    /** Original container requested from stats (cluster-wide). */
+    const requestedCpuFromStats = overviewMetrics.requestedFromStats.cpu;
+    const requestedMemGBFromStats = overviewMetrics.requestedFromStats.memoryGB;
+    /** Recommended requested from stats (cluster-wide). */
+    const recommendedCpuFromStats = overviewMetrics.recommendedFromStats.cpu;
+    const recommendedMemGBFromStats = overviewMetrics.recommendedFromStats.memoryGB;
+
+    /** Current cost: allocatable × cost (CPU + Memory). */
+    const currentCostDollars = hasAllocatable
+      ? calculateDollarSavings(cpuAllocatable, memAllocatable)
+      : 0;
+
+    /** Workload cost = (Original Container Requested from stats / Req_alloc_ratio) × CostPerUnit. */
+    const workloadCostDollars =
+      Math.round(
+        ((requestedCpuFromStats / reqAllocRatioCpu) * cpuPrice +
+          (requestedMemGBFromStats / reqAllocRatioMem) * memPrice) *
+          hoursPerMonth *
+          100
+      ) / 100;
+
+    /** Optimized cost = (recommended Requested from stats / Req_alloc_ratio) × CostPerUnit. */
+    const optimizedCostDollars =
+      Math.round(
+        ((recommendedCpuFromStats / reqAllocRatioCpu) * cpuPrice +
+          (recommendedMemGBFromStats / reqAllocRatioMem) * memPrice) *
+          hoursPerMonth *
+          100
+      ) / 100;
+
+    /** Current savings: workload cost − current cost. */
+    const currentSavingsDollars = workloadCostDollars - currentCostDollars;
+
+    /** Possible savings: workload cost − optimized cost. */
+    const possibleSavingsDollars = workloadCostDollars - optimizedCostDollars;
+
+    /** Possible savings as % of workload cost (shown under Possible Savings card). */
+    const possibleSavingsPctOfWorkload =
+      workloadCostDollars > 0
+        ? (possibleSavingsDollars / workloadCostDollars) * 100
+        : 0;
+
+    console.log("[Workloads] Cost calculations", {
+      inputs: {
+        cpuRequested,
+        cpuAllocatable,
+        memRequested,
+        memAllocatable,
+        requestedFromStats: { cpu: requestedCpuFromStats, memoryGB: requestedMemGBFromStats },
+        recommendedFromStats: { cpu: recommendedCpuFromStats, memoryGB: recommendedMemGBFromStats },
+      },
+      req_alloc_ratio: {
+        reqAllocRatioCpu,
+        reqAllocRatioMem,
+      },
+      derived: {
+        recommendedCpuFromStats,
+        recommendedMemGBFromStats,
+      },
+      costs: {
+        currentCostDollars,
+        workloadCostDollars,
+        optimizedCostDollars,
+      },
+      savings: {
+        currentSavingsDollars,
+        possibleSavingsDollars,
+        possibleSavingsPctOfWorkload: `${possibleSavingsPctOfWorkload.toFixed(1)}%`,
+      },
+    });
+
+    return {
+      currentCostDollars,
+      workloadCostDollars,
+      optimizedCostDollars,
+      currentSavingsDollars,
+      possibleSavingsDollars,
+      possibleSavingsPctOfWorkload,
+      costInputs: {
+        cpuRequested,
+        cpuAllocatable,
+        memRequested,
+        memAllocatable,
+        optCpu: recommendedCpuFromStats,
+        optMem: recommendedMemGBFromStats,
+        requestedCpuFromStats,
+        requestedMemGBFromStats,
+        recommendedCpuFromStats,
+        recommendedMemGBFromStats,
+        reqAllocRatioCpu,
+        reqAllocRatioMem,
+        potentialSavingsCpu: overviewMetrics.potentialSavings.cpu,
+        potentialSavingsMemory: overviewMetrics.potentialSavings.memory,
+      },
+    };
+  })();
+
+  const pricing = getResourcePricing();
+  const isDev = import.meta.env.DEV;
+  const {
+    cpuAllocatable,
+    cpuRequested,
+    memAllocatable,
+    memRequested,
+    optCpu,
+    optMem,
+    reqAllocRatioCpu = 1,
+    reqAllocRatioMem = 1,
+  } = costInputsForTooltip ?? {
+    cpuAllocatable: 0,
+    cpuRequested: 0,
+    memAllocatable: 0,
+    memRequested: 0,
+    optCpu: 0,
+    optMem: 0,
+  };
+
+  const currentCostTooltipContent = (
+    <div className="space-y-3 text-left">
+      <p className="font-medium text-foreground">Current cost</p>
       <p className="text-xs text-muted-foreground">
-        Monthly cost = (allocatable CPU cores × $0.029/hr + allocatable memory in GB × $0.0075/hr) × 720 hours per month.
-        Uses cluster-wide allocatable resources from Prometheus (not requested or recommendations).
+        Algorithm: (allocatable CPU cores × CPU $/hr + allocatable memory GB × memory $/hr) × 720 hours/month. Prices are from Policies → Resource Pricing.
       </p>
-      <p className="font-medium text-foreground text-xs pt-1 border-t border-border">Assumptions</p>
-      <ul className="text-xs text-muted-foreground space-y-1 list-disc list-inside">
-        <li>If a workload ran in the last 24 hours, we assume it will run continuously for the next 1 month.</li>
-        <li>Current workload config is assumed to remain static for the next 1 month.</li>
-        <li>Allocatable depends on node provisioning (partially out of scope for CruiseKube); we assume allocatable/requested to remain constant in the optimisation process.</li>
-      </ul>
+      {isDev && (
+        <>
+          <p className="text-xs font-medium text-foreground pt-1 border-t border-border">Values used</p>
+          <ul className="text-xs text-muted-foreground space-y-0.5 font-mono">
+            <li>CPU allocatable: {cpuAllocatable.toFixed(2)} cores</li>
+            <li>Memory allocatable: {memAllocatable.toFixed(2)} GB</li>
+            <li>CPU price: ${pricing.cpuPerCorePerHour}/hr</li>
+            <li>Memory price: ${pricing.memoryPerGbPerHour}/hr</li>
+            <li>Hours per month: 720</li>
+          </ul>
+          <p className="text-xs pt-1 border-t border-border font-mono text-foreground">
+            Result: ${currentCostDollars.toLocaleString()}/month
+          </p>
+        </>
+      )}
     </div>
   );
 
-  const projectedSavingsTooltipContent = (
-    <div className="space-y-3">
-      <p className="font-medium text-foreground">Projected Savings</p>
+  const currentSavingsTooltipContent = (
+    <div className="space-y-3 text-left">
+      <p className="font-medium text-foreground">Current savings</p>
       <p className="text-xs text-muted-foreground">
-        Net monthly savings: savings from downsizing overprovisioned workloads that have Cruise mode on, minus the monthly cost to apply reliability (upsize) recommendations. Shown value = Cruise-mode savings − reliability improvement cost.
+      Algorithm: workload cost − current cost. 
+      <br/><br/>
+        Req_alloc_ratio = Prometheus requested ÷ Prometheus allocatable (per resource).
+        <br/><br/>
+        Workload cost = (original requested resources from workload ÷ Req_alloc_ratio) × price × 720. 
+        <br/><br/>
+        Current cost = allocatable × price × 720. 
+
+        <br/ ><br/>
+
+        So current savings = what the requested workloads would cost (normalized by ratio) minus what you pay today (allocatable).
       </p>
-      <p className="font-medium text-foreground text-xs pt-1 border-t border-border">Calculation</p>
-      <ol className="text-xs text-muted-foreground space-y-1.5 list-decimal list-inside">
-        <li>For each overprovisioned workload with Cruise mode on: Δ CPU = current − recommended (cores), Δ memory (GB) = (current − recommended) / 1024.</li>
-        <li>Per workload hourly savings = Δ CPU × $0.029/hr + Δ memory (GB) × $0.0075/hr.</li>
-        <li>Per workload monthly = hourly × 720 hours. Cruise-mode total = sum over those workloads.</li>
-        <li>Projected Savings (shown) = Cruise-mode total − reliability improvement cost ($/month).</li>
-      </ol>
-      <p className="text-xs text-muted-foreground font-mono pt-1 border-t border-border/50">
-        Shown = Σ (Cruise-mode Δ CPU × 0.029 + Δ memory GB × 0.0075) × 720 − reliability cost
+      {isDev && (
+        <>
+          <p className="text-xs font-medium text-foreground pt-1 border-t border-border">Values used</p>
+          <ul className="text-xs text-muted-foreground space-y-0.5 font-mono">
+            <li>Workload cost: ${workloadCostDollars.toLocaleString()}/month</li>
+            <li>Current cost: ${currentCostDollars.toLocaleString()}/month</li>
+          </ul>
+          <p className="text-xs pt-1 border-t border-border font-mono text-foreground">
+            Result: ${workloadCostDollars.toLocaleString()} − ${currentCostDollars.toLocaleString()} = ${currentSavingsDollars.toLocaleString()}/month
+          </p>
+        </>
+      )}
+    </div>
+  );
+
+  const possibleSavingsTooltipContent = (
+    <div className="space-y-3 text-left">
+      <p className="font-medium text-foreground">Possible savings</p>
+      <p className="text-xs text-muted-foreground">
+        Algorithm: workload cost − optimized cost. 
+        <br/><br/>
+        Optimized cost = (recommended request ÷ Req_alloc_ratio) × price × 720. 
+        <br/><br/>
+        Workload cost = (original requested ÷ Req_alloc_ratio) × price × 720. 
       </p>
-      <p className="text-xs text-muted-foreground pt-1 border-t border-border/50">
-        The percentage is relative to projected cost (2× requested CPU, 2.5× requested memory), not current cost.
-      </p>
+      {isDev && (
+        <>
+          <p className="text-xs font-medium text-foreground pt-1 border-t border-border">Values used</p>
+          <ul className="text-xs text-muted-foreground space-y-0.5 font-mono">
+            <li>Req_alloc_ratio CPU: {reqAllocRatioCpu.toFixed(4)}, Mem: {reqAllocRatioMem.toFixed(4)}</li>
+            <li>Workload cost: ${workloadCostDollars.toLocaleString()}/month</li>
+            <li>Optimized cost: ${optimizedCostDollars.toLocaleString()}/month</li>
+          </ul>
+          <p className="text-xs pt-1 border-t border-border font-mono text-foreground">
+            Result: ${workloadCostDollars.toLocaleString()} − ${optimizedCostDollars.toLocaleString()} = ${possibleSavingsDollars.toLocaleString()}/month
+          </p>
+        </>
+      )}
     </div>
   );
 
   return (
-    <div className="min-w-0 w-full max-w-full p-4 space-y-6 animate-fade-in">
-      {/* Error / empty data banner */}
-      {hasNoData && (
-        <Alert variant="default" className="border-amber-500/50 bg-amber-500/10 [&>svg]:text-amber-600 dark:[&>svg]:text-amber-400">
-          <Info className="h-4 w-4" />
-          <AlertTitle>No workload data available</AlertTitle>
-          <AlertDescription>
-            No workload or stats data was returned for this cluster. The cluster may have no workloads yet, or the data sync may not have completed. Try refreshing the page or selecting another cluster.
-          </AlertDescription>
-        </Alert>
-      )}
-      {/* Header */}
-      <div className="flex min-w-0 flex-wrap items-center justify-between gap-4">
-        <div className="min-w-0 flex-1">
-          <h1 className="truncate text-2xl font-semibold text-foreground">Workloads & Recommendations</h1>
-          <p className="truncate text-sm text-muted-foreground">Container-aware workload list with optimization recommendations</p>
-        </div>
-        <div className="flex shrink-0 items-center gap-2">
+    <div className="min-w-0 w-full max-w-full animate-fade-in">
+      <div className="mx-auto max-w-[1600px] px-4 py-6 sm:px-6 lg:px-8 space-y-8">
+        {/* Alert: no data */}
+        {hasNoData && (
+          <Alert variant="default" className="border-amber-500/50 bg-amber-500/10 [&>svg]:text-amber-600 dark:[&>svg]:text-amber-400 rounded-xl">
+            <Info className="h-4 w-4" />
+            <AlertTitle>No workload data available</AlertTitle>
+            <AlertDescription>
+              No workload or stats data was returned for this cluster. The cluster may have no workloads yet, or the data sync may not have completed. Try refreshing the page or selecting another cluster.
+            </AlertDescription>
+          </Alert>
+        )}
+
+        {/* Page header */}
+        <header className="flex flex-wrap items-end justify-between gap-4 border-b border-border/60 pb-6">
+          <div>
+            <h1 className="text-2xl font-bold tracking-tight text-foreground sm:text-3xl">Workloads</h1>
+            <p className="mt-1 text-sm text-muted-foreground">Optimized Kubernetes resources and cost impact</p>
+          </div>
           {statsData && (statsData.stats ?? []).length > 0 && (
-            <div className="flex items-center gap-2 text-xs text-muted-foreground">
-              <span className="h-2 w-2 rounded-full bg-success animate-pulse" />
-              <span>
-                Last sync: {(statsData.stats ?? [])[0]?.updated_at 
-                  ? new Date((statsData.stats ?? [])[0].updated_at).toLocaleString()
-                  : 'Unknown'}
-              </span>
+            <div className="flex items-center gap-2 rounded-full border border-border bg-muted/30 px-3 py-1.5 text-xs text-muted-foreground">
+              <span className="h-1.5 w-1.5 rounded-full bg-success animate-pulse" />
+              Last sync: {(statsData.stats ?? [])[0]?.updated_at
+                ? new Date((statsData.stats ?? [])[0].updated_at).toLocaleString()
+                : 'Unknown'}
             </div>
           )}
-          {/* <Layers className="h-4 w-4 text-muted-foreground" />
-          <span className="text-sm text-muted-foreground">{asArray(workloads).length} workloads</span> */}
-        </div>
-      </div>
+        </header>
 
-      {/* Row: Current cost, Projected Savings, Potential savings + Workload summary */}
-      <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
-        {/* Current cost — same style as other cost cards (MetricCard layout) */}
-        <div className="metric-card border-border">
-          {isLoadingClusterMetrics ? (
-            <div className="flex items-start justify-between">
-              <div className="space-y-1">
-                <Skeleton className="h-3 w-28" />
-                <Skeleton className="h-8 w-24" />
-                <Skeleton className="h-4 w-36" />
-              </div>
-              <div className="rounded-lg bg-muted/50 p-2 text-muted-foreground">
-                <DollarSign className="h-5 w-5" />
-              </div>
-            </div>
-          ) : (
-            <div className="flex items-start justify-between">
-              <div className="space-y-1">
-                <div className="flex items-center gap-1.5">
-                  <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Current cost</p>
-                  <TooltipProvider>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <button type="button" className="inline-flex text-muted-foreground hover:text-foreground focus:outline-none" onClick={(e) => e.stopPropagation()} aria-label="How current cost is calculated">
-                          <Info className="h-3.5 w-3.5" />
-                        </button>
-                      </TooltipTrigger>
-                      <TooltipContent side="bottom" className="max-w-sm p-4 text-left">
-                        {costTooltipContent}
-                      </TooltipContent>
-                    </Tooltip>
-                  </TooltipProvider>
+        {/* Cost & impact — 3 cards */}
+        <section aria-labelledby="cost-impact-heading">
+          <h2 id="cost-impact-heading" className="sr-only">Cost & impact</h2>
+          <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 xl:grid-cols-3">
+            {/* 1. Current cost: allocatable × cost */}
+            <div className="metric-card border-border">
+              {isLoadingClusterMetrics ? (
+                <div className="flex items-start justify-between">
+                  <div className="space-y-1">
+                    <Skeleton className="h-3 w-28" />
+                    <Skeleton className="h-8 w-24" />
+                    <Skeleton className="h-4 w-36" />
+                  </div>
+                  <div className="rounded-lg bg-muted/50 p-2 text-muted-foreground">
+                    <DollarSign className="h-5 w-5" />
+                  </div>
                 </div>
-                <p className="font-mono text-2xl font-semibold tracking-tight text-foreground">
-                  ${(clusterMetrics?.cpuAllocatable != null && clusterMetrics?.memoryAllocatable != null
-                    ? calculateDollarSavings(Number(clusterMetrics.cpuAllocatable), Number(clusterMetrics.memoryAllocatable))
-                    : 0
-                  ).toLocaleString()}
-                  <span className="text-sm font-normal text-muted-foreground ml-1">/month</span>
-                </p>
-                <p className="text-sm text-muted-foreground">Based on allocatable CPU + Memory</p>
-              </div>
-              <div className="rounded-lg bg-muted/50 p-2 text-muted-foreground">
-                <DollarSign className="h-5 w-5" />
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* Projected Savings — custom layout with centered percentage */}
-        {isLoadingMetrics ? (
-          <div className="metric-card border-border">
-            <div className="flex items-start justify-between">
-              <div className="space-y-1">
-                <Skeleton className="h-3 w-24" />
-                <Skeleton className="h-8 w-20" />
-                <Skeleton className="h-4 w-32" />
-              </div>
-              <div className="rounded-lg bg-muted/50 p-2 text-muted-foreground">
-                <DollarSign className="h-5 w-5" />
-              </div>
-            </div>
-          </div>
-        ) : (
-          <div className="metric-card border-border flex flex-col">
-            <div className="flex items-start justify-between flex-1 min-h-0">
-              <div className="space-y-1 min-w-0 flex-1">
-                <div className="flex items-center gap-1.5">
-                  <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Projected Savings</p>
-                  <TooltipProvider>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <button type="button" className="inline-flex text-muted-foreground hover:text-foreground focus:outline-none shrink-0" aria-label="Projected Savings calculation">
-                          <Info className="h-3.5 w-3.5" />
-                        </button>
-                      </TooltipTrigger>
-                      <TooltipContent side="bottom" className="max-w-sm p-4 text-left">
-                        {projectedSavingsTooltipContent}
-                      </TooltipContent>
-                    </Tooltip>
-                  </TooltipProvider>
-                </div>
-                <p className="font-mono text-2xl font-semibold tracking-tight text-foreground">
-                  ${(overviewMetrics.realizedDollars - overviewMetrics.reliabilityIncreaseCost.dollars).toLocaleString()}
-                  <span className="text-sm font-normal text-muted-foreground ml-1">/month</span>
-                </p>
-              </div>
-              <div className="rounded-lg bg-muted/50 p-2 text-muted-foreground shrink-0">
-                <DollarSign className="h-5 w-5" />
-              </div>
-            </div>
-            <p className="text-sm text-muted-foreground text-center w-full mt-1 pt-1 border-t border-border/50">
-              {projectedCostDollars > 0 ? (
-                <span className="font-medium text-foreground">{projectedSavingsPct(overviewMetrics.realizedDollars - overviewMetrics.reliabilityIncreaseCost.dollars)}% of projected cost</span>
               ) : (
-                "Per month savings"
+                <div className="flex items-start justify-between">
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-1.5">
+                      <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Current cost</p>
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <button type="button" className="inline-flex text-muted-foreground hover:text-foreground focus:outline-none" onClick={(e) => e.stopPropagation()} aria-label="How current cost is calculated">
+                              <Info className="h-3.5 w-3.5" />
+                            </button>
+                          </TooltipTrigger>
+                          <TooltipContent side="bottom" className="max-w-sm p-4 text-left">
+                            {currentCostTooltipContent}
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                    </div>
+                    <p className="font-mono text-2xl font-semibold tracking-tight text-foreground">
+                      ${currentCostDollars.toLocaleString()}
+                      <span className="text-sm font-normal text-muted-foreground ml-1">/month</span>
+                    </p>
+                    <p className="text-sm text-muted-foreground">Allocatable × cost (CPU + Memory)</p>
+                  </div>
+                  <div className="rounded-lg bg-muted/50 p-2 text-muted-foreground">
+                    <DollarSign className="h-5 w-5" />
+                  </div>
+                </div>
               )}
-            </p>
-            <p className="text-xs text-muted-foreground text-center w-full mt-0.5">
-              Percentage based on projected cost (2× requested CPU, 2.5× requested memory).
-            </p>
-          </div>
-        )}
+            </div>
 
-        {/* Workload summary — spans 2 columns on lg */}
-        {isLoadingMetrics ? (
-          <div className="metric-card border-border lg:col-span-2">
-            <Skeleton className="h-4 w-32 mb-3" />
-            <Skeleton className="h-4 w-full mb-2" />
-            <Skeleton className="h-4 w-full mb-2" />
-            <Skeleton className="h-4 w-full" />
-          </div>
-        ) : (
-          <div className="metric-card border-border lg:col-span-2">
-            <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground mb-2">Workload summary</p>
-            <div className="space-y-1.5 text-sm">
-              <div className="flex items-center justify-between gap-2">
-                <span className="font-medium text-foreground">Total workloads</span>
-                <span className="font-mono font-semibold tabular-nums">{asArray(workloads).length}</span>
-              </div>
-              <div className="flex items-center justify-between gap-2">
-                <span className="flex items-center gap-1 text-muted-foreground">
-                  Already optimized
-                  <TooltipProvider>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Info className="h-3 w-3 shrink-0 cursor-help" />
-                      </TooltipTrigger>
-                      <TooltipContent side="right" className="max-w-xs">
-                        <p>Workloads already at the recommended resource level (no change needed).</p>
-                      </TooltipContent>
-                    </Tooltip>
-                  </TooltipProvider>
-                </span>
-                <span className="font-mono tabular-nums">{Math.max(0, asArray(workloads).length - overviewMetrics.costOptimizedWorkloadsRecommendOnly - overviewMetrics.costOptimizedWorkloads)}</span>
-              </div>
-              <div className="flex items-center justify-between gap-2">
-                <span className="flex items-center gap-1 text-muted-foreground">
-                  Cost optimization (Cruise mode)
-                  <TooltipProvider>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Info className="h-3 w-3 shrink-0 cursor-help" />
-                      </TooltipTrigger>
-                      <TooltipContent side="right" className="max-w-xs">
-                        <p>Overprovisioned workloads with Cruise mode on: optimization applied automatically. Savings per month.</p>
-                      </TooltipContent>
-                    </Tooltip>
-                  </TooltipProvider>
-                </span>
-                <span className="font-mono tabular-nums">${overviewMetrics.realizedDollars.toLocaleString()}/mo · {overviewMetrics.costOptimizedWorkloads}</span>
-              </div>
-              <div className="flex items-center justify-between gap-2">
-                <span className="flex items-center gap-1 text-muted-foreground">
-                  Cost optimization (Recommend only)
-                  <TooltipProvider>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Info className="h-3 w-3 shrink-0 cursor-help" />
-                      </TooltipTrigger>
-                      <TooltipContent side="right" className="max-w-xs">
-                        <p>Overprovisioned workloads in Recommend-only mode. Potential savings if recommendations are applied.</p>
-                      </TooltipContent>
-                    </Tooltip>
-                  </TooltipProvider>
-                </span>
-                <span className="font-mono tabular-nums">${overviewMetrics.unrealizedDollars.toLocaleString()}/mo · {overviewMetrics.costOptimizedWorkloadsRecommendOnly}</span>
-              </div>
-              <div className="flex items-center justify-between gap-2">
-                <span className="flex items-center gap-1 text-muted-foreground">
-                  Reliability improvement cost
-                  <TooltipProvider>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Info className="h-3 w-3 shrink-0 cursor-help" />
-                      </TooltipTrigger>
-                      <TooltipContent side="right" className="max-w-xs">
-                        <p>Underprovisioned workloads: extra monthly cost to apply recommendations (add CPU/memory).</p>
-                      </TooltipContent>
-                    </Tooltip>
-                  </TooltipProvider>
-                </span>
-                <span className="font-mono tabular-nums">${overviewMetrics.reliabilityIncreaseCost.dollars.toLocaleString()}/mo · {overviewMetrics.reliabilityIssues}</span>
-              </div>
+            {/* 2. Current savings: workload cost − current cost */}
+            <div className="metric-card border-border">
+              {isLoadingClusterMetrics || isLoadingMetrics ? (
+                <div className="flex items-start justify-between">
+                  <div className="space-y-1">
+                    <Skeleton className="h-3 w-28" />
+                    <Skeleton className="h-8 w-24" />
+                    <Skeleton className="h-4 w-36" />
+                  </div>
+                  <div className="rounded-lg bg-muted/50 p-2 text-muted-foreground">
+                    <DollarSign className="h-5 w-5" />
+                  </div>
+                </div>
+              ) : (
+                <div className="flex items-start justify-between">
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-1.5">
+                      <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Current savings</p>
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <button type="button" className="inline-flex text-muted-foreground hover:text-foreground focus:outline-none" onClick={(e) => e.stopPropagation()} aria-label="How current savings is calculated">
+                              <Info className="h-3.5 w-3.5" />
+                            </button>
+                          </TooltipTrigger>
+                          <TooltipContent side="bottom" className="max-w-sm p-4 text-left">
+                            {currentSavingsTooltipContent}
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                    </div>
+                    <p className="font-mono text-2xl font-semibold tracking-tight text-foreground">
+                      ${currentSavingsDollars.toLocaleString()}
+                      <span className="text-sm font-normal text-muted-foreground ml-1">/month</span>
+                    </p>
+                    <p className="text-sm text-muted-foreground">You are currently saving this amount per month</p>
+                  </div>
+                  <div className="rounded-lg bg-muted/50 p-2 text-muted-foreground">
+                    <DollarSign className="h-5 w-5" />
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* 3. Possible savings: workload cost − optimized cost; % below vs workload cost */}
+            <div className="metric-card border-border flex flex-col">
+              {isLoadingClusterMetrics || isLoadingMetrics ? (
+                <div className="flex items-start justify-between">
+                  <div className="space-y-1">
+                    <Skeleton className="h-3 w-28" />
+                    <Skeleton className="h-8 w-24" />
+                    <Skeleton className="h-4 w-36" />
+                  </div>
+                  <div className="rounded-lg bg-muted/50 p-2 text-muted-foreground">
+                    <DollarSign className="h-5 w-5" />
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <div className="flex items-start justify-between flex-1 min-h-0">
+                    <div className="space-y-1 min-w-0 flex-1">
+                      <div className="flex items-center gap-1.5">
+                        <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Possible savings</p>
+                        <TooltipProvider>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <button type="button" className="inline-flex text-muted-foreground hover:text-foreground focus:outline-none shrink-0" aria-label="How possible savings is calculated">
+                                <Info className="h-3.5 w-3.5" />
+                              </button>
+                            </TooltipTrigger>
+                            <TooltipContent side="bottom" className="max-w-sm p-4 text-left">
+                              {possibleSavingsTooltipContent}
+                            </TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
+                      </div>
+                      <p className="font-mono text-2xl font-semibold tracking-tight text-foreground">
+                        ${possibleSavingsDollars.toLocaleString()}
+                        <span className="text-sm font-normal text-muted-foreground ml-1">/month</span>
+                      </p>
+                    </div>
+                    <div className="rounded-lg bg-muted/50 p-2 text-muted-foreground shrink-0">
+                      <DollarSign className="h-5 w-5" />
+                    </div>
+                  </div>
+                  <p className="text-sm text-muted-foreground">How much more you can save per month</p>
+                </>
+              )}
             </div>
           </div>
-        )}
-      </div>
+        </section>
 
-      {/* Cluster Resource Metrics: CPU & Memory Utilised / Requested / Allocatable */}
-      <div className="grid gap-4 md:grid-cols-2">
+        {/* Cluster resources */}
+        <section aria-labelledby="cluster-resources-heading">
+          <h2 id="cluster-resources-heading" className="mb-4 text-sm font-semibold uppercase tracking-wider text-muted-foreground">Cluster resources</h2>
+          <div className="grid gap-4 md:grid-cols-2">
         {isLoadingClusterMetrics ? (
           <>
             <div className="metric-card space-y-4">
@@ -838,74 +974,122 @@ export default function Workloads() {
             </div>
           </>
         )}
-      </div>
+          </div>
+        </section>
 
-      {/* Filters */}
-      <div className="flex flex-wrap items-center gap-3">
-        <div className="relative flex-1 min-w-[240px] max-w-sm">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input
-            placeholder="Search workloads..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="pl-9 bg-muted/50 border-border"
-          />
-        </div>
+        {/* Workload list */}
+        <section aria-labelledby="workloads-heading">
+          <div className="flex flex-wrap items-center justify-between gap-4 mb-4">
+            <h2 id="workloads-heading" className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
+              Workload list
+              {sortedWorkloads.length > 0 && (
+                <span className="ml-2 font-normal normal-case text-foreground">({sortedWorkloads.length})</span>
+              )}
+            </h2>
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="relative w-56 sm:w-64">
+                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+                <Input
+                  placeholder="Search..."
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  className="h-9 pl-8 text-sm bg-muted/30 border-border rounded-md"
+                />
+              </div>
+              <Select value={namespaceFilter} onValueChange={setNamespaceFilter}>
+                <SelectTrigger className="h-9 w-[140px] bg-muted/30 border-border rounded-md text-sm">
+                  <SelectValue placeholder="Namespace" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All namespaces</SelectItem>
+                  {asArray(namespaces).map((ns) => (
+                    <SelectItem key={ns} value={ns}>{ns}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Select value={modeFilter} onValueChange={setModeFilter}>
+                <SelectTrigger className="h-9 w-[120px] bg-muted/30 border-border rounded-md text-sm">
+                  <SelectValue placeholder="Mode" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All modes</SelectItem>
+                  <SelectItem value="enabled">Cruise</SelectItem>
+                  <SelectItem value="recommend-only">Recommend</SelectItem>
+                </SelectContent>
+              </Select>
+              <Select value={priorityFilter} onValueChange={setPriorityFilter}>
+                <SelectTrigger className="h-9 w-[130px] bg-muted/30 border-border rounded-md text-sm">
+                  <SelectValue placeholder="Priority" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All priorities</SelectItem>
+                  <SelectItem value="low">Low</SelectItem>
+                  <SelectItem value="medium">Medium</SelectItem>
+                  <SelectItem value="high">High</SelectItem>
+                  <SelectItem value="non-evictable">Non-evictable</SelectItem>
+                </SelectContent>
+              </Select>
+              <div className="flex items-center gap-2 rounded-md border border-border bg-muted/30 px-2.5 py-1.5">
+                <Switch
+                  id="verbose-columns"
+                  checked={verbose}
+                  onCheckedChange={setVerbose}
+                  onClick={(e) => e.stopPropagation()}
+                />
+                <Label htmlFor="verbose-columns" className="text-xs cursor-pointer select-none text-muted-foreground" onClick={(e) => e.stopPropagation()}>
+                  More columns
+                </Label>
+              </div>
+            </div>
+          </div>
 
-        <Select value={namespaceFilter} onValueChange={setNamespaceFilter}>
-          <SelectTrigger className="w-[160px] bg-muted/50 border-border">
-            <SelectValue placeholder="Namespace" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All Namespaces</SelectItem>
-            {asArray(namespaces).map((ns) => (
-              <SelectItem key={ns} value={ns}>{ns}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-
-        <Select value={modeFilter} onValueChange={setModeFilter}>
-          <SelectTrigger className="w-[160px] bg-muted/50 border-border">
-            <SelectValue placeholder="Mode" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All Modes</SelectItem>
-            <SelectItem value="enabled">Cruise</SelectItem>
-            <SelectItem value="recommend-only">Recommend</SelectItem>
-          </SelectContent>
-        </Select>
-
-        <Select value={priorityFilter} onValueChange={setPriorityFilter}>
-          <SelectTrigger className="w-[160px] bg-muted/50 border-border">
-            <SelectValue placeholder="Priority" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All Priorities</SelectItem>
-            <SelectItem value="low">Low</SelectItem>
-            <SelectItem value="medium">Medium</SelectItem>
-            <SelectItem value="high">High</SelectItem>
-            <SelectItem value="non-evictable">Non-evictable</SelectItem>
-          </SelectContent>
-        </Select>
-
-        <div className="flex items-center gap-2">
-          <Switch
-            id="verbose-columns"
-            checked={verbose}
-            onCheckedChange={setVerbose}
-            onClick={(e) => e.stopPropagation()}
-          />
-          <Label htmlFor="verbose-columns" className="text-sm cursor-pointer select-none" onClick={(e) => e.stopPropagation()}>
-            Verbose (show all columns)
-          </Label>
-        </div>
-      </div>
-
-      {/* Table */}
-      <div className=" overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="data-table border-collapse">
-            <thead>
+          <div className="rounded-xl border border-border bg-card/50 overflow-hidden shadow-sm">
+            {/* Workload summary — integrated bar above table */}
+            <div className="border-b border-border bg-muted/30 px-4 py-3">
+              {isLoadingMetrics ? (
+                <div className="flex flex-wrap items-center gap-6">
+                  <Skeleton className="h-4 w-16" />
+                  <Skeleton className="h-4 w-20" />
+                  <Skeleton className="h-4 w-24" />
+                  <Skeleton className="h-4 w-28" />
+                  <Skeleton className="h-4 w-32" />
+                </div>
+              ) : (
+                <div className="flex flex-wrap items-baseline gap-x-8 gap-y-2 text-sm">
+                  <div className="flex items-baseline gap-1.5">
+                    <span className="text-muted-foreground">Total</span>
+                    <span className="font-mono font-semibold tabular-nums text-foreground">{asArray(workloads).length}</span>
+                  </div>
+                  <div className="flex items-baseline gap-1.5">
+                    <span className="text-muted-foreground">Skipped</span>
+                    <span className="font-mono font-semibold tabular-nums text-foreground">
+                      {Math.max(0, asArray(workloads).length - overviewMetrics.costOptimizedWorkloadsRecommendOnly - overviewMetrics.costOptimizedWorkloads)}
+                    </span>
+                  </div>
+                  <div className="flex items-baseline gap-1.5">
+                    <span className="text-muted-foreground">Optimized/Cruise</span>
+                    <span className="font-mono tabular-nums text-foreground">${overviewMetrics.realizedDollars.toLocaleString()}/mo</span>
+                    <span className="font-mono tabular-nums text-foreground text-muted-foreground">·</span>
+                    <span className="font-mono font-semibold tabular-nums text-foreground">{overviewMetrics.costOptimizedWorkloads}</span>
+                  </div>
+                  <div className="flex items-baseline gap-1.5">
+                    <span className="text-muted-foreground">Recommended</span>
+                    <span className="font-mono tabular-nums text-foreground">${overviewMetrics.unrealizedDollars.toLocaleString()}/mo</span>
+                    <span className="font-mono tabular-nums text-foreground text-muted-foreground">·</span>
+                    <span className="font-mono font-semibold tabular-nums text-foreground">{overviewMetrics.costOptimizedWorkloadsRecommendOnly}</span>
+                  </div>
+                  <div className="flex items-baseline gap-1.5">
+                    <span className="text-muted-foreground">Reliability Improved</span>
+                    <span className="font-mono tabular-nums text-foreground">${overviewMetrics.reliabilityIncreaseCost.dollars.toLocaleString()}/mo</span>
+                    <span className="font-mono tabular-nums text-foreground text-muted-foreground">·</span>
+                    <span className="font-mono font-semibold tabular-nums text-foreground">{overviewMetrics.reliabilityIssues}</span>
+                  </div>
+                </div>
+              )}
+            </div>
+            <div className="overflow-x-auto">
+              <table className="data-table w-full border-collapse">
+            <thead className="sticky top-0 z-10 bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/80 border-b border-border">
               <tr>
                 {verbose && (
                   <>
@@ -973,7 +1157,7 @@ export default function Workloads() {
                   onClick={(e) => { e.stopPropagation(); handleSort("potentialDollars"); }}
                 >
                   <div className="flex items-center gap-1">
-                  Projected Saving/M
+                  Possible Saving/M
                     {sortColumn === "potentialDollars" && (sortDirection === "asc" ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />)}
                     <TooltipProvider>
                       <Tooltip>
@@ -992,7 +1176,7 @@ export default function Workloads() {
                   onClick={(e) => { e.stopPropagation(); handleSort("reliabilityCostDollars"); }}
                 >
                   <div className="flex items-center gap-1">
-                    Reliability Cost/M
+                    Reliability Improved/M
                     {sortColumn === "reliabilityCostDollars" && (sortDirection === "asc" ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />)}
                     <TooltipProvider>
                       <Tooltip>
@@ -1006,27 +1190,27 @@ export default function Workloads() {
                     </TooltipProvider>
                   </div>
                 </th>
+                <th rowSpan={2}
+                  className="cursor-pointer select-none hover:bg-muted/50 transition-colors align-top pt-4"
+                  onClick={(e) => { e.stopPropagation(); handleSort("mode"); }}
+                >
+                  <div className="flex items-center gap-1">
+                    Mode
+                    {sortColumn === "mode" && (sortDirection === "asc" ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />)}
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger asChild onClick={(e) => e.stopPropagation()}>
+                          <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          <p className="max-w-xs">Enables auto-apply of recommendations. When Cruise is enabled, CruiseKube will automatically apply resource recommendations.</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                  </div>
+                </th>
                 {verbose && (
                   <>
-                    <th rowSpan={2}
-                      className="cursor-pointer select-none hover:bg-muted/50 transition-colors align-top pt-4"
-                      onClick={(e) => { e.stopPropagation(); handleSort("mode"); }}
-                    >
-                      <div className="flex items-center gap-1">
-                        Mode
-                        {sortColumn === "mode" && (sortDirection === "asc" ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />)}
-                        <TooltipProvider>
-                          <Tooltip>
-                            <TooltipTrigger asChild onClick={(e) => e.stopPropagation()}>
-                              <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
-                            </TooltipTrigger>
-                            <TooltipContent>
-                              <p className="max-w-xs">Enables auto-apply of recommendations. When Cruise is enabled, CruiseKube will automatically apply resource recommendations.</p>
-                            </TooltipContent>
-                          </Tooltip>
-                        </TooltipProvider>
-                      </div>
-                    </th>
                     <th rowSpan={2}
                       className="cursor-pointer select-none hover:bg-muted/50 transition-colors align-top pt-4"
                       onClick={(e) => { e.stopPropagation(); handleSort("priority"); }}
@@ -1109,17 +1293,22 @@ export default function Workloads() {
             </thead>
             <tbody>
               {asArray(sortedWorkloads).map((workload, index) => (
-                <tr 
-                  key={workload.id} 
-                  className="group cursor-pointer hover:bg-muted/50 transition-colors"
+                <tr
+                  key={workload.id}
+                  className={`group transition-colors ${
+                    workload.excluded
+                      ? "opacity-60 bg-muted/40 border-l-2 border-l-muted-foreground/40 cursor-not-allowed hover:bg-muted/50"
+                      : "cursor-pointer hover:bg-muted/50 " + (index % 2 === 1 ? "bg-muted/10" : "")
+                  }`}
                   onClick={(e) => {
                     e.preventDefault();
                     e.stopPropagation();
-                    navigate(`/workloads/${workload.namespace}/${workload.workload}`);
+                    if (!workload.excluded) navigate(`/workloads/${workload.namespace}/${workload.workload}`);
                   }}
                   role="button"
                   tabIndex={0}
                   onKeyDown={(e) => {
+                    if (workload.excluded) return;
                     if (e.key === 'Enter' || e.key === ' ') {
                       e.preventDefault();
                       navigate(`/workloads/${workload.namespace}/${workload.workload}`);
@@ -1134,7 +1323,7 @@ export default function Workloads() {
                             <TooltipTrigger asChild>
                               <span className="inline-flex items-center gap-1 cursor-default" onClick={(e) => e.stopPropagation()}>
                                 <Clock className="h-3 w-3 shrink-0" />
-                                {formatTimeAgoShort(workload.lastUpdated)}
+                                <TimeAgoShort value={workload.lastUpdated} />
                               </span>
                             </TooltipTrigger>
                             <TooltipContent>
@@ -1150,7 +1339,21 @@ export default function Workloads() {
                   )}
                   <td className="font-mono text-xs">{workload.namespace}</td>
                   <td>
-                    <span className="font-medium">{workload.workload}</span>
+                    <div className="flex flex-col gap-0.5">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className={`font-medium ${workload.excluded ? "text-muted-foreground" : ""}`}>{workload.workload}</span>
+                        {workload.excluded && (
+                          <Badge variant="secondary" className="text-xs font-normal bg-muted text-muted-foreground border border-border">
+                            Excluded
+                          </Badge>
+                        )}
+                      </div>
+                      {workload.excluded && (
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                          {workload.excludedReason || "Excluded from optimization"}
+                        </p>
+                      )}
+                    </div>
                   </td>
                   <td className="font-mono text-sm tabular-nums text-right">{workload.replicas}</td>
                   <td className={`font-mono text-sm bg-muted/20 border-l border-b border-border ${index === 0 ? "border-t" : ""}`}>{workload.currentCpu}</td>
@@ -1161,15 +1364,15 @@ export default function Workloads() {
                   <td className={`font-mono text-sm bg-muted/20 border-r border-b border-border ${workload.potentialMem.startsWith("+") ? "text-amber-600 dark:text-amber-400" : ""} ${index === 0 ? "border-t" : ""}`}>{workload.potentialMem === "0Mi" ? "—" : workload.potentialMem}</td>
                   <td className="font-mono text-sm text-primary">{workload.potentialDollars === 0 ? "—" : `$${workload.potentialDollars.toFixed(2)}`}</td>
                   <td className="font-mono text-sm">{workload.reliabilityCostDollars > 0 ? `$${workload.reliabilityCostDollars.toFixed(2)}` : "—"}</td>
+                  <td>
+                    <span className={`text-xs font-medium ${
+                      workload.mode === "enabled" ? "text-success" : "text-muted-foreground"
+                    }`}>
+                      {workload.mode === "enabled" ? "Cruise" : "Recommend"}
+                    </span>
+                  </td>
                   {verbose && (
                     <>
-                      <td>
-                        <span className={`text-xs font-medium ${
-                          workload.mode === "enabled" ? "text-success" : "text-muted-foreground"
-                        }`}>
-                          {workload.mode === "enabled" ? "Cruise" : "Recommend"}
-                        </span>
-                      </td>
                       <td>
                         <span className={`text-xs font-medium capitalize ${getPriorityColor(workload.priority)}`}>
                           {workload.priority}
@@ -1188,10 +1391,12 @@ export default function Workloads() {
       </div>
 
       {sortedWorkloads.length === 0 && (
-        <div className="text-center py-12 text-muted-foreground">
-          No workloads match your filters
-        </div>
-      )}
+          <div className="rounded-xl border border-border bg-card/30 py-16 text-center text-sm text-muted-foreground">
+            No workloads match your filters
+          </div>
+        )}
+        </section>
+      </div>
     </div>
   );
 }
