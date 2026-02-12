@@ -482,14 +482,17 @@ export default function Workloads() {
     recommendedFromStats: { cpu: 0, memoryGB: 0 },
   };
 
+  let recommendedCpuFromStats = 0;
+  let recommendedMemGBFromStats = 0;
+
   if (statsData) {
     const workloadsList = Array.isArray(workloadsData) ? workloadsData : [];
     const analysisList = Array.isArray(recommendationAnalysis?.analysis) ? recommendationAnalysis!.analysis : undefined;
     const analysisSummary = recommendationAnalysis?.summary;
     if (analysisSummary) {
-      const recommendedCpu = analysisSummary.total_current_cpu_requests - analysisSummary.total_cpu_differences;
-      const recommendedMemory = analysisSummary.total_current_memory_requests - analysisSummary.total_memory_differences;
-      overviewMetrics.recommendedFromStats = { cpu: recommendedCpu, memoryGB: recommendedMemory };
+      recommendedCpuFromStats = analysisSummary.total_current_cpu_requests - analysisSummary.total_cpu_differences;
+      recommendedMemGBFromStats = (analysisSummary.total_current_memory_requests - analysisSummary.total_memory_differences)/1024;
+      overviewMetrics.recommendedFromStats = { cpu: recommendedCpuFromStats, memoryGB: recommendedMemGBFromStats };
     }
     overviewMetrics = transformStatsToOverviewMetrics(statsData, workloadsList, analysisList);
   }
@@ -526,9 +529,7 @@ export default function Workloads() {
     /** Original container requested from stats (cluster-wide). */
     const requestedCpuFromStats = overviewMetrics.requestedFromStats.cpu;
     const requestedMemGBFromStats = overviewMetrics.requestedFromStats.memoryGB;
-    /** Recommended requested from stats (cluster-wide). */
-    const recommendedCpuFromStats = overviewMetrics.recommendedFromStats.cpu;
-    const recommendedMemGBFromStats = overviewMetrics.recommendedFromStats.memoryGB;
+
 
     /** Current cost: allocatable × cost (CPU + Memory). */
     const currentCostDollars = hasAllocatable
@@ -1062,16 +1063,16 @@ export default function Workloads() {
                 </div>
               ) : (
                 <div className="flex flex-wrap items-baseline gap-x-8 gap-y-2 text-sm">
-                  <div className="flex items-baseline gap-1.5">
+                  {/* <div className="flex items-baseline gap-1.5">
                     <span className="text-muted-foreground">Total</span>
                     <span className="font-mono font-semibold tabular-nums text-foreground">{asArray(workloads).length}</span>
-                  </div>
-                  <div className="flex items-baseline gap-1.5">
+                  </div> */}
+                  {/* <div className="flex items-baseline gap-1.5">
                     <span className="text-muted-foreground">Skipped</span>
                     <span className="font-mono font-semibold tabular-nums text-foreground">
                       {Math.max(0, asArray(workloads).length - overviewMetrics.costOptimizedWorkloadsRecommendOnly - overviewMetrics.costOptimizedWorkloads)}
                     </span>
-                  </div>
+                  </div> */}
                   <div className="flex items-baseline gap-1.5">
                     <span className="text-muted-foreground">Optimized/Cruise</span>
                     {/* <span className="font-mono tabular-nums text-foreground">${overviewMetrics.realizedDollars.toLocaleString()}/mo</span> */}
