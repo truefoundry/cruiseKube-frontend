@@ -17,8 +17,10 @@ export interface FrontendWorkload {
   type: string;
   /** Pod (replica) count for this workload */
   replicas: number;
-  potentialCpu: string;
-  potentialMem: string;
+  /** Potential CPU savings in cores (negative = can reduce, positive = need more). */
+  potentialCpu: number;
+  /** Potential memory savings in MB (negative = can reduce, positive = need more). */
+  potentialMem: number;
   currentCpu: string;
   recommendedCpu: string;
   currentMem: string;
@@ -134,14 +136,14 @@ function formatMemory(mb: number): string {
 }
 
 /** Format CPU for display with sign: positive → "+500m", negative → "-500m", zero → "0m". */
-function formatCpuSigned(cores: number): string {
+export function formatCpuSigned(cores: number): string {
   if (cores === 0) return "0m";
   if (cores < 0) return `-${formatCpu(-cores)}`;
   return `+${formatCpu(cores)}`;
 }
 
 /** Format memory for display with sign: positive → "+256Mi", negative → "-256Mi", zero → "0Mi". */
-function formatMemorySigned(mb: number): string {
+export function formatMemorySigned(mb: number): string {
   if (mb === 0) return "0Mi";
   if (mb < 0) return `-${formatMemory(-mb)}`;
   return `+${formatMemory(mb)}`;
@@ -418,8 +420,8 @@ export function transformWorkloadStatToFrontend(
     workload: stat.name,
     type: stat.kind,
     replicas: stat.replicas ?? 0,
-    potentialCpu: formatCpuSigned(-totalPotentialCpuDiff),
-    potentialMem: formatMemorySigned(-totalPotentialMemoryDiff),
+    potentialCpu: -totalPotentialCpuDiff,
+    potentialMem: -totalPotentialMemoryDiff,
     currentCpu: formatCpu(totalCurrentCpu),
     recommendedCpu,
     currentMem: formatMemory(totalCurrentMemory),
