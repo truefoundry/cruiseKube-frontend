@@ -32,7 +32,7 @@ export function AppLayout() {
                       <TooltipTrigger asChild>
                         <span className="inline-flex items-center gap-1.5 rounded-md border border-amber-500/60 bg-amber-500/20 px-2.5 py-1 text-xs font-semibold text-amber-700 dark:text-amber-300">
                           <FileSearch className="h-3.5 w-3.5" />
-                          Recommendation mode only
+                          Dry-run mode
                         </span>
                       </TooltipTrigger>
                       <TooltipContent side="bottom" className="max-w-xs">
