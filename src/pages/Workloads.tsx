@@ -485,6 +485,12 @@ export default function Workloads() {
   if (statsData) {
     const workloadsList = Array.isArray(workloadsData) ? workloadsData : [];
     const analysisList = Array.isArray(recommendationAnalysis?.analysis) ? recommendationAnalysis!.analysis : undefined;
+    const analysisSummary = recommendationAnalysis?.summary;
+    if (analysisSummary) {
+      const recommendedCpu = analysisSummary.total_current_cpu_requests - analysisSummary.total_cpu_differences;
+      const recommendedMemory = analysisSummary.total_current_memory_requests - analysisSummary.total_memory_differences;
+      overviewMetrics.recommendedFromStats = { cpu: recommendedCpu, memoryGB: recommendedMemory };
+    }
     overviewMetrics = transformStatsToOverviewMetrics(statsData, workloadsList, analysisList);
   }
 
@@ -878,7 +884,7 @@ export default function Workloads() {
                       <DollarSign className="h-5 w-5" />
                     </div>
                   </div>
-                  <p className="text-sm text-muted-foreground">How much more you can save per month</p>
+                  <p className="text-sm text-muted-foreground">Total possible savings per month</p>
                 </>
               )}
             </div>
@@ -1068,20 +1074,20 @@ export default function Workloads() {
                   </div>
                   <div className="flex items-baseline gap-1.5">
                     <span className="text-muted-foreground">Optimized/Cruise</span>
-                    <span className="font-mono tabular-nums text-foreground">${overviewMetrics.realizedDollars.toLocaleString()}/mo</span>
-                    <span className="font-mono tabular-nums text-foreground text-muted-foreground">·</span>
+                    {/* <span className="font-mono tabular-nums text-foreground">${overviewMetrics.realizedDollars.toLocaleString()}/mo</span> */}
+                    {/* <span className="font-mono tabular-nums text-foreground text-muted-foreground">·</span> */}
                     <span className="font-mono font-semibold tabular-nums text-foreground">{overviewMetrics.costOptimizedWorkloads}</span>
                   </div>
                   <div className="flex items-baseline gap-1.5">
                     <span className="text-muted-foreground">Recommended</span>
-                    <span className="font-mono tabular-nums text-foreground">${overviewMetrics.unrealizedDollars.toLocaleString()}/mo</span>
-                    <span className="font-mono tabular-nums text-foreground text-muted-foreground">·</span>
+                    {/* <span className="font-mono tabular-nums text-foreground">${overviewMetrics.unrealizedDollars.toLocaleString()}/mo</span> */}
+                    {/* <span className="font-mono tabular-nums text-foreground text-muted-foreground">·</span> */}
                     <span className="font-mono font-semibold tabular-nums text-foreground">{overviewMetrics.costOptimizedWorkloadsRecommendOnly}</span>
                   </div>
                   <div className="flex items-baseline gap-1.5">
                     <span className="text-muted-foreground">Reliability Improved</span>
-                    <span className="font-mono tabular-nums text-foreground">${overviewMetrics.reliabilityIncreaseCost.dollars.toLocaleString()}/mo</span>
-                    <span className="font-mono tabular-nums text-foreground text-muted-foreground">·</span>
+                    {/* <span className="font-mono tabular-nums text-foreground">${overviewMetrics.reliabilityIncreaseCost.dollars.toLocaleString()}/mo</span> */}
+                    {/* <span className="font-mono tabular-nums text-foreground text-muted-foreground">·</span> */}
                     <span className="font-mono font-semibold tabular-nums text-foreground">{overviewMetrics.reliabilityIssues}</span>
                   </div>
                 </div>
