@@ -10,7 +10,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useQuery } from "@tanstack/react-query";
 import { useCluster } from "@/contexts/ClusterContext";
 import { apiClient } from "@/lib/api";
-import { transformWorkloadStatToFrontend, getPodsForWorkload, getContainersForPod, getNodeNameForPod, FrontendContainerRecommendation } from "@/lib/transformers";
+import { transformWorkloadStatToFrontend, getPodsForWorkload, getContainersForPod, getNodeNameForPod, FrontendContainerRecommendation, formatCpuSigned, formatMemorySigned } from "@/lib/transformers";
 import { asArray } from "@/lib/utils";
 
 export default function WorkloadDetail() {
@@ -175,7 +175,7 @@ export default function WorkloadDetail() {
             </div>
             <div>
               <p className="text-xs text-muted-foreground uppercase tracking-wider">CPU Savings Potential</p>
-              <p className="font-mono text-xl font-semibold text-foreground">{workload.potentialCpu}</p>
+              <p className="font-mono text-xl font-semibold text-foreground">{formatCpuSigned(workload.potentialCpu)}</p>
             </div>
           </div>
         </div>
@@ -186,7 +186,7 @@ export default function WorkloadDetail() {
             </div>
             <div>
               <p className="text-xs text-muted-foreground uppercase tracking-wider">Memory Savings Potential</p>
-              <p className="font-mono text-xl font-semibold text-foreground">{workload.potentialMem}</p>
+              <p className="font-mono text-xl font-semibold text-foreground">{formatMemorySigned(workload.potentialMem)}</p>
             </div>
           </div>
         </div>

@@ -30,7 +30,9 @@ import {
   FrontendWorkload,
   transformStatsToOverviewMetrics,
   OverviewMetrics,
-  calculateDollarSavings
+  calculateDollarSavings,
+  formatCpuSigned,
+  formatMemorySigned,
 } from "@/lib/transformers";
 import { getResourcePricing, getCpuPricePerCorePerHour, getMemoryPricePerGbPerHour } from "@/lib/pricing";
 import { MetricCard } from "@/components/ui/metric-card";
@@ -385,16 +387,24 @@ export default function Workloads() {
 
         case "currentCpu":
         case "recommendedCpu":
-        case "potentialCpu":
           aValue = parseCpuValue(a[sortColumn as keyof FrontendWorkload] as string);
           bValue = parseCpuValue(b[sortColumn as keyof FrontendWorkload] as string);
           return sortDirection === "asc" ? aValue - bValue : bValue - aValue;
 
+        case "potentialCpu":
+          aValue = a.potentialCpu;
+          bValue = b.potentialCpu;
+          return sortDirection === "asc" ? aValue - bValue : bValue - aValue;
+
         case "currentMem":
         case "recommendedMem":
-        case "potentialMem":
           aValue = parseMemoryValue(a[sortColumn as keyof FrontendWorkload] as string);
           bValue = parseMemoryValue(b[sortColumn as keyof FrontendWorkload] as string);
+          return sortDirection === "asc" ? aValue - bValue : bValue - aValue;
+
+        case "potentialMem":
+          aValue = a.potentialMem;
+          bValue = b.potentialMem;
           return sortDirection === "asc" ? aValue - bValue : bValue - aValue;
 
         case "lastUpdated":
@@ -482,9 +492,18 @@ export default function Workloads() {
     recommendedFromStats: { cpu: 0, memoryGB: 0 },
   };
 
+  let recommendedCpuFromStats = 0;
+  let recommendedMemGBFromStats = 0;
+
   if (statsData) {
     const workloadsList = Array.isArray(workloadsData) ? workloadsData : [];
     const analysisList = Array.isArray(recommendationAnalysis?.analysis) ? recommendationAnalysis!.analysis : undefined;
+    const analysisSummary = recommendationAnalysis?.summary;
+    if (analysisSummary) {
+      recommendedCpuFromStats = analysisSummary.total_current_cpu_requests - analysisSummary.total_cpu_differences;
+      recommendedMemGBFromStats = (analysisSummary.total_current_memory_requests - analysisSummary.total_memory_differences)/1024;
+      overviewMetrics.recommendedFromStats = { cpu: recommendedCpuFromStats, memoryGB: recommendedMemGBFromStats };
+    }
     overviewMetrics = transformStatsToOverviewMetrics(statsData, workloadsList, analysisList);
   }
 
@@ -520,9 +539,7 @@ export default function Workloads() {
     /** Original container requested from stats (cluster-wide). */
     const requestedCpuFromStats = overviewMetrics.requestedFromStats.cpu;
     const requestedMemGBFromStats = overviewMetrics.requestedFromStats.memoryGB;
-    /** Recommended requested from stats (cluster-wide). */
-    const recommendedCpuFromStats = overviewMetrics.recommendedFromStats.cpu;
-    const recommendedMemGBFromStats = overviewMetrics.recommendedFromStats.memoryGB;
+
 
     /** Current cost: allocatable × cost (CPU + Memory). */
     const currentCostDollars = hasAllocatable
@@ -878,7 +895,7 @@ export default function Workloads() {
                       <DollarSign className="h-5 w-5" />
                     </div>
                   </div>
-                  <p className="text-sm text-muted-foreground">How much more you can save per month</p>
+                  <p className="text-sm text-muted-foreground">Total possible savings per month</p>
                 </>
               )}
             </div>
@@ -1056,32 +1073,32 @@ export default function Workloads() {
                 </div>
               ) : (
                 <div className="flex flex-wrap items-baseline gap-x-8 gap-y-2 text-sm">
-                  <div className="flex items-baseline gap-1.5">
+                  {/* <div className="flex items-baseline gap-1.5">
                     <span className="text-muted-foreground">Total</span>
                     <span className="font-mono font-semibold tabular-nums text-foreground">{asArray(workloads).length}</span>
-                  </div>
-                  <div className="flex items-baseline gap-1.5">
+                  </div> */}
+                  {/* <div className="flex items-baseline gap-1.5">
                     <span className="text-muted-foreground">Skipped</span>
                     <span className="font-mono font-semibold tabular-nums text-foreground">
                       {Math.max(0, asArray(workloads).length - overviewMetrics.costOptimizedWorkloadsRecommendOnly - overviewMetrics.costOptimizedWorkloads)}
                     </span>
-                  </div>
+                  </div> */}
                   <div className="flex items-baseline gap-1.5">
                     <span className="text-muted-foreground">Optimized/Cruise</span>
-                    <span className="font-mono tabular-nums text-foreground">${overviewMetrics.realizedDollars.toLocaleString()}/mo</span>
-                    <span className="font-mono tabular-nums text-foreground text-muted-foreground">·</span>
+                    {/* <span className="font-mono tabular-nums text-foreground">${overviewMetrics.realizedDollars.toLocaleString()}/mo</span> */}
+                    {/* <span className="font-mono tabular-nums text-foreground text-muted-foreground">·</span> */}
                     <span className="font-mono font-semibold tabular-nums text-foreground">{overviewMetrics.costOptimizedWorkloads}</span>
                   </div>
                   <div className="flex items-baseline gap-1.5">
                     <span className="text-muted-foreground">Recommended</span>
-                    <span className="font-mono tabular-nums text-foreground">${overviewMetrics.unrealizedDollars.toLocaleString()}/mo</span>
-                    <span className="font-mono tabular-nums text-foreground text-muted-foreground">·</span>
+                    {/* <span className="font-mono tabular-nums text-foreground">${overviewMetrics.unrealizedDollars.toLocaleString()}/mo</span> */}
+                    {/* <span className="font-mono tabular-nums text-foreground text-muted-foreground">·</span> */}
                     <span className="font-mono font-semibold tabular-nums text-foreground">{overviewMetrics.costOptimizedWorkloadsRecommendOnly}</span>
                   </div>
                   <div className="flex items-baseline gap-1.5">
                     <span className="text-muted-foreground">Reliability Improved</span>
-                    <span className="font-mono tabular-nums text-foreground">${overviewMetrics.reliabilityIncreaseCost.dollars.toLocaleString()}/mo</span>
-                    <span className="font-mono tabular-nums text-foreground text-muted-foreground">·</span>
+                    {/* <span className="font-mono tabular-nums text-foreground">${overviewMetrics.reliabilityIncreaseCost.dollars.toLocaleString()}/mo</span> */}
+                    {/* <span className="font-mono tabular-nums text-foreground text-muted-foreground">·</span> */}
                     <span className="font-mono font-semibold tabular-nums text-foreground">{overviewMetrics.reliabilityIssues}</span>
                   </div>
                 </div>
@@ -1358,10 +1375,10 @@ export default function Workloads() {
                   <td className="font-mono text-sm tabular-nums text-right">{workload.replicas}</td>
                   <td className={`font-mono text-sm bg-muted/20 border-l border-b border-border ${index === 0 ? "border-t" : ""}`}>{workload.currentCpu}</td>
                   <td className={`font-mono text-sm bg-muted/20 border-b border-border ${index === 0 ? "border-t" : ""}`}>{workload.recommendedCpu}</td>
-                  <td className={`font-mono text-sm bg-muted/20 border-r border-b border-border ${workload.potentialCpu.startsWith("+") ? "text-amber-600 dark:text-amber-400" : ""} ${index === 0 ? "border-t" : ""}`}>{workload.potentialCpu === "0m" ? "—" : workload.potentialCpu}</td>
+                  <td className={`font-mono text-sm bg-muted/20 border-r border-b border-border ${workload.potentialCpu > 0 ? "text-amber-600 dark:text-amber-400" : ""} ${index === 0 ? "border-t" : ""}`}>{workload.potentialCpu === 0 ? "—" : formatCpuSigned(workload.potentialCpu)}</td>
                   <td className={`font-mono text-sm bg-muted/20 border-l border-b border-border ${index === 0 ? "border-t" : ""}`}>{workload.currentMem}</td>
                   <td className={`font-mono text-sm bg-muted/20 border-b border-border ${index === 0 ? "border-t" : ""}`}>{workload.recommendedMem}</td>
-                  <td className={`font-mono text-sm bg-muted/20 border-r border-b border-border ${workload.potentialMem.startsWith("+") ? "text-amber-600 dark:text-amber-400" : ""} ${index === 0 ? "border-t" : ""}`}>{workload.potentialMem === "0Mi" ? "—" : workload.potentialMem}</td>
+                  <td className={`font-mono text-sm bg-muted/20 border-r border-b border-border ${workload.potentialMem > 0 ? "text-amber-600 dark:text-amber-400" : ""} ${index === 0 ? "border-t" : ""}`}>{workload.potentialMem === 0 ? "—" : formatMemorySigned(workload.potentialMem)}</td>
                   <td className="font-mono text-sm text-primary">{workload.potentialDollars === 0 ? "—" : `$${workload.potentialDollars.toFixed(2)}`}</td>
                   <td className="font-mono text-sm">{workload.reliabilityCostDollars > 0 ? `$${workload.reliabilityCostDollars.toFixed(2)}` : "—"}</td>
                   <td>
