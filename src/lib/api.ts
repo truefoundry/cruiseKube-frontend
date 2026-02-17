@@ -16,13 +16,18 @@ export interface ClustersResponse {
   cluster_mode: string;
 }
 
+/** Effective overrides returned in the workload list (always present per workload). */
+export interface WorkloadOverridesEffective {
+  eviction_ranking: number;
+  enabled: boolean;
+}
+
 export interface WorkloadOverrideInfo {
   workload_id: string;
   name: string;
   namespace: string;
   kind: string;
-  eviction_ranking: number;
-  enabled: boolean;
+  overrides: WorkloadOverridesEffective;
 }
 
 export interface Overrides {
@@ -260,13 +265,46 @@ class ApiClient {
     return { ...data, stats };
   }
 
-  /** Normalizes empty response: API may return [] or null. Always returns an array. */
+  /** Fetches workloads from /workloads. Every workload must have a valid overrides object; otherwise throws. */
   async getWorkloads(clusterID: string): Promise<WorkloadOverrideInfo[]> {
     const data = await this.request<WorkloadOverrideInfo[] | null>(`/clusters/${clusterID}/workloads`);
     if (data == null || !Array.isArray(data)) {
       return [];
     }
-    return data;
+    return data.map((w) => this.assertWorkloadOverrides(w));
+  }
+
+  /** Validates that a workload has a valid overrides object. Throws if missing or invalid. */
+  private assertWorkloadOverrides(
+    w: { workload_id: string; name: string; namespace: string; kind: string; overrides?: unknown }
+  ): WorkloadOverrideInfo {
+    const raw = w.overrides;
+    if (raw == null || typeof raw !== 'object' || Array.isArray(raw)) {
+      throw new Error(
+        `getWorkloads: workload at index has missing or invalid overrides (workload_id=${w.workload_id}, name=${w.name})`
+      );
+    }
+    const o = raw as Record<string, unknown>;
+    if (typeof o.eviction_ranking !== 'number') {
+      throw new Error(
+        `getWorkloads: workload overrides.eviction_ranking must be a number (workload_id=${w.workload_id}, name=${w.name})`
+      );
+    }
+    if (typeof o.enabled !== 'boolean') {
+      throw new Error(
+        `getWorkloads: workload overrides.enabled must be a boolean (workload_id=${w.workload_id}, name=${w.name})`
+      );
+    }
+    return {
+      workload_id: w.workload_id,
+      name: w.name,
+      namespace: w.namespace,
+      kind: w.kind,
+      overrides: {
+        eviction_ranking: o.eviction_ranking,
+        enabled: o.enabled,
+      },
+    };
   }
 
   /** Normalizes empty response: API may return { "analysis": null, "summary": {...} }. Always returns { analysis: array, summary }. */
@@ -291,10 +329,6 @@ class ApiClient {
   async getWorkloadAnalysis(clusterID: string): Promise<WorkloadAnalysisItem[]> {
     const data = await this.request<WorkloadAnalysisItem[] | null>(`/clusters/${clusterID}/workload-analysis`);
     return Array.isArray(data) ? data : [];
-  }
-
-  async getWorkloadOverrides(clusterID: string, workloadID: string): Promise<Overrides> {
-    return this.request<Overrides>(`/clusters/${clusterID}/workloads/${workloadID}/overrides`);
   }
 
   async updateWorkloadOverrides(

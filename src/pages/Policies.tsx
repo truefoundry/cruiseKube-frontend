@@ -1,114 +1,27 @@
-import { 
+import {
   Database,
   CheckCircle,
   XCircle,
   Loader2,
-  Search,
-  Info,
-  DollarSign
+  DollarSign,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Switch } from "@/components/ui/switch";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
 import { useState } from "react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { apiClient, WorkloadOverrideInfo, Overrides, type PrometheusConfig } from "@/lib/api";
-import { mapEvictionRankingToPriority, mapPriorityToEvictionRanking } from "@/lib/transformers";
+import { useQueryClient } from "@tanstack/react-query";
+import { type PrometheusConfig } from "@/lib/api";
 import { useCluster } from "@/contexts/ClusterContext";
 import { useConfig } from "@/contexts/ConfigContext";
 import { toast } from "@/hooks/use-toast";
-import { asArray } from "@/lib/utils";
 import { getResourcePricing, setResourcePricing, DEFAULT_CPU, DEFAULT_MEMORY } from "@/lib/pricing";
 
 export default function Policies() {
   const { selectedClusterId } = useCluster();
   const { config: prometheusConfig, isLoading: prometheusConfigLoading, refetch: refetchPrometheusConfig } = useConfig();
   const queryClient = useQueryClient();
-  const [updatingWorkloads, setUpdatingWorkloads] = useState<Set<string>>(new Set());
-  const [search, setSearch] = useState("");
   const [cpuPrice, setCpuPrice] = useState<string>(() => String(getResourcePricing().cpuPerCorePerHour));
   const [memoryPrice, setMemoryPrice] = useState<string>(() => String(getResourcePricing().memoryPerGbPerHour));
-
-  const { data: workloads, isLoading: workloadsLoading, error: workloadsError } = useQuery({
-    queryKey: ['workloads', selectedClusterId],
-    queryFn: () => {
-      if (!selectedClusterId) throw new Error('No cluster selected');
-      return apiClient.getWorkloads(selectedClusterId);
-    },
-    enabled: !!selectedClusterId,
-  });
-
-  const updateOverrideMutation = useMutation({
-    mutationFn: async ({ workloadId, overrides }: { workloadId: string; overrides: Overrides }) => {
-      if (!selectedClusterId) throw new Error('No cluster selected');
-      return apiClient.updateWorkloadOverrides(selectedClusterId, workloadId, overrides);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['workloads', selectedClusterId] });
-      toast({
-        title: "Success",
-        description: "Workload override updated successfully",
-      });
-    },
-    onError: (error: Error) => {
-      toast({
-        title: "Error",
-        description: error.message || "Failed to update workload override",
-        variant: "destructive",
-      });
-    },
-  });
-
-  const handleModeChange = async (workloadId: string, enabled: boolean) => {
-    setUpdatingWorkloads(prev => new Set(prev).add(workloadId));
-    try {
-      await updateOverrideMutation.mutateAsync({
-        workloadId,
-        overrides: { enabled },
-      });
-    } finally {
-      setUpdatingWorkloads(prev => {
-        const next = new Set(prev);
-        next.delete(workloadId);
-        return next;
-      });
-    }
-  };
-
-  const handlePriorityChange = async (workloadId: string, priority: 'low' | 'medium' | 'high' | 'non-evictable') => {
-    setUpdatingWorkloads(prev => new Set(prev).add(workloadId));
-    try {
-      const evictionRanking = mapPriorityToEvictionRanking(priority);
-      await updateOverrideMutation.mutateAsync({
-        workloadId,
-        overrides: { eviction_ranking: evictionRanking },
-      });
-    } finally {
-      setUpdatingWorkloads(prev => {
-        const next = new Set(prev);
-        next.delete(workloadId);
-        return next;
-      });
-    }
-  };
-
-  const getWorkloadPriority = (workload: WorkloadOverrideInfo): 'low' | 'medium' | 'high' | 'non-evictable' => {
-    return mapEvictionRankingToPriority(workload.eviction_ranking);
-  };
 
   const testConnection = async () => {
     try {
@@ -145,31 +58,6 @@ export default function Policies() {
     );
   }
 
-  if (workloadsLoading) {
-    return (
-      <div className="p-6 flex items-center justify-center">
-        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-      </div>
-    );
-  }
-
-  if (workloadsError) {
-    return (
-      <div className="p-6">
-        <div className="text-center text-destructive">
-          Failed to load workloads: {workloadsError instanceof Error ? workloadsError.message : 'Unknown error'}
-        </div>
-      </div>
-    );
-  }
-
-  const workloadsList = asArray(workloads).filter((w) => {
-    const matchesSearch = 
-      w.name.toLowerCase().includes(search.toLowerCase()) ||
-      w.namespace.toLowerCase().includes(search.toLowerCase());
-    return matchesSearch;
-  });
-
   return (
     <div className="p-6 space-y-6 animate-fade-in">
       {/* Header */}
@@ -178,127 +66,11 @@ export default function Policies() {
         <p className="text-sm text-muted-foreground">Configure CruiseKube behavior and workload settings</p>
       </div>
 
-      <Tabs defaultValue="mode" className="space-y-6">
+      <Tabs defaultValue="pricing" className="space-y-6">
         <TabsList className="bg-muted/50">
-          <TabsTrigger value="mode">CruiseKube Mode & Priority</TabsTrigger>
           <TabsTrigger value="pricing">Resource Pricing</TabsTrigger>
           <TabsTrigger value="prometheus">Prometheus Config</TabsTrigger>
         </TabsList>
-
-        <TabsContent value="mode" className="space-y-6">
-          <div className="relative flex-1 min-w-[240px] max-w-sm">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input
-              placeholder="Search workloads..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="pl-9 bg-muted/50 border-border"
-            />
-          </div>
-          <div className="metric-card overflow-hidden">
-            <h3 className="text-xs font-medium uppercase tracking-wider text-muted-foreground mb-4">
-              Per Workload Settings
-            </h3>
-            <div className="overflow-x-auto">
-              <table className="data-table">
-                <thead>
-                  <tr>
-                    <th>Workload</th>
-                    <th>Namespace</th>
-                    <th>
-                      <div className="flex items-center gap-1.5">
-                        Mode
-                        <TooltipProvider>
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
-                            </TooltipTrigger>
-                            <TooltipContent>
-                              <p className="max-w-xs">Enables auto-apply of recommendations. When Cruise is enabled, CruiseKube will automatically apply resource recommendations.</p>
-                            </TooltipContent>
-                          </Tooltip>
-                        </TooltipProvider>
-                      </div>
-                    </th>
-                    <th>
-                      <div className="flex items-center gap-1.5">
-                        Priority
-                        <TooltipProvider>
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
-                            </TooltipTrigger>
-                            <TooltipContent>
-                              <p className="max-w-xs">Determines eviction priority during optimization. Higher priority workloads have a lower chance of being evicted when the algorithm needs to optimize resources. This is determined using the mode setting.</p>
-                            </TooltipContent>
-                          </Tooltip>
-                        </TooltipProvider>
-                      </div>
-                    </th>
-                    <th></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {workloadsList.length === 0 ? (
-                    <tr>
-                      <td colSpan={5} className="text-center text-muted-foreground py-8">
-                        No workloads found
-                      </td>
-                    </tr>
-                  ) : (
-                    asArray(workloadsList).map((workload) => {
-                      const isUpdating = updatingWorkloads.has(workload.workload_id);
-                      const currentPriority = getWorkloadPriority(workload);
-                      return (
-                        <tr key={workload.workload_id}>
-                          <td className="font-medium">{workload.name}</td>
-                          <td className="font-mono text-xs text-muted-foreground">{workload.namespace}</td>
-                          <td>
-                            <div className="flex items-center gap-3">
-                              <span className={`text-sm ${!workload.enabled ? 'font-medium text-foreground' : 'text-muted-foreground'}`}>
-                                Recommend
-                              </span>
-                              <Switch
-                                checked={workload.enabled}
-                                onCheckedChange={(checked) => handleModeChange(workload.workload_id, checked)}
-                                disabled={isUpdating}
-                              />
-                              <span className={`text-sm ${workload.enabled ? 'font-medium text-foreground' : 'text-muted-foreground'}`}>
-                                Cruise
-                              </span>
-                            </div>
-                          </td>
-                          <td>
-                            <Select 
-                              value={currentPriority}
-                              onValueChange={(value) => handlePriorityChange(workload.workload_id, value as 'low' | 'medium' | 'high' | 'non-evictable')}
-                              disabled={isUpdating}
-                            >
-                              <SelectTrigger className="w-[150px] bg-muted/50 h-8">
-                                <SelectValue />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="low">Low</SelectItem>
-                                <SelectItem value="medium">Medium</SelectItem>
-                                <SelectItem value="high">High</SelectItem>
-                                <SelectItem value="non-evictable">Non-evictable</SelectItem>
-                              </SelectContent>
-                            </Select>
-                          </td>
-                          <td>
-                            {isUpdating && (
-                              <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
-                            )}
-                          </td>
-                        </tr>
-                      );
-                    })
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </TabsContent>
 
         {/* Resource Pricing Tab */}
         <TabsContent value="pricing" className="space-y-6">
