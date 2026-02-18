@@ -51,11 +51,12 @@ export enum ContainerType {
   APP_CONTAINER = 3,
 }
 
+/** Must match backend pkg/types/stats.go: EvictionRankingDisabled=1, Low=2, Medium=3, High=4 */
 export enum EvictionRanking {
   EvictionRankingDisabled = 1,
-  EvictionRankingHigh = 2,
+  EvictionRankingLow = 2,
   EvictionRankingMedium = 3,
-  EvictionRankingLow = 4,
+  EvictionRankingHigh = 4,
 }
 
 export interface FrontendPodRecommendation {
@@ -221,16 +222,18 @@ function calculateRecommendedMemory(
   return [currentMemory];
 }
 
-export function mapEvictionRankingToPriority(ranking: EvictionRanking): 'high' | 'medium' | 'low' | 'non-evictable' {
-  switch (ranking) {
+export function mapEvictionRankingToPriority(ranking: number): 'high' | 'medium' | 'low' | 'non-evictable' {
+  switch (Number(ranking)) {
     case EvictionRanking.EvictionRankingDisabled:
       return 'non-evictable';
-    case EvictionRanking.EvictionRankingHigh:
-      return 'high';
-    case EvictionRanking.EvictionRankingMedium:
-      return 'medium';  
     case EvictionRanking.EvictionRankingLow:
       return 'low';
+    case EvictionRanking.EvictionRankingMedium:
+      return 'medium';
+    case EvictionRanking.EvictionRankingHigh:
+      return 'high';
+    default:
+      return 'medium';
   }
 }
 
@@ -411,8 +414,8 @@ export function transformWorkloadStatToFrontend(
   const reliabilityMemoryGB = totalReliabilityMemoryDiffMB / 1024;
   const reliabilityCostDollars = calculateDollarSavings(totalReliabilityCpuDiff, reliabilityMemoryGB);
 
-  const enabled = !override || override?.enabled;
-  const evictionRanking = override?.eviction_ranking ?? stat.eviction_ranking;
+  const enabled = !override?.overrides ? true : override.overrides.enabled;
+  const evictionRanking = override?.overrides?.eviction_ranking ?? stat.eviction_ranking;
 
   return {
     id: workloadId,
@@ -645,7 +648,7 @@ export function transformStatsToOverviewMetrics(
     /** User override for this workload, if any. */
     const override = overrideMap.get(workloadId);
     /** Whether cost optimization is enabled (override or stat default). */
-    const enabled = override?.enabled ?? stat.continuous_optimization;
+    const enabled = override?.overrides?.enabled ?? stat.continuous_optimization;
 
     /** Aggregated current/recommended CPU and memory for this workload (from container stats + recommendationMap). */
     let workloadCurrentCpu = 0;
