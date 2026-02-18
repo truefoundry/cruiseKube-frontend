@@ -32,6 +32,8 @@ export interface FrontendWorkload {
   mode: 'enabled' | 'recommend-only';
   priority: 'low' | 'medium' | 'high' | 'non-evictable';
   hasRecommendations: boolean;
+  /** Disruption windows (cron in UTC) from overrides. */
+  disruptionWindows: { startCron: string; endCron: string }[];
   /** True when workload is excluded from optimization; reason in excludedReason. */
   excluded?: boolean;
   excludedReason?: string;
@@ -416,6 +418,8 @@ export function transformWorkloadStatToFrontend(
 
   const enabled = !override?.overrides ? true : override.overrides.enabled;
   const evictionRanking = override?.overrides?.eviction_ranking ?? stat.eviction_ranking;
+  const rawWindows = override?.overrides?.disruption_windows ?? [];
+  const disruptionWindows = rawWindows.map((w) => ({ startCron: w.start_cron, endCron: w.end_cron }));
 
   return {
     id: workloadId,
@@ -435,6 +439,7 @@ export function transformWorkloadStatToFrontend(
     mode: enabled ? 'enabled' : 'recommend-only',
     priority: mapEvictionRankingToPriority(evictionRanking),
     hasRecommendations,
+    disruptionWindows,
     excluded: stat.metadata?.excluded ?? false,
     excludedReason:
       Array.isArray(stat.metadata?.excluded_codes) && stat.metadata.excluded_codes.length > 0
