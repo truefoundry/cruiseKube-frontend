@@ -25,18 +25,16 @@ import {
 import { useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useCluster } from "@/contexts/ClusterContext";
-import { apiClient, type Overrides } from "@/lib/api";
+import { apiClient, type Overrides, type WorkloadDetail } from "@/lib/api";
 import { 
-  transformStatsToWorkloads, 
   FrontendWorkload,
-  transformStatsToOverviewMetrics,
-  OverviewMetrics,
-  calculateDollarSavings,
+  formatCpu,
+  formatMemory,
   formatCpuSigned,
   formatMemorySigned,
   mapPriorityToEvictionRanking,
 } from "@/lib/transformers";
-import { getResourcePricing, getCpuPricePerCorePerHour, getMemoryPricePerGbPerHour } from "@/lib/pricing";
+import { getResourcePricing } from "@/lib/pricing";
 import { MetricCard } from "@/components/ui/metric-card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
@@ -140,6 +138,48 @@ function workloadIdForApi(id: string): string {
   return id.includes("/") ? id.replace(/\//g, ":") : id;
 }
 
+function formatUpdatedAtUnix(utcSeconds: number): string {
+  const diffMs = Date.now() - utcSeconds * 1000;
+  const diffMins = Math.floor(diffMs / 60000);
+  const diffHours = Math.floor(diffMs / 3600000);
+  const diffDays = Math.floor(diffMs / 86400000);
+  if (diffMins < 1) return "just now";
+  if (diffMins < 60) return `${diffMins} min ago`;
+  if (diffHours < 24) return `${diffHours} hr ago`;
+  return `${diffDays} days ago`;
+}
+
+function normalizePriority(p: string): "low" | "medium" | "high" | "non-evictable" {
+  if (p === "low" || p === "medium" || p === "high" || p === "non-evictable") return p;
+  return "medium";
+}
+
+function workloadDetailToFrontend(d: WorkloadDetail): FrontendWorkload {
+  const mode = d.config.mode === "enabled" ? "enabled" : "recommend-only";
+  const priority = normalizePriority(d.config.priority);
+  return {
+    id: d.workloadID,
+    namespace: d.namespace,
+    workload: d.name,
+    type: d.kind,
+    replicas: d.podsCount,
+    potentialCpu: d.cpu.recommended.change,
+    potentialMem: d.memory.recommended.change,
+    currentCpu: formatCpu(d.cpu.current),
+    recommendedCpu: formatCpu(d.cpu.recommended.max),
+    currentMem: formatMemory(d.memory.current),
+    recommendedMem: formatMemory(d.memory.recommended.max),
+    potentialDollars: d.dollarSavingsPerMonth,
+    reliabilityCostDollars: d.dollarExpenditurePerMonth,
+    lastUpdated: formatUpdatedAtUnix(d.updatedAt),
+    mode,
+    priority,
+    hasRecommendations: d.dollarSavingsPerMonth !== 0 || d.dollarExpenditurePerMonth !== 0,
+    excluded: d.constraints?.excludedAnnotation ?? false,
+    excludedReason: d.constraints?.excludedAnnotation ? "Excluded annotation" : undefined,
+  };
+}
+
 export default function Workloads() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -202,8 +242,7 @@ export default function Workloads() {
       return apiClient.updateWorkloadOverrides(selectedClusterId, workloadId, overrides);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['workloads', selectedClusterId] });
-      queryClient.invalidateQueries({ queryKey: ['cluster-stats', selectedClusterId] });
+      queryClient.invalidateQueries({ queryKey: ['workloads-summary', selectedClusterId] });
       toast({
         title: "Success",
         description: "CruiseConfig updated successfully",
@@ -237,172 +276,16 @@ export default function Workloads() {
     });
   };
 
-  const { data: statsData, isLoading: isLoadingStats, error: statsError } = useQuery({
-    queryKey: ['cluster-stats', selectedClusterId],
-    queryFn: () => apiClient.getClusterStats(selectedClusterId!),
+  const { data: summaryData, isLoading: isLoadingSummary, error: summaryError } = useQuery({
+    queryKey: ['workloads-summary', selectedClusterId],
+    queryFn: () => apiClient.getWorkloadsSummary(selectedClusterId!),
     enabled: !!selectedClusterId,
   });
 
-  const { data: workloadsData, isLoading: isLoadingWorkloads, error: workloadsError } = useQuery({
-    queryKey: ['workloads', selectedClusterId],
-    queryFn: () => apiClient.getWorkloads(selectedClusterId!),
-    enabled: !!selectedClusterId,
-  });
+  const workloads: FrontendWorkload[] = (summaryData?.workloadDetails ?? []).map(workloadDetailToFrontend);
+  const impactSummary = summaryData?.impactSummary;
+  const clusterResources = impactSummary?.clusterResources;
 
-  const { data: recommendationAnalysis, isLoading: isLoadingRecommendationAnalysis } = useQuery({
-    queryKey: ['recommendation-analysis', selectedClusterId],
-    queryFn: () => apiClient.getRecommendationAnalysis(selectedClusterId!),
-    enabled: !!selectedClusterId,
-  });
-
-  const prometheusQueries = {
-    cpuUtilised: `round(
-      sum(
-        sum by (node) (
-          rate(node_cpu_seconds_total{job="node-exporter", mode=~"user|system"}[1m])
-        )
-        unless max by (node) (
-          max_over_time(kube_node_status_allocatable{
-            job="kube-state-metrics",
-            resource=~"nvidia_com_gpu|amd_com_gpu"
-          }[7d:]) > 0
-        )
-      ),
-      0.001
-    )`,
-    cpuRequested: `round(
-      sum(
-        sum by (node) (
-          (
-            (
-              sum by (namespace, pod) (kube_pod_container_resource_requests{job="kube-state-metrics", container!="", resource="cpu"})
-            )
-            unless on (namespace, pod)
-            (
-              sum by (namespace, pod) (kube_pod_container_resource_requests{job="kube-state-metrics", container!="", resource=~"nvidia_com_gpu|amd_com_gpu"})
-            )
-          )
-          * on (namespace, pod) group_left
-            sum by (namespace, pod) (kube_pod_status_phase{job="kube-state-metrics", phase!~"Failed|Succeeded|Unknown|Pending"})
-        )
-        unless on (node)
-        (
-          max by (node) (
-            max_over_time(
-              kube_node_status_allocatable{job="kube-state-metrics", resource=~"nvidia_com_gpu|amd_com_gpu"}[7d:]
-            )
-          )
-          >
-          0
-        )
-      ),
-      0.001
-    )`,
-    cpuAllocatable: `round(
-      sum(
-        sum by (node) (kube_node_status_allocatable{job="kube-state-metrics", resource="cpu"})
-        unless (
-          sum by (node) (
-            kube_node_spec_taint{job="kube-state-metrics", key="nvidia.com/gpu"}
-          )
-        )
-        unless on (node) (
-          kube_node_labels{job="kube-state-metrics", accelerator="nvidia"}
-        )
-      ),
-      0.001
-    )`,
-    memoryUtilised: `round(
-      sum(
-        sum by (node) (
-          node_memory_MemTotal_bytes{job="node-exporter"} - (node_memory_MemFree_bytes{job="node-exporter"} + node_memory_Buffers_bytes{job="node-exporter"} + node_memory_Cached_bytes{job="node-exporter"})
-        )
-        unless
-        max by (node) (
-          max_over_time(kube_node_status_allocatable{job="kube-state-metrics", resource=~"nvidia_com_gpu|amd_com_gpu"}[7d:])
-        ) > 0
-      )
-      / 1000000000,
-      0.001
-    )`,
-    memoryRequested: `round(
-      sum(
-        sum by (node) (
-          (
-            (
-              sum by (namespace, pod) (kube_pod_container_resource_requests{job="kube-state-metrics", container!="", resource="memory"})
-            )
-            unless on (namespace, pod)
-            (
-              sum by (namespace, pod) (kube_pod_container_resource_requests{job="kube-state-metrics", container!="", resource=~"nvidia_com_gpu|amd_com_gpu"})
-            )
-          )
-          * on (namespace, pod) group_left
-            sum by (namespace, pod) (kube_pod_status_phase{job="kube-state-metrics", phase!~"Failed|Succeeded|Unknown|Pending"})
-        )
-        unless on (node)
-        (
-          max by (node) (
-            max_over_time(
-              kube_node_status_allocatable{job="kube-state-metrics", resource=~"nvidia_com_gpu|amd_com_gpu"}[7d:]
-            )
-          )
-          >
-          0
-        )
-      ) / 1000000000,
-      0.001
-    )`,
-    memoryAllocatable: `round(
-      sum(
-        sum by (node) (kube_node_status_allocatable{job="kube-state-metrics", resource="memory"})
-        unless (
-          sum by (node) (kube_node_spec_taint{job="kube-state-metrics", key="nvidia.com/gpu"})
-        )
-        unless on (node) (
-          kube_node_labels{job="kube-state-metrics", accelerator="nvidia"}
-        )
-      ) / 1000000000,
-      0.001
-    )`,
-  };
-
-  const { data: clusterMetrics, isLoading: isLoadingClusterMetrics } = useQuery({
-    queryKey: ['cluster-metrics', selectedClusterId],
-    queryFn: async () => {
-      if (!selectedClusterId) throw new Error('No cluster selected');
-      const results = await Promise.all([
-        apiClient.queryPrometheus(selectedClusterId, prometheusQueries.cpuUtilised).catch(() => null),
-        apiClient.queryPrometheus(selectedClusterId, prometheusQueries.cpuRequested).catch(() => null),
-        apiClient.queryPrometheus(selectedClusterId, prometheusQueries.cpuAllocatable).catch(() => null),
-        apiClient.queryPrometheus(selectedClusterId, prometheusQueries.memoryUtilised).catch(() => null),
-        apiClient.queryPrometheus(selectedClusterId, prometheusQueries.memoryRequested).catch(() => null),
-        apiClient.queryPrometheus(selectedClusterId, prometheusQueries.memoryAllocatable).catch(() => null),
-      ]);
-      return {
-        cpuUtilised: results[0]?.data?.result?.[0]?.value?.[1] || null,
-        cpuRequested: results[1]?.data?.result?.[0]?.value?.[1] || null,
-        cpuAllocatable: results[2]?.data?.result?.[0]?.value?.[1] || null,
-        memoryUtilised: results[3]?.data?.result?.[0]?.value?.[1] || null,
-        memoryRequested: results[4]?.data?.result?.[0]?.value?.[1] || null,
-        memoryAllocatable: results[5]?.data?.result?.[0]?.value?.[1] || null,
-      };
-    },
-    enabled: !!selectedClusterId,
-    retry: false,
-  });
-
-  let rawWorkloads: FrontendWorkload[] = [];
-  try {
-    const workloadsList = Array.isArray(workloadsData) ? workloadsData : [];
-    const analysisList = Array.isArray(recommendationAnalysis?.analysis) ? recommendationAnalysis?.analysis : undefined;
-    rawWorkloads = statsData && workloadsData
-      ? transformStatsToWorkloads(statsData, workloadsList, analysisList)
-      : [];
-  } catch {
-    rawWorkloads = [];
-  }
-  const workloads: FrontendWorkload[] = Array.isArray(rawWorkloads) ? rawWorkloads : [];
 
   const parseCpuValue = (cpuString: string): number => {
     if (!cpuString) return 0;
@@ -578,10 +461,10 @@ export default function Workloads() {
     );
   }
 
-  const isLoadingMetrics = isLoadingStats || isLoadingWorkloads || isLoadingRecommendationAnalysis || isLoadingClusterMetrics;
+  const isLoadingMetrics = isLoadingSummary;
 
-  if (statsError || workloadsError) {
-    const errorMessage = statsError instanceof Error ? statsError.message : workloadsError instanceof Error ? workloadsError.message : 'Unknown error';
+  if (summaryError) {
+    const errorMessage = summaryError instanceof Error ? summaryError.message : "Unknown error";
     return (
       <div className="p-6 space-y-4">
         <Alert variant="destructive">
@@ -593,180 +476,27 @@ export default function Workloads() {
     );
   }
 
-  let overviewMetrics: OverviewMetrics = {
-    optimizationScore: 0,
-    coverage: 0,
-    potentialSavings: { cpu: 0, memory: 0, dollars: 0 },
-    realizedSavings: { cpu: 0, memory: 0, dollars: 0 },
-    reliabilityIssues: 0,
-    reliabilityIncreaseCost: { cpu: 0, memory: 0, dollars: 0 },
-    costOptimizedWorkloadsRecommendOnly: 0,
-    costOptimizedWorkloads: 0,
-    totalSavedPerHour: 0,
-    realizedDollars: 0,
-    unrealizedDollars: 0,
-    requestedFromStats: { cpu: 0, memoryGB: 0 },
-    recommendedFromStats: { cpu: 0, memoryGB: 0 },
+  const costOptimizedWorkloads = (summaryData?.workloadDetails ?? []).filter((w) => w.config.mode === "enabled" && w.dollarSavingsPerMonth > 0).length;
+  const costOptimizedWorkloadsRecommendOnly = (summaryData?.workloadDetails ?? []).filter((w) => w.config.mode !== "enabled" && w.dollarSavingsPerMonth > 0).length;
+  const reliabilityIssues = (summaryData?.workloadDetails ?? []).filter((w) => w.dollarExpenditurePerMonth > 0).length;
+  const overviewMetrics = {
+    costOptimizedWorkloads,
+    costOptimizedWorkloadsRecommendOnly,
+    reliabilityIssues,
   };
 
-  let recommendedCpuFromStats = 0;
-  let recommendedMemGBFromStats = 0;
+  const hasNoData = !isLoadingMetrics && (summaryData?.workloadDetails?.length ?? 0) === 0;
 
-  if (statsData) {
-    const workloadsList = Array.isArray(workloadsData) ? workloadsData : [];
-    const analysisList = Array.isArray(recommendationAnalysis?.analysis) ? recommendationAnalysis!.analysis : undefined;
-    const analysisSummary = recommendationAnalysis?.summary;
-    if (analysisSummary) {
-      recommendedCpuFromStats = analysisSummary.total_current_cpu_requests - analysisSummary.total_cpu_differences;
-      recommendedMemGBFromStats = (analysisSummary.total_current_memory_requests - analysisSummary.total_memory_differences)/1024;
-      overviewMetrics.recommendedFromStats = { cpu: recommendedCpuFromStats, memoryGB: recommendedMemGBFromStats };
-    }
-    overviewMetrics = transformStatsToOverviewMetrics(statsData, workloadsList, analysisList);
-  }
-
-  /** True when cluster has no stats/workload data to show. */
-  const hasNoData = !isLoadingMetrics && (statsData?.stats == null || (Array.isArray(statsData?.stats) && statsData.stats.length === 0));
-
-  /** Cost calculations: allocatable, workload (requested), optimized (recommended) — used for the 3 top cards and tooltips. */
-  const {
-    currentCostDollars,
-    workloadCostDollars,
-    optimizedCostDollars,
-    currentSavingsDollars,
-    possibleSavingsDollars,
-    possibleSavingsPctOfWorkload,
-    costInputs: costInputsForTooltip,
-  } = (() => {
-    const cpuRequested = Number(clusterMetrics?.cpuRequested ?? 0);
-    const cpuAllocatable = Number(clusterMetrics?.cpuAllocatable ?? 0);
-    const memRequested = Number(clusterMetrics?.memoryRequested ?? 0);
-    const memAllocatable = Number(clusterMetrics?.memoryAllocatable ?? 0);
-
-    const hasRequested = clusterMetrics?.cpuRequested != null && clusterMetrics?.memoryRequested != null;
-    const hasAllocatable = clusterMetrics?.cpuAllocatable != null && clusterMetrics?.memoryAllocatable != null;
-
-    /** Req_alloc_ratio = prom_requested / prom_allocatable (per resource). Avoid div by zero: use 1 if allocatable is 0. */
-    const reqAllocRatioCpu = cpuAllocatable > 0 ? cpuRequested / cpuAllocatable : 1;
-    const reqAllocRatioMem = memAllocatable > 0 ? memRequested / memAllocatable : 1;
-
-    const hoursPerMonth = 720;
-    const cpuPrice = getCpuPricePerCorePerHour();
-    const memPrice = getMemoryPricePerGbPerHour();
-
-    /** Original container requested from stats (cluster-wide). */
-    const requestedCpuFromStats = overviewMetrics.requestedFromStats.cpu;
-    const requestedMemGBFromStats = overviewMetrics.requestedFromStats.memoryGB;
-
-
-    /** Current cost: allocatable × cost (CPU + Memory). */
-    const currentCostDollars = hasAllocatable
-      ? calculateDollarSavings(cpuAllocatable, memAllocatable)
-      : 0;
-
-    /** Workload cost = (Original Container Requested from stats / Req_alloc_ratio) × CostPerUnit. */
-    const workloadCostDollars =
-      Math.round(
-        ((requestedCpuFromStats / reqAllocRatioCpu) * cpuPrice +
-          (requestedMemGBFromStats / reqAllocRatioMem) * memPrice) *
-          hoursPerMonth *
-          100
-      ) / 100;
-
-    /** Optimized cost = (recommended Requested from stats / Req_alloc_ratio) × CostPerUnit. */
-    const optimizedCostDollars =
-      Math.round(
-        ((recommendedCpuFromStats / reqAllocRatioCpu) * cpuPrice +
-          (recommendedMemGBFromStats / reqAllocRatioMem) * memPrice) *
-          hoursPerMonth *
-          100
-      ) / 100;
-
-    /** Current savings: workload cost − current cost. */
-    const currentSavingsDollars = workloadCostDollars - currentCostDollars;
-
-    /** Possible savings: workload cost − optimized cost. */
-    const possibleSavingsDollars = workloadCostDollars - optimizedCostDollars;
-
-    /** Possible savings as % of workload cost (shown under Possible Savings card). */
-    const possibleSavingsPctOfWorkload =
-      workloadCostDollars > 0
-        ? (possibleSavingsDollars / workloadCostDollars) * 100
-        : 0;
-
-    console.log("[Workloads] Cost calculations", {
-      inputs: {
-        cpuRequested,
-        cpuAllocatable,
-        memRequested,
-        memAllocatable,
-        requestedFromStats: { cpu: requestedCpuFromStats, memoryGB: requestedMemGBFromStats },
-        recommendedFromStats: { cpu: recommendedCpuFromStats, memoryGB: recommendedMemGBFromStats },
-      },
-      req_alloc_ratio: {
-        reqAllocRatioCpu,
-        reqAllocRatioMem,
-      },
-      derived: {
-        recommendedCpuFromStats,
-        recommendedMemGBFromStats,
-      },
-      costs: {
-        currentCostDollars,
-        workloadCostDollars,
-        optimizedCostDollars,
-      },
-      savings: {
-        currentSavingsDollars,
-        possibleSavingsDollars,
-        possibleSavingsPctOfWorkload: `${possibleSavingsPctOfWorkload.toFixed(1)}%`,
-      },
-    });
-
-    return {
-      currentCostDollars,
-      workloadCostDollars,
-      optimizedCostDollars,
-      currentSavingsDollars,
-      possibleSavingsDollars,
-      possibleSavingsPctOfWorkload,
-      costInputs: {
-        cpuRequested,
-        cpuAllocatable,
-        memRequested,
-        memAllocatable,
-        optCpu: recommendedCpuFromStats,
-        optMem: recommendedMemGBFromStats,
-        requestedCpuFromStats,
-        requestedMemGBFromStats,
-        recommendedCpuFromStats,
-        recommendedMemGBFromStats,
-        reqAllocRatioCpu,
-        reqAllocRatioMem,
-        potentialSavingsCpu: overviewMetrics.potentialSavings.cpu,
-        potentialSavingsMemory: overviewMetrics.potentialSavings.memory,
-      },
-    };
-  })();
+  const currentCostDollars = impactSummary?.dollarCurrentCost ?? 0;
+  const currentSavingsDollars = impactSummary?.dollarCurrentSavings ?? 0;
+  const possibleSavingsDollars = impactSummary?.dollarPossibleSavings ?? 0;
+  const workloadCostDollars = currentCostDollars + currentSavingsDollars;
+  const optimizedCostDollars = workloadCostDollars - possibleSavingsDollars;
 
   const pricing = getResourcePricing();
   const isDev = import.meta.env.DEV;
-  const {
-    cpuAllocatable,
-    cpuRequested,
-    memAllocatable,
-    memRequested,
-    optCpu,
-    optMem,
-    reqAllocRatioCpu = 1,
-    reqAllocRatioMem = 1,
-  } = costInputsForTooltip ?? {
-    cpuAllocatable: 0,
-    cpuRequested: 0,
-    memAllocatable: 0,
-    memRequested: 0,
-    optCpu: 0,
-    optMem: 0,
-  };
+  const cpuAllocatable = clusterResources?.cpu?.allocatable ?? 0;
+  const memAllocatable = clusterResources?.memory?.allocatable ?? 0;
 
   const currentCostTooltipContent = (
     <div className="space-y-3 text-left">
@@ -837,7 +567,6 @@ export default function Workloads() {
         <>
           <p className="text-xs font-medium text-foreground pt-1 border-t border-border">Values used</p>
           <ul className="text-xs text-muted-foreground space-y-0.5 font-mono">
-            <li>Req_alloc_ratio CPU: {reqAllocRatioCpu.toFixed(4)}, Mem: {reqAllocRatioMem.toFixed(4)}</li>
             <li>Workload cost: ${workloadCostDollars.toLocaleString()}/month</li>
             <li>Optimized cost: ${optimizedCostDollars.toLocaleString()}/month</li>
           </ul>
@@ -869,14 +598,15 @@ export default function Workloads() {
             <h1 className="text-2xl font-bold tracking-tight text-foreground sm:text-3xl">Workloads</h1>
             <p className="mt-1 text-sm text-muted-foreground">Optimized Kubernetes resources and cost impact</p>
           </div>
-          {statsData && (statsData.stats ?? []).length > 0 && (
-            <div className="flex items-center gap-2 rounded-full border border-border bg-muted/30 px-3 py-1.5 text-xs text-muted-foreground">
-              <span className="h-1.5 w-1.5 rounded-full bg-success animate-pulse" />
-              Last sync: {(statsData.stats ?? [])[0]?.updated_at
-                ? new Date((statsData.stats ?? [])[0].updated_at).toLocaleString()
-                : 'Unknown'}
-            </div>
-          )}
+          {summaryData?.workloadDetails && summaryData.workloadDetails.length > 0 && (() => {
+            const maxUpdated = Math.max(...summaryData.workloadDetails.map((w) => w.updatedAt), 0);
+            return maxUpdated > 0 ? (
+              <div className="flex items-center gap-2 rounded-full border border-border bg-muted/30 px-3 py-1.5 text-xs text-muted-foreground">
+                <span className="h-1.5 w-1.5 rounded-full bg-success animate-pulse" />
+                Last sync: {new Date(maxUpdated * 1000).toLocaleString()}
+              </div>
+            ) : null;
+          })()}
         </header>
 
         {/* Cost & impact — 3 cards */}
@@ -885,7 +615,7 @@ export default function Workloads() {
           <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 xl:grid-cols-3">
             {/* 1. Current cost: allocatable × cost */}
             <div className="metric-card border-border">
-              {isLoadingClusterMetrics ? (
+              {isLoadingMetrics ? (
                 <div className="flex items-start justify-between">
                   <div className="space-y-1">
                     <Skeleton className="h-3 w-28" />
@@ -929,7 +659,7 @@ export default function Workloads() {
 
             {/* 2. Current savings: workload cost − current cost */}
             <div className="metric-card border-border">
-              {isLoadingClusterMetrics || isLoadingMetrics ? (
+              {isLoadingMetrics ? (
                 <div className="flex items-start justify-between">
                   <div className="space-y-1">
                     <Skeleton className="h-3 w-28" />
@@ -973,7 +703,7 @@ export default function Workloads() {
 
             {/* 3. Possible savings: workload cost − optimized cost; % below vs workload cost */}
             <div className="metric-card border-border flex flex-col">
-              {isLoadingClusterMetrics || isLoadingMetrics ? (
+              {isLoadingMetrics ? (
                 <div className="flex items-start justify-between">
                   <div className="space-y-1">
                     <Skeleton className="h-3 w-28" />
@@ -1023,7 +753,7 @@ export default function Workloads() {
         <section aria-labelledby="cluster-resources-heading">
           <h2 id="cluster-resources-heading" className="mb-4 text-sm font-semibold uppercase tracking-wider text-muted-foreground">Cluster resources</h2>
           <div className="grid gap-4 md:grid-cols-2">
-        {isLoadingClusterMetrics ? (
+        {isLoadingMetrics ? (
           <>
             <div className="metric-card space-y-4">
               <Skeleton className="h-6 w-24" />
@@ -1049,25 +779,25 @@ export default function Workloads() {
                   </div>
                   <span className="text-xs font-medium uppercase tracking-wider text-muted-foreground">CPU</span>
                 </div>
-                <span className="font-mono text-sm font-semibold">{formatCpuValue(clusterMetrics?.cpuAllocatable ?? null)} allocatable</span>
+                <span className="font-mono text-sm font-semibold">{formatCpuValue((clusterResources?.cpu?.allocatable != null ? String(clusterResources.cpu.allocatable) : null) ?? null)} allocatable</span>
               </div>
               {(() => {
-                const alloc = Number(clusterMetrics?.cpuAllocatable ?? 0);
-                const used = Number(clusterMetrics?.cpuUtilised ?? 0);
-                const req = Number(clusterMetrics?.cpuRequested ?? 0);
+                const alloc = Number((clusterResources?.cpu?.allocatable != null ? String(clusterResources.cpu.allocatable) : null) ?? 0);
+                const used = Number((clusterResources?.cpu?.utilised != null ? String(clusterResources.cpu.utilised) : null) ?? 0);
+                const req = Number((clusterResources?.cpu?.requested != null ? String(clusterResources.cpu.requested) : null) ?? 0);
                 const pctUsed = alloc > 0 ? Math.min(100, (used / alloc) * 100) : 0;
                 const pctReserved = alloc > 0 ? Math.min(100 - pctUsed, (Math.max(0, req - used) / alloc) * 100) : 0;
                 const pctFree = Math.max(0, 100 - pctUsed - pctReserved);
                 return (
                   <>
                     <div className="flex h-6 w-full overflow-hidden rounded-md bg-muted/60">
-                      {pctUsed > 0 && <div className="h-full bg-primary transition-all" style={{ width: `${pctUsed}%` }} title={`Utilised: ${formatCpuValue(clusterMetrics?.cpuUtilised ?? null)}`} />}
+                      {pctUsed > 0 && <div className="h-full bg-primary transition-all" style={{ width: `${pctUsed}%` }} title={`Utilised: ${formatCpuValue((clusterResources?.cpu?.utilised != null ? String(clusterResources.cpu.utilised) : null) ?? null)}`} />}
                       {pctReserved > 0 && <div className="h-full bg-primary/50 transition-all" style={{ width: `${pctReserved}%` }} title={`Requested (unused): ${(req - used).toFixed(2)} cores`} />}
                       {pctFree > 0 && <div className="h-full flex-1 bg-transparent" style={{ width: `${pctFree}%` }} title="Free" />}
                     </div>
                     <div className="flex justify-between text-sm text-muted-foreground mt-2">
-                    <span>Utilised <span className="text-foreground">{formatCpuValue(clusterMetrics?.cpuUtilised ?? null)}</span></span>
-                    <span>Requested <span className="text-foreground">{formatCpuValue(clusterMetrics?.cpuRequested ?? null)}</span></span>
+                    <span>Utilised <span className="text-foreground">{formatCpuValue((clusterResources?.cpu?.utilised != null ? String(clusterResources.cpu.utilised) : null) ?? null)}</span></span>
+                    <span>Requested <span className="text-foreground">{formatCpuValue((clusterResources?.cpu?.requested != null ? String(clusterResources.cpu.requested) : null) ?? null)}</span></span>
                     </div>
                   </>
                 );
@@ -1082,25 +812,25 @@ export default function Workloads() {
                   </div>
                   <span className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Memory</span>
                 </div>
-                <span className="font-mono text-sm font-semibold">{formatMemoryValue(clusterMetrics?.memoryAllocatable ?? null)} allocatable</span>
+                <span className="font-mono text-sm font-semibold">{formatMemoryValue((clusterResources?.memory?.allocatable != null ? String(clusterResources.memory.allocatable) : null) ?? null)} allocatable</span>
               </div>
               {(() => {
-                const alloc = Number(clusterMetrics?.memoryAllocatable ?? 0);
-                const used = Number(clusterMetrics?.memoryUtilised ?? 0);
-                const req = Number(clusterMetrics?.memoryRequested ?? 0);
+                const alloc = Number((clusterResources?.memory?.allocatable != null ? String(clusterResources.memory.allocatable) : null) ?? 0);
+                const used = Number((clusterResources?.memory?.utilised != null ? String(clusterResources.memory.utilised) : null) ?? 0);
+                const req = Number((clusterResources?.memory?.requested != null ? String(clusterResources.memory.requested) : null) ?? 0);
                 const pctUsed = alloc > 0 ? Math.min(100, (used / alloc) * 100) : 0;
                 const pctReserved = alloc > 0 ? Math.min(100 - pctUsed, (Math.max(0, req - used) / alloc) * 100) : 0;
                 const pctFree = Math.max(0, 100 - pctUsed - pctReserved);
                 return (
                   <>
                     <div className="flex h-6 w-full overflow-hidden rounded-md bg-muted/60">
-                      {pctUsed > 0 && <div className="h-full bg-primary transition-all" style={{ width: `${pctUsed}%` }} title={`Utilised: ${formatMemoryValue(clusterMetrics?.memoryUtilised ?? null)}`} />}
+                      {pctUsed > 0 && <div className="h-full bg-primary transition-all" style={{ width: `${pctUsed}%` }} title={`Utilised: ${formatMemoryValue((clusterResources?.memory?.utilised != null ? String(clusterResources.memory.utilised) : null) ?? null)}`} />}
                       {pctReserved > 0 && <div className="h-full bg-primary/50 transition-all" style={{ width: `${pctReserved}%` }} title={`Requested (unused): ${(req - used).toFixed(2)} GB`} />}
                       {pctFree > 0 && <div className="h-full flex-1 bg-transparent" style={{ width: `${pctFree}%` }} title="Free" />}
                     </div>
                     <div className="flex justify-between text-sm text-muted-foreground mt-2">
-                      <span>Utilised <span className="text-foreground">{formatMemoryValue(clusterMetrics?.memoryUtilised ?? null)}</span></span>
-                      <span>Requested <span className="text-foreground">{formatMemoryValue(clusterMetrics?.memoryRequested ?? null)}</span></span>
+                      <span>Utilised <span className="text-foreground">{formatMemoryValue((clusterResources?.memory?.utilised != null ? String(clusterResources.memory.utilised) : null) ?? null)}</span></span>
+                      <span>Requested <span className="text-foreground">{formatMemoryValue((clusterResources?.memory?.requested != null ? String(clusterResources.memory.requested) : null) ?? null)}</span></span>
                     </div>
                   </>
                 );

@@ -198,6 +198,77 @@ export interface PrometheusQueryResult {
   };
 }
 
+export interface ImpactSummaryClusterResource {
+  utilised: number;
+  requested: number;
+  allocatable: number;
+}
+
+export interface ImpactSummaryClusterResources {
+  cpu: ImpactSummaryClusterResource;
+  memory: ImpactSummaryClusterResource;
+}
+
+export interface ImpactSummary {
+  dollarCurrentCost: number;
+  dollarCurrentSavings: number;
+  dollarPossibleSavings: number;
+  clusterResources: ImpactSummaryClusterResources;
+}
+
+export interface WorkloadDetailConstraints {
+  blockingConsolidation: boolean;
+  pdb: boolean;
+  doNotDisruptAnnotation: boolean;
+  volume: boolean;
+  affinity: boolean;
+  topologySpreadConstraint: boolean;
+  podAntiAffinity: boolean;
+  excludedAnnotation: boolean;
+}
+
+export interface WorkloadDetailResourceRecommended {
+  min: number;
+  max: number;
+  change: number;
+}
+
+export interface WorkloadDetailResource {
+  current: number;
+  recommended: WorkloadDetailResourceRecommended;
+}
+
+export interface WorkloadDetailDisruptionWindow {
+  windowStartCron: string;
+  windowEndCron: string;
+}
+
+export interface WorkloadDetailConfig {
+  priority: string;
+  mode: string;
+  disruptionSchedule: WorkloadDetailDisruptionWindow[];
+}
+
+export interface WorkloadDetail {
+  workloadID: string;
+  kind: string;
+  namespace: string;
+  name: string;
+  updatedAt: number;
+  podsCount: number;
+  constraints: WorkloadDetailConstraints;
+  cpu: WorkloadDetailResource;
+  memory: WorkloadDetailResource;
+  dollarSavingsPerMonth: number;
+  dollarExpenditurePerMonth: number;
+  config: WorkloadDetailConfig;
+}
+
+export interface WorkloadSummaryResponse {
+  impactSummary: ImpactSummary;
+  workloadDetails: WorkloadDetail[];
+}
+
 class ApiClient {
   private baseUrl: string;
 
@@ -329,6 +400,10 @@ class ApiClient {
   async getWorkloadAnalysis(clusterID: string): Promise<WorkloadAnalysisItem[]> {
     const data = await this.request<WorkloadAnalysisItem[] | null>(`/clusters/${clusterID}/workload-analysis`);
     return Array.isArray(data) ? data : [];
+  }
+
+  async getWorkloadsSummary(clusterID: string): Promise<WorkloadSummaryResponse> {
+    return this.request<WorkloadSummaryResponse>(`/clusters/${clusterID}/workloads/summary`);
   }
 
   async updateWorkloadOverrides(
