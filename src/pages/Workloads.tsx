@@ -64,6 +64,8 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { asArray } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
+import { humanizeWindow } from "@/lib/cronUtils";
+import { DisruptionWindowEditor } from "@/components/DisruptionWindowEditor";
 
 const WORKLOAD_TYPE_ICONS: Record<string, LucideIcon> = {
   Deployment: Package,
@@ -195,6 +197,7 @@ export default function Workloads() {
   const [editWorkload, setEditWorkload] = useState<FrontendWorkload | null>(null);
   const [editPriority, setEditPriority] = useState<'low' | 'medium' | 'high' | 'non-evictable'>('medium');
   const [editMode, setEditMode] = useState<'enabled' | 'recommend-only'>('recommend-only');
+  const [editDisruptionWindows, setEditDisruptionWindows] = useState<{ startCron: string; endCron: string }[]>([]);
 
   const MIN_COLUMN_WIDTH = 48;
   const DEFAULT_COLUMN_WIDTHS = [160, 110, 70, 56, 72, 100, 72, 100, 90, 100, 120];
@@ -262,17 +265,25 @@ export default function Workloads() {
     setEditWorkload(workload);
     setEditPriority(workload.priority);
     setEditMode(workload.mode);
+    setEditDisruptionWindows(workload.disruptionWindows ?? []);
   };
 
   const handleSaveCruiseConfig = () => {
     if (!editWorkload) return;
     const id = workloadIdForApi(editWorkload.id);
+    const overrides: Overrides = {
+      eviction_ranking: mapPriorityToEvictionRanking(editPriority),
+      enabled: editMode === 'enabled',
+    };
+    if (editDisruptionWindows.length > 0) {
+      overrides.disruption_windows = editDisruptionWindows.map((w) => ({
+        start_cron: w.startCron,
+        end_cron: w.endCron,
+      }));
+    }
     updateOverrideMutation.mutate({
       workloadId: id,
-      overrides: {
-        eviction_ranking: mapPriorityToEvictionRanking(editPriority),
-        enabled: editMode === 'enabled',
-      },
+      overrides,
     });
   };
 
@@ -1177,13 +1188,37 @@ export default function Workloads() {
                     </TooltipProvider>
                   </td>
                   <td>
-                    <span className={`text-xs font-medium ${workload.mode === "enabled" ? "text-success" : "text-muted-foreground"}`}>
-                      {workload.mode === "enabled" ? "Cruise" : "Recommend"}
-                    </span>
-                    <span className="text-muted-foreground mx-1">·</span>
-                    <span className={`text-xs font-medium capitalize ${getPriorityColor(workload.priority)}`}>
-                      {workload.priority}
-                    </span>
+                    <div className="flex flex-col gap-0.5">
+                      <div className="flex items-center gap-1 flex-wrap">
+                        <span className={`text-xs font-medium ${workload.mode === "enabled" ? "text-success" : "text-muted-foreground"}`}>
+                          {workload.mode === "enabled" ? "Cruise" : "Recommend"}
+                        </span>
+                        <span className="text-muted-foreground">·</span>
+                        <span className={`text-xs font-medium capitalize ${getPriorityColor(workload.priority)}`}>
+                          {workload.priority}
+                        </span>
+                        {asArray(workload.disruptionWindows).length > 0 && (
+                          <TooltipProvider>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <span className="text-xs text-muted-foreground cursor-default border-b border-dotted border-muted-foreground/50">
+                                  {workload.disruptionWindows!.length} window{workload.disruptionWindows!.length !== 1 ? "s" : ""}
+                                </span>
+                              </TooltipTrigger>
+                              <TooltipContent side="bottom" className="max-w-sm">
+                                <div className="space-y-1">
+                                  {workload.disruptionWindows!.map((w, i) => (
+                                    <p key={i} className="text-xs">
+                                      {humanizeWindow(w.startCron, w.endCron)}
+                                    </p>
+                                  ))}
+                                </div>
+                              </TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
+                        )}
+                      </div>
+                    </div>
                   </td>
                   <td onClick={(e) => e.stopPropagation()}>
                     <div className="flex items-center gap-1">
@@ -1233,12 +1268,12 @@ export default function Workloads() {
 
         {/* Edit CruiseConfig modal */}
         <Dialog open={!!editWorkload} onOpenChange={(open) => !open && setEditWorkload(null)}>
-          <DialogContent className="sm:max-w-md" onClick={(e) => e.stopPropagation()}>
+          <DialogContent className="sm:max-w-lg" onClick={(e) => e.stopPropagation()}>
             <DialogHeader>
               <DialogTitle>Edit CruiseConfig</DialogTitle>
               <DialogDescription>
                 {editWorkload && (
-                  <>Update priority and mode for <span className="font-medium text-foreground">{editWorkload.workload}</span> in <span className="font-mono text-foreground">{editWorkload.namespace}</span>.</>
+                  <>Update priority, mode, and disruption windows for <span className="font-medium text-foreground">{editWorkload.workload}</span> in <span className="font-mono text-foreground">{editWorkload.namespace}</span>.</>
                 )}
               </DialogDescription>
             </DialogHeader>
@@ -1272,6 +1307,11 @@ export default function Workloads() {
                   </Select>
                   <p className="text-xs text-muted-foreground">Cruise auto-applies recommendations; Recommend only shows suggestions.</p>
                 </div>
+                <DisruptionWindowEditor
+                  windows={editDisruptionWindows}
+                  onChange={setEditDisruptionWindows}
+                  disabled={updateOverrideMutation.isPending}
+                />
               </div>
             )}
             <DialogFooter>

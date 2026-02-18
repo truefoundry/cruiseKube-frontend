@@ -16,10 +16,17 @@ export interface ClustersResponse {
   cluster_mode: string;
 }
 
+/** One disruption window: cron expressions in UTC. */
+export interface DisruptionWindow {
+  start_cron: string;
+  end_cron: string;
+}
+
 /** Effective overrides returned in the workload list (always present per workload). */
 export interface WorkloadOverridesEffective {
   eviction_ranking: number;
   enabled: boolean;
+  disruption_windows?: DisruptionWindow[];
 }
 
 export interface WorkloadOverrideInfo {
@@ -33,6 +40,7 @@ export interface WorkloadOverrideInfo {
 export interface Overrides {
   eviction_ranking?: number;
   enabled?: boolean;
+  disruption_windows?: DisruptionWindow[];
 }
 
 export interface SimplePrediction {
@@ -366,6 +374,14 @@ class ApiClient {
         `getWorkloads: workload overrides.enabled must be a boolean (workload_id=${w.workload_id}, name=${w.name})`
       );
     }
+    let disruption_windows: DisruptionWindow[] | undefined;
+    if (Array.isArray(o.disruption_windows)) {
+      disruption_windows = o.disruption_windows.filter(
+        (w): w is DisruptionWindow =>
+          w != null && typeof w === 'object' && typeof (w as DisruptionWindow).start_cron === 'string' && typeof (w as DisruptionWindow).end_cron === 'string'
+      ) as DisruptionWindow[];
+      if (disruption_windows.length === 0) disruption_windows = undefined;
+    }
     return {
       workload_id: w.workload_id,
       name: w.name,
@@ -374,6 +390,7 @@ class ApiClient {
       overrides: {
         eviction_ranking: o.eviction_ranking,
         enabled: o.enabled,
+        ...(disruption_windows != null && disruption_windows.length > 0 ? { disruption_windows } : {}),
       },
     };
   }
