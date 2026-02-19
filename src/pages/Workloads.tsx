@@ -19,6 +19,8 @@ import {
   Pencil,
   ShieldAlert,
 } from "lucide-react";
+import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
+import { faCircleArrowUp } from "@fortawesome/free-solid-svg-icons";
 import { useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useCluster } from "@/contexts/ClusterContext";
@@ -1130,13 +1132,13 @@ export default function Workloads() {
                       : "hover:bg-muted/50 " + (index % 2 === 1 ? "bg-muted/10" : "")
                   }`}
                 >
-                  <td>
-                    <div className="flex flex-col gap-0.5">
-                      <div className="flex items-center gap-2 flex-wrap">
+                  <td className="min-w-0 break-words align-top">
+                    <div className="flex flex-col gap-0.5 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap min-w-0">
                         <span className="shrink-0" onClick={(e) => e.stopPropagation()}>
                           <WorkloadTypeIcon type={workload.type} />
                         </span>
-                        <span className={`font-medium whitespace-nowrap ${workload.excluded ? "text-muted-foreground" : ""}`}>{workload.workload}</span>
+                        <span className={`font-medium break-words ${workload.excluded ? "text-muted-foreground" : ""}`}>{workload.workload}</span>
                         {workload.blockingConsolidation && (
                           <TooltipProvider>
                             <Tooltip>
@@ -1173,7 +1175,7 @@ export default function Workloads() {
                       )}
                     </div>
                   </td>
-                  <td className="font-mono text-xs">{workload.namespace}</td>
+                  <td className="font-mono text-xs break-words min-w-0 align-top">{workload.namespace}</td>
                   <td className="font-mono text-sm tabular-nums text-right">{workload.replicas}</td>
                   <td className={`font-mono text-sm bg-muted/20 border-l border-b border-border ${index === 0 ? "border-t" : ""}`}>{tableCpuDisplay(workload.currentCpu)}</td>
                   <td className={`font-mono text-sm bg-muted/20 border-r border-b border-border ${index === 0 ? "border-t" : ""}`}>
@@ -1193,11 +1195,11 @@ export default function Workloads() {
                       </span>
                     )}
                   </td>
-                  <td className="font-mono text-sm">
+                  <td className="font-mono text-sm min-w-0 align-top">
                     <TooltipProvider>
                       <Tooltip>
                         <TooltipTrigger asChild>
-                          <span className="inline-flex items-center gap-1.5 cursor-default">
+                          <span className="inline-flex flex-col items-start gap-0.5 cursor-default">
                             {(() => {
                               const net = workload.potentialDollars - workload.reliabilityCostDollars;
                               const hasReliability = workload.reliabilityCostDollars > 0;
@@ -1206,9 +1208,9 @@ export default function Workloads() {
                                 <>
                                   <span className={net > 0 ? "text-primary" : net < 0 ? "text-destructive" : "text-muted-foreground"}>{display}</span>
                                   {hasReliability && (
-                                    <span className="inline-flex items-center gap-0.5 text-success text-xs font-medium shrink-0" aria-label="Reliability improved">
-                                      <ChevronUp className="h-3.5 w-3.5" />
-                                      Reliability Up
+                                    <span className="inline-flex items-center gap-0.5 text-success text-xs font-medium" aria-label="Reliability improved" title="Reliability improved (resources recommended to be increased)">
+                                      <span className="whitespace-nowrap">Reliability</span>
+                                      <FontAwesomeIcon icon={faCircleArrowUp} className="h-3.5 w-3.5 shrink-0" />
                                     </span>
                                   )}
                                 </>
