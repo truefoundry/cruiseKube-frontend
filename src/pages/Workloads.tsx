@@ -3,7 +3,6 @@ import {
   Search, 
   ChevronUp,
   ChevronDown,
-  Clock,
   DollarSign,
   AlertTriangle,
   Info,
@@ -17,11 +16,11 @@ import {
   CircleDot,
   Box,
   type LucideIcon,
-  Eye,
-  Settings2,
   Pencil,
-  Check,
+  ShieldAlert,
 } from "lucide-react";
+import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
+import { faCircleArrowUp } from "@fortawesome/free-solid-svg-icons";
 import { useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useCluster } from "@/contexts/ClusterContext";
@@ -30,8 +29,6 @@ import {
   FrontendWorkload,
   formatCpu,
   formatMemory,
-  formatCpuSigned,
-  formatMemorySigned,
   mapPriorityToEvictionRanking,
 } from "@/lib/transformers";
 import { getResourcePricing } from "@/lib/pricing";
@@ -62,6 +59,7 @@ import {
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Switch } from "@/components/ui/switch";
 import { asArray } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import { humanizeWindow } from "@/lib/cronUtils";
@@ -106,35 +104,6 @@ function getPriorityColor(priority: string): string {
   }
 }
 
-/** Short format for "X min ago" -> "XM", "X hr ago" -> "XH", "X days ago" -> "XD", "just now" -> "now". */
-function formatTimeAgoShort(full: string): string {
-  if (!full) return "—";
-  if (full === "just now") return "now";
-  const minMatch = full.match(/^(\d+)\s*min\s*ago$/i);
-  if (minMatch) return `${minMatch[1]}M`;
-  const hrMatch = full.match(/^(\d+)\s*hr\s*ago$/i);
-  if (hrMatch) return `${hrMatch[1]}H`;
-  const dayMatch = full.match(/^(\d+)\s*days?\s*ago$/i);
-  if (dayMatch) return `${dayMatch[1]}D`;
-  return full;
-}
-
-/** Renders short time (e.g. 5M, 2H, 1D) with the unit (m, h, d) in a smaller size. */
-function TimeAgoShort({ value }: { value: string }) {
-  const short = formatTimeAgoShort(value);
-  const match = short.match(/^(\d+)([MHD])$/);
-  if (match) {
-    const unit = match[2].toLowerCase();
-    return (
-      <>
-        <span>{match[1]}</span>
-        <span className="text-[0.65rem] align-sub opacity-90">{unit}</span>
-      </>
-    );
-  }
-  return <>{short}</>;
-}
-
 /** API expects workload ID with colons; stats may use slashes. */
 function workloadIdForApi(id: string): string {
   return id.includes("/") ? id.replace(/\//g, ":") : id;
@@ -159,6 +128,7 @@ function normalizePriority(p: string): "low" | "medium" | "high" | "non-evictabl
 function workloadDetailToFrontend(d: WorkloadDetail): FrontendWorkload {
   const mode = d.config.mode === "enabled" ? "enabled" : "recommend-only";
   const priority = normalizePriority(d.config.priority);
+  const c = d.constraints;
   return {
     id: d.workloadID,
     namespace: d.namespace,
@@ -177,8 +147,15 @@ function workloadDetailToFrontend(d: WorkloadDetail): FrontendWorkload {
     mode,
     priority,
     hasRecommendations: d.dollarSavingsPerMonth !== 0 || d.dollarExpenditurePerMonth !== 0,
-    excluded: d.constraints?.excludedAnnotation ?? false,
-    excludedReason: d.constraints?.excludedAnnotation ? "Excluded annotation" : undefined,
+    excluded: c?.excludedAnnotation ?? false,
+    excludedReason: c?.excludedAnnotation ? "Excluded annotation" : undefined,
+    disruptionWindows: (d.config.disruptionSchedule ?? []).map((w) => ({
+      startCron: w.windowStartCron,
+      endCron: w.windowEndCron,
+    })),
+    blockingConsolidation: c?.blockingConsolidation ?? false,
+    blockingConsolidationPdb: c?.pdb ?? false,
+    blockingConsolidationDoNotDisrupt: c?.doNotDisruptAnnotation ?? false,
   };
 }
 
@@ -200,7 +177,7 @@ export default function Workloads() {
   const [editDisruptionWindows, setEditDisruptionWindows] = useState<{ startCron: string; endCron: string }[]>([]);
 
   const MIN_COLUMN_WIDTH = 48;
-  const DEFAULT_COLUMN_WIDTHS = [160, 110, 70, 56, 72, 100, 72, 100, 90, 100, 120];
+  const DEFAULT_COLUMN_WIDTHS = [190, 110, 48, 72, 100, 72, 100, 90, 64, 72, 120];
   const [columnWidths, setColumnWidths] = useState<number[]>(() => DEFAULT_COLUMN_WIDTHS);
   const [resizingCol, setResizingCol] = useState<number | null>(null);
   const resizeStartXRef = useRef(0);
@@ -268,6 +245,26 @@ export default function Workloads() {
     setEditDisruptionWindows(workload.disruptionWindows ?? []);
   };
 
+  const handleModeToggle = (workload: FrontendWorkload) => {
+    if (workload.excluded) return;
+    const newMode = workload.mode === "enabled" ? "recommend-only" : "enabled";
+    const overrides: Overrides = {
+      eviction_ranking: mapPriorityToEvictionRanking(workload.priority),
+      enabled: newMode === "enabled",
+    };
+    const windows = asArray(workload.disruptionWindows);
+    if (windows.length > 0) {
+      overrides.disruption_windows = windows.map((w) => ({
+        start_cron: w.startCron,
+        end_cron: w.endCron,
+      }));
+    }
+    updateOverrideMutation.mutate({
+      workloadId: workloadIdForApi(workload.id),
+      overrides,
+    });
+  };
+
   const handleSaveCruiseConfig = () => {
     if (!editWorkload) return;
     const id = workloadIdForApi(editWorkload.id);
@@ -322,6 +319,17 @@ export default function Workloads() {
       return (parseFloat(valueToParse.replace(" GB", "")) || 0) * 1024;
     }
     return parseFloat(valueToParse) || 0;
+  };
+
+  /** CPU for table cell: number only (cores), unit is in column header. */
+  const tableCpuDisplay = (cpuString: string): string => {
+    const cores = parseCpuValue(cpuString);
+    return cores < 1 ? cores.toFixed(2) : cores.toFixed(1);
+  };
+  /** Memory for table cell: number only (GB), unit is in column header. */
+  const tableMemDisplay = (memString: string): string => {
+    const mb = parseMemoryValue(memString);
+    return (mb / 1024).toFixed(2);
   };
 
   const parseTimeValue = (timeString: string): number => {
@@ -981,16 +989,6 @@ export default function Workloads() {
                   <div className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-primary/30 active:bg-primary/50" onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); startResize(1, e.clientX); }} aria-hidden />
                 </th>
                 <th rowSpan={2}
-                  className="cursor-pointer select-none hover:bg-muted/50 transition-colors align-top pt-4 relative"
-                  onClick={(e) => { e.stopPropagation(); handleSort("lastUpdated"); }}
-                >
-                  <div className="flex items-center gap-1 pr-2">
-                    Updated
-                    {sortColumn === "lastUpdated" && (sortDirection === "asc" ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />)}
-                  </div>
-                  <div className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-primary/30 active:bg-primary/50" onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); startResize(2, e.clientX); }} aria-hidden />
-                </th>
-                <th rowSpan={2}
                   className="cursor-pointer select-none hover:bg-muted/50 transition-colors align-top pt-4 relative w-20"
                   onClick={(e) => { e.stopPropagation(); handleSort("replicas"); }}
                 >
@@ -998,18 +996,18 @@ export default function Workloads() {
                     Pods
                     {sortColumn === "replicas" && (sortDirection === "asc" ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />)}
                   </div>
-                  <div className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-primary/30 active:bg-primary/50" onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); startResize(3, e.clientX); }} aria-hidden />
+                  <div className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-primary/30 active:bg-primary/50" onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); startResize(2, e.clientX); }} aria-hidden />
                 </th>
                 <th colSpan={2} className="border-t border-l border-r border-b-0 border-border bg-muted/40 text-center font-medium align-top pt-3 pb-0 px-0">
                   <span className="inline-flex items-center gap-1.5">
                     <Cpu className="h-4 w-4" />
-                    CPU
+                    CPU (cores)
                   </span>
                 </th>
                 <th colSpan={2} className="border-t border-l border-r border-b-0 border-border bg-muted/40 text-center font-medium align-top pt-3 pb-0 px-0">
                   <span className="inline-flex items-center gap-1.5">
                     <HardDrive className="h-4 w-4" />
-                    Memory
+                    Memory (GB)
                   </span>
                 </th>
                 <th rowSpan={2}
@@ -1025,32 +1023,18 @@ export default function Workloads() {
                           <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
                         </TooltipTrigger>
                         <TooltipContent side="bottom" className="max-w-xs">
-                          <p>Possible savings from resource reductions minus cost of increasing resources for reliability. ✓ = reliability was improved (resources recommended to be increased).</p>
+                          <p>Possible savings from resource reductions minus cost of increasing resources for reliability. Reliability Up = reliability was improved (resources recommended to be increased).</p>
                         </TooltipContent>
                       </Tooltip>
                     </TooltipProvider>
                   </div>
-                  <div className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-primary/30 active:bg-primary/50" onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); startResize(8, e.clientX); }} aria-hidden />
+                  <div className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-primary/30 active:bg-primary/50" onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); startResize(7, e.clientX); }} aria-hidden />
                 </th>
-                <th rowSpan={2}
-                  className="cursor-pointer select-none hover:bg-muted/50 transition-colors align-top pt-4 relative"
-                  onClick={(e) => { e.stopPropagation(); handleSort("cruiseConfig"); }}
-                >
-                  <div className="flex items-center gap-1 pr-2">
+                <th colSpan={2} className="border-t border-l border-r border-b-0 border-border bg-muted/40 text-center font-medium align-top pt-3 pb-0 px-0">
+                  <span className="inline-flex items-center gap-1.5">
                     CruiseConfig
                     {sortColumn === "cruiseConfig" && (sortDirection === "asc" ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />)}
-                    <TooltipProvider>
-                      <Tooltip>
-                        <TooltipTrigger asChild onClick={(e) => e.stopPropagation()}>
-                          <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
-                        </TooltipTrigger>
-                        <TooltipContent className="max-w-xs">
-                          <p>Mode: enables auto-apply of recommendations. Priority: eviction order during optimization (higher = less likely to be evicted).</p>
-                        </TooltipContent>
-                      </Tooltip>
-                    </TooltipProvider>
-                  </div>
-                  <div className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-primary/30 active:bg-primary/50" onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); startResize(9, e.clientX); }} aria-hidden />
+                  </span>
                 </th>
                 <th rowSpan={2} className="relative">
                   Actions
@@ -1066,7 +1050,7 @@ export default function Workloads() {
                     Current
                     {sortColumn === "currentCpu" && (sortDirection === "asc" ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />)}
                   </div>
-                  <div className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-primary/30 active:bg-primary/50" onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); startResize(4, e.clientX); }} aria-hidden />
+                  <div className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-primary/30 active:bg-primary/50" onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); startResize(3, e.clientX); }} aria-hidden />
                 </th>
                 <th
                   className="cursor-pointer select-none hover:bg-muted/30 transition-colors border-b border-r border-border bg-muted/30 relative"
@@ -1076,7 +1060,7 @@ export default function Workloads() {
                     Recommended
                     {sortColumn === "recommendedCpu" && (sortDirection === "asc" ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />)}
                   </div>
-                  <div className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-primary/30 active:bg-primary/50" onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); startResize(5, e.clientX); }} aria-hidden />
+                  <div className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-primary/30 active:bg-primary/50" onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); startResize(4, e.clientX); }} aria-hidden />
                 </th>
                 <th
                   className="cursor-pointer select-none hover:bg-muted/30 transition-colors border-b border-l border-border bg-muted/30 relative"
@@ -1086,7 +1070,7 @@ export default function Workloads() {
                     Current
                     {sortColumn === "currentMem" && (sortDirection === "asc" ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />)}
                   </div>
-                  <div className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-primary/30 active:bg-primary/50" onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); startResize(6, e.clientX); }} aria-hidden />
+                  <div className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-primary/30 active:bg-primary/50" onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); startResize(5, e.clientX); }} aria-hidden />
                 </th>
                 <th
                   className="cursor-pointer select-none hover:bg-muted/30 transition-colors border-b border-r border-border bg-muted/30 relative"
@@ -1096,7 +1080,45 @@ export default function Workloads() {
                     Recommended
                     {sortColumn === "recommendedMem" && (sortDirection === "asc" ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />)}
                   </div>
-                  <div className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-primary/30 active:bg-primary/50" onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); startResize(7, e.clientX); }} aria-hidden />
+                  <div className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-primary/30 active:bg-primary/50" onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); startResize(6, e.clientX); }} aria-hidden />
+                </th>
+                <th
+                  className="cursor-pointer select-none hover:bg-muted/30 transition-colors border-b border-l border-border bg-muted/30 relative"
+                  onClick={(e) => { e.stopPropagation(); handleSort("cruiseConfig"); }}
+                >
+                  <div className="flex items-center gap-1 pr-2 justify-center">
+                    CruiseOn
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger asChild onClick={(e) => e.stopPropagation()}>
+                          <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
+                        </TooltipTrigger>
+                        <TooltipContent className="max-w-xs">
+                          <p>When on, recommendations are auto-applied (Cruise mode). When off, only recommendations are shown (Recommend only). Toggle inline to change.</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                  </div>
+                  <div className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-primary/30 active:bg-primary/50" onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); startResize(8, e.clientX); }} aria-hidden />
+                </th>
+                <th
+                  className="cursor-pointer select-none hover:bg-muted/30 transition-colors border-b border-r border-border bg-muted/30 relative"
+                  onClick={(e) => { e.stopPropagation(); handleSort("cruiseConfig"); }}
+                >
+                  <div className="flex items-center gap-1 pr-2 justify-center">
+                    Priority
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger asChild onClick={(e) => e.stopPropagation()}>
+                          <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
+                        </TooltipTrigger>
+                        <TooltipContent className="max-w-xs">
+                          <p>Eviction order during optimization: higher priority workloads are less likely to be evicted. Edit CruiseConfig to change.</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                  </div>
+                  <div className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-primary/30 active:bg-primary/50" onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); startResize(9, e.clientX); }} aria-hidden />
                 </th>
               </tr>
             </thead>
@@ -1110,13 +1132,36 @@ export default function Workloads() {
                       : "hover:bg-muted/50 " + (index % 2 === 1 ? "bg-muted/10" : "")
                   }`}
                 >
-                  <td>
-                    <div className="flex flex-col gap-0.5">
-                      <div className="flex items-center gap-2 flex-wrap">
+                  <td className="min-w-0 break-words align-top">
+                    <div className="flex flex-col gap-0.5 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap min-w-0">
                         <span className="shrink-0" onClick={(e) => e.stopPropagation()}>
                           <WorkloadTypeIcon type={workload.type} />
                         </span>
-                        <span className={`font-medium whitespace-nowrap ${workload.excluded ? "text-muted-foreground" : ""}`}>{workload.workload}</span>
+                        <span className={`font-medium break-words ${workload.excluded ? "text-muted-foreground" : ""}`}>{workload.workload}</span>
+                        {workload.blockingConsolidation && (
+                          <TooltipProvider>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <span className="inline-flex shrink-0 text-amber-600 dark:text-amber-400 cursor-help" onClick={(e) => e.stopPropagation()}>
+                                  <ShieldAlert className="h-4 w-4" aria-hidden />
+                                </span>
+                              </TooltipTrigger>
+                              <TooltipContent side="right" className="max-w-sm">
+                                <p>
+                                  This workload will block consolidation of nodes because of{" "}
+                                  {[workload.blockingConsolidationPdb && "Pod Disruption Budget (PDB)", workload.blockingConsolidationDoNotDisrupt && "do-not-disrupt annotation"]
+                                    .filter(Boolean)
+                                    .join(" and ")}
+                                  .
+                                </p>
+                                <p className="mt-2 font-medium">
+                                  Set up a disruption window in Edit CruiseConfig so that nodes can consolidate during the window.
+                                </p>
+                              </TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
+                        )}
                         {workload.excluded && (
                           <Badge variant="secondary" className="text-xs font-normal bg-muted text-muted-foreground border border-border">
                             Excluded
@@ -1130,42 +1175,31 @@ export default function Workloads() {
                       )}
                     </div>
                   </td>
-                  <td className="font-mono text-xs">{workload.namespace}</td>
-                  <td className="text-muted-foreground text-xs">
-                    <TooltipProvider>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <span className="inline-flex items-center gap-1 cursor-default">
-                            <Clock className="h-3 w-3 shrink-0" />
-                            <TimeAgoShort value={workload.lastUpdated} />
-                          </span>
-                        </TooltipTrigger>
-                        <TooltipContent>
-                          <p>{workload.lastUpdated || "—"}</p>
-                        </TooltipContent>
-                      </Tooltip>
-                    </TooltipProvider>
-                  </td>
+                  <td className="font-mono text-xs break-words min-w-0 align-top">{workload.namespace}</td>
                   <td className="font-mono text-sm tabular-nums text-right">{workload.replicas}</td>
-                  <td className={`font-mono text-sm bg-muted/20 border-l border-b border-border ${index === 0 ? "border-t" : ""}`}>{workload.currentCpu}</td>
+                  <td className={`font-mono text-sm bg-muted/20 border-l border-b border-border ${index === 0 ? "border-t" : ""}`}>{tableCpuDisplay(workload.currentCpu)}</td>
                   <td className={`font-mono text-sm bg-muted/20 border-r border-b border-border ${index === 0 ? "border-t" : ""}`}>
-                    {workload.recommendedCpu}
+                    {tableCpuDisplay(workload.recommendedCpu)}
                     {workload.potentialCpu !== 0 && (
-                      <span className={workload.potentialCpu > 0 ? "text-amber-600 dark:text-amber-400" : ""}> ({formatCpuSigned(workload.potentialCpu)})</span>
+                      <span className={workload.potentialCpu > 0 ? "text-amber-600 dark:text-amber-400" : ""}>
+                        {" "}({workload.potentialCpu >= 0 ? "+" : ""}{workload.potentialCpu.toFixed(2)})
+                      </span>
                     )}
                   </td>
-                  <td className={`font-mono text-sm bg-muted/20 border-l border-b border-border ${index === 0 ? "border-t" : ""}`}>{workload.currentMem}</td>
+                  <td className={`font-mono text-sm bg-muted/20 border-l border-b border-border ${index === 0 ? "border-t" : ""}`}>{tableMemDisplay(workload.currentMem)}</td>
                   <td className={`font-mono text-sm bg-muted/20 border-r border-b border-border ${index === 0 ? "border-t" : ""}`}>
-                    {workload.recommendedMem}
+                    {tableMemDisplay(workload.recommendedMem)}
                     {workload.potentialMem !== 0 && (
-                      <span className={workload.potentialMem > 0 ? "text-amber-600 dark:text-amber-400" : ""}> ({formatMemorySigned(workload.potentialMem)})</span>
+                      <span className={workload.potentialMem > 0 ? "text-amber-600 dark:text-amber-400" : ""}>
+                        {" "}({workload.potentialMem >= 0 ? "+" : ""}{(workload.potentialMem / 1024).toFixed(2)})
+                      </span>
                     )}
                   </td>
-                  <td className="font-mono text-sm">
+                  <td className="font-mono text-sm min-w-0 align-top">
                     <TooltipProvider>
                       <Tooltip>
                         <TooltipTrigger asChild>
-                          <span className="inline-flex items-center gap-1.5 cursor-default">
+                          <span className="inline-flex flex-col items-start gap-0.5 cursor-default">
                             {(() => {
                               const net = workload.potentialDollars - workload.reliabilityCostDollars;
                               const hasReliability = workload.reliabilityCostDollars > 0;
@@ -1174,7 +1208,10 @@ export default function Workloads() {
                                 <>
                                   <span className={net > 0 ? "text-primary" : net < 0 ? "text-destructive" : "text-muted-foreground"}>{display}</span>
                                   {hasReliability && (
-                                    <Check className="h-3.5 w-3.5 text-success shrink-0" aria-label="Reliability improved" />
+                                    <span className="inline-flex items-center gap-0.5 text-success text-xs font-medium" aria-label="Reliability improved" title="Reliability improved (resources recommended to be increased)">
+                                      <span className="whitespace-nowrap">Reliability</span>
+                                      <FontAwesomeIcon icon={faCircleArrowUp} className="h-3.5 w-3.5 shrink-0" />
+                                    </span>
                                   )}
                                 </>
                               );
@@ -1182,18 +1219,39 @@ export default function Workloads() {
                           </span>
                         </TooltipTrigger>
                         <TooltipContent side="bottom" className="max-w-xs">
-                          <p>Net = Possible savings − cost of reliability increases. {workload.reliabilityCostDollars > 0 ? "✓ This workload had reliability improved (resources recommended to be increased)." : ""}</p>
+                          <p>Net = Possible savings − cost of reliability increases. {workload.reliabilityCostDollars > 0 ? "Reliability Up: this workload had reliability improved (resources recommended to be increased)." : ""}</p>
                         </TooltipContent>
                       </Tooltip>
                     </TooltipProvider>
                   </td>
-                  <td>
-                    <div className="flex flex-col gap-0.5">
+                  <td className={`bg-muted/20 ${index === 0 ? "border-t" : ""} border-l border-b border-border align-middle`}>
+                    <div className="flex justify-center" onClick={(e) => e.stopPropagation()}>
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <span className="inline-flex items-center gap-1.5 cursor-default">
+                              <Switch
+                                checked={workload.mode === "enabled"}
+                                onCheckedChange={() => handleModeToggle(workload)}
+                                disabled={workload.excluded || updateOverrideMutation.isPending}
+                                className="scale-90 opacity-90 data-[state=checked]:bg-muted-foreground/80"
+                                aria-label={workload.mode === "enabled" ? "Cruise on; click to switch to Recommend" : "Recommend; click to switch to Cruise"}
+                              />
+                              <span className={`text-xs ${workload.mode === "enabled" ? "text-success" : "text-muted-foreground"}`}>
+                                {workload.mode === "enabled" ? "On" : "Off"}
+                              </span>
+                            </span>
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            <p>When on, recommendations are auto-applied (Cruise). When off, recommend only. Click to toggle.</p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                    </div>
+                  </td>
+                  <td className={`bg-muted/20 border-r border-b border-border ${index === 0 ? "border-t" : ""} align-middle`}>
+                    <div className="flex flex-col gap-0.5 justify-center">
                       <div className="flex items-center gap-1 flex-wrap">
-                        <span className={`text-xs font-medium ${workload.mode === "enabled" ? "text-success" : "text-muted-foreground"}`}>
-                          {workload.mode === "enabled" ? "Cruise" : "Recommend"}
-                        </span>
-                        <span className="text-muted-foreground">·</span>
                         <span className={`text-xs font-medium capitalize ${getPriorityColor(workload.priority)}`}>
                           {workload.priority}
                         </span>
@@ -1223,14 +1281,13 @@ export default function Workloads() {
                   <td onClick={(e) => e.stopPropagation()}>
                     <div className="flex items-center gap-1">
                       <Button
-                        variant="ghost"
+                        variant="outline"
                         size="sm"
-                        className="h-8 text-xs"
+                        className="h-8 text-xs font-medium"
                         onClick={() => navigate(`/workloads/${workload.namespace}/${workload.workload}`)}
                         disabled={workload.excluded}
                       >
-                        <Eye className="h-3.5 w-3.5 mr-1" />
-                        View Pods
+                        Pod Details
                       </Button>
                       <TooltipProvider>
                         <Tooltip>
@@ -1280,6 +1337,22 @@ export default function Workloads() {
             {editWorkload && (
               <div className="grid gap-4 py-4">
                 <div className="grid gap-2">
+                  <label className="text-sm font-medium">CruiseOn</label>
+                  <div className="flex items-center gap-3">
+                    <Switch
+                      checked={editMode === "enabled"}
+                      onCheckedChange={(checked) => setEditMode(checked ? "enabled" : "recommend-only")}
+                      disabled={updateOverrideMutation.isPending}
+                      aria-label="CruiseOn"
+                    />
+                    <span className="text-sm text-muted-foreground">
+                      {editMode === "enabled"
+                        ? "Recommendations will be applied to pods."
+                        : "Recommendations are only computed — not shown to pods."}
+                    </span>
+                  </div>
+                </div>
+                <div className="grid gap-2">
                   <label className="text-sm font-medium">Priority</label>
                   <Select value={editPriority} onValueChange={(v) => setEditPriority(v as typeof editPriority)}>
                     <SelectTrigger className="w-full">
@@ -1292,26 +1365,34 @@ export default function Workloads() {
                       <SelectItem value="non-evictable">Non-evictable</SelectItem>
                     </SelectContent>
                   </Select>
-                  <p className="text-xs text-muted-foreground">Determines eviction priority during optimization.</p>
+                  <p className="text-xs text-muted-foreground">
+                    During node consolidation, the controller may need to evict pods to free capacity. Higher priority workloads are evicted last; low priority first. Use <strong>Non-evictable</strong> for workloads that must never be evicted (e.g. critical system pods). Use <strong>High</strong> for important apps and <strong>Low</strong> for best-effort or batch workloads.
+                  </p>
                 </div>
-                <div className="grid gap-2">
-                  <label className="text-sm font-medium">Mode</label>
-                  <Select value={editMode} onValueChange={(v) => setEditMode(v as typeof editMode)}>
-                    <SelectTrigger className="w-full">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="recommend-only">Recommend only</SelectItem>
-                      <SelectItem value="enabled">Cruise (auto-apply)</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  <p className="text-xs text-muted-foreground">Cruise auto-applies recommendations; Recommend only shows suggestions.</p>
-                </div>
+                {editWorkload.blockingConsolidation && (
+                  <Alert className="border-amber-500/50 bg-amber-500/10 [&>svg]:text-amber-600 dark:[&>svg]:text-amber-400">
+                    <ShieldAlert className="h-4 w-4" />
+                    <AlertTitle>Disruption window recommended</AlertTitle>
+                    <AlertDescription>
+                      This workload will block node consolidation because of{" "}
+                      {[editWorkload.blockingConsolidationPdb && "Pod Disruption Budget (PDB)", editWorkload.blockingConsolidationDoNotDisrupt && "do-not-disrupt annotation"]
+                        .filter(Boolean)
+                        .join(" and ")}
+                      . Set up a disruption window below so that during the window, pod disruption budgets and do-not-disrupt annotations are temporarily removed from this workload, allowing nodes to consolidate. Constraints are applied back automatically just before the disruption window ends.
+                    </AlertDescription>
+                  </Alert>
+                )}
                 <DisruptionWindowEditor
                   windows={editDisruptionWindows}
                   onChange={setEditDisruptionWindows}
                   disabled={updateOverrideMutation.isPending}
+                  allowAdd={editWorkload.blockingConsolidation}
                 />
+                {!editWorkload.blockingConsolidation && (
+                  <p className="text-sm text-muted-foreground rounded-md border border-border bg-muted/30 px-3 py-2">
+                    This workload doesn&apos;t have pod-disruption-budgets or do-not-disrupt marked. No disruption window needs to be provided in this case since it will not block node consolidation.
+                  </p>
+                )}
               </div>
             )}
             <DialogFooter>

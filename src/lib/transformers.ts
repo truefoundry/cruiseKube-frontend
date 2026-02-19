@@ -37,6 +37,12 @@ export interface FrontendWorkload {
   /** True when workload is excluded from optimization; reason in excludedReason. */
   excluded?: boolean;
   excludedReason?: string;
+  /** True when this workload blocks node consolidation (e.g. PDB or do-not-disrupt). */
+  blockingConsolidation?: boolean;
+  /** Reason: has PDB. */
+  blockingConsolidationPdb?: boolean;
+  /** Reason: has do-not-disrupt annotation. */
+  blockingConsolidationDoNotDisrupt?: boolean;
 }
 
 export interface FrontendContainer {

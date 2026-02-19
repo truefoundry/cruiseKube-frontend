@@ -67,12 +67,15 @@ interface DisruptionWindowEditorProps {
   windows: DisruptionWindowItem[];
   onChange: (windows: DisruptionWindowItem[]) => void;
   disabled?: boolean;
+  /** When false, Add Window button is hidden (e.g. when workload does not block consolidation). */
+  allowAdd?: boolean;
 }
 
 export function DisruptionWindowEditor({
   windows,
   onChange,
   disabled,
+  allowAdd = true,
 }: DisruptionWindowEditorProps) {
   const [addOpen, setAddOpen] = useState(false);
   const [editIndex, setEditIndex] = useState<number | null>(null);
@@ -196,9 +199,11 @@ export function DisruptionWindowEditor({
             {windows.length} window{windows.length !== 1 ? "s" : ""} configured
           </p>
         </div>
-        <Button type="button" variant="outline" size="sm" onClick={openAdd} disabled={disabled}>
-          Add Window
-        </Button>
+        {allowAdd && (
+          <Button type="button" variant="outline" size="sm" onClick={openAdd} disabled={disabled}>
+            Add Window
+          </Button>
+        )}
       </div>
       {windows.length > 0 && (
         <div className="space-y-2 rounded-lg border border-border bg-muted/30 p-3">
