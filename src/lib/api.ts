@@ -276,6 +276,37 @@ export interface WorkloadSummaryResponse {
   workloadDetails: WorkloadDetail[];
 }
 
+/** Container in workload detail pod (from GET .../workloads/:namespace/:workload/detail). */
+export interface WorkloadDetailPodContainer {
+  container_name: string;
+  cpu_request: number;
+  cpu_rec_request: number;
+  mem_request: number;
+  mem_rec_request: number;
+}
+
+/** Pod in workload detail response. */
+export interface WorkloadDetailPod {
+  pod_name: string;
+  node_name: string;
+  containers: WorkloadDetailPodContainer[];
+}
+
+/** Response from GET /clusters/:clusterID/workloads/:namespace/:workloadName/detail */
+export interface WorkloadDetailResponse {
+  cluster: string;
+  namespace: string;
+  workload: string;
+  type: string;
+  current_cpu_request: number;
+  current_cpu_limit: number;
+  current_mem_request: number;
+  current_mem_limit: number;
+  potential_cpu_savings: number;
+  potential_mem_savings: number;
+  pods: WorkloadDetailPod[];
+}
+
 class ApiClient {
   private baseUrl: string;
 
@@ -431,6 +462,17 @@ class ApiClient {
       method: 'POST',
       body: JSON.stringify(overrides),
     });
+  }
+
+  /** Fetches workload detail. GET /clusters/:clusterID/workloads/:namespace/:workloadName/detail */
+  async getWorkloadDetail(
+    clusterID: string,
+    namespace: string,
+    workloadName: string
+  ): Promise<WorkloadDetailResponse> {
+    return this.request<WorkloadDetailResponse>(
+      `/clusters/${encodeURIComponent(clusterID)}/workloads/${encodeURIComponent(namespace)}/${encodeURIComponent(workloadName)}/detail`
+    );
   }
 
   /** Fetches cluster config (Prometheus). Endpoint: GET /clusters/:clusterID/config */

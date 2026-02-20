@@ -1,8 +1,9 @@
 import { useParams, Link } from "react-router-dom";
-import { 
-  ArrowLeft, 
-  ChevronRight, 
-  Cpu, 
+import { Fragment } from "react";
+import {
+  ArrowLeft,
+  ChevronRight,
+  Cpu,
   HardDrive
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -10,45 +11,18 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useQuery } from "@tanstack/react-query";
 import { useCluster } from "@/contexts/ClusterContext";
 import { apiClient } from "@/lib/api";
-import { transformWorkloadStatToFrontend, getPodsForWorkload, getContainersForPod, getNodeNameForPod, FrontendContainerRecommendation, formatCpuSigned, formatMemorySigned } from "@/lib/transformers";
+import { formatCpu, formatMemory, formatCpuSigned, formatMemorySigned } from "@/lib/transformers";
 import { asArray } from "@/lib/utils";
 
 export default function WorkloadDetail() {
   const { namespace, workloadName } = useParams();
   const { selectedClusterId } = useCluster();
 
-  const { data: statsData, isLoading: isLoadingStats, error: statsError } = useQuery({
-    queryKey: ['cluster-stats', selectedClusterId],
-    queryFn: () => apiClient.getClusterStats(selectedClusterId!),
-    enabled: !!selectedClusterId,
+  const { data: detail, isLoading, error } = useQuery({
+    queryKey: ['workload-detail', selectedClusterId, namespace, workloadName],
+    queryFn: () => apiClient.getWorkloadDetail(selectedClusterId!, namespace!, workloadName!),
+    enabled: !!selectedClusterId && !!namespace && !!workloadName,
   });
-
-  const { data: recommendationAnalysis, isLoading: isLoadingAnalysis, error: analysisError } = useQuery({
-    queryKey: ['recommendation-analysis', selectedClusterId],
-    queryFn: () => apiClient.getRecommendationAnalysis(selectedClusterId!),
-    enabled: !!selectedClusterId,
-  });
-
-  const isLoading = isLoadingStats || isLoadingAnalysis;
-  const error = statsError || analysisError;
-
-  const statsList = Array.isArray(statsData?.stats) ? statsData.stats : [];
-  const workloadStat = statsList.find(
-    (s) => s.namespace === namespace && s.name === workloadName
-  );
-
-  const workload = workloadStat ? transformWorkloadStatToFrontend(workloadStat, undefined, recommendationAnalysis?.analysis) : null;
-
-  const pods = (recommendationAnalysis?.analysis && namespace && workloadName) 
-    ? getPodsForWorkload(recommendationAnalysis.analysis ?? [], namespace, workloadName)
-    : [];
-
-  const getContainerRecommendations = (podName: string): FrontendContainerRecommendation[] => {
-    if (!recommendationAnalysis?.analysis) {
-      return [];
-    }
-    return getContainersForPod(recommendationAnalysis.analysis ?? [], podName);
-  };
 
   if (!selectedClusterId) {
     return (
@@ -123,7 +97,7 @@ export default function WorkloadDetail() {
     );
   }
 
-  if (!workload || !workloadStat) {
+  if (!detail) {
     return (
       <div className="p-6 text-center">
         <p className="text-muted-foreground">Workload not found</p>
@@ -134,6 +108,8 @@ export default function WorkloadDetail() {
     );
   }
 
+  const pods = asArray(detail.pods);
+
   return (
     <div className="p-6 space-y-6 animate-fade-in">
       {/* Breadcrumb */}
@@ -142,9 +118,9 @@ export default function WorkloadDetail() {
           Workloads & Recommendations
         </Link>
         <ChevronRight className="h-4 w-4" />
-        <span className="font-mono">{namespace}</span>
+        <span className="font-mono">{detail.namespace}</span>
         <ChevronRight className="h-4 w-4" />
-        <span className="text-foreground">{workloadName}</span>
+        <span className="text-foreground">{detail.workload}</span>
       </div>
 
       {/* Header */}
@@ -156,11 +132,11 @@ export default function WorkloadDetail() {
             </Button>
           </Link>
           <div>
-            <h1 className="text-2xl font-semibold text-foreground">{workloadName}</h1>
+            <h1 className="text-2xl font-semibold text-foreground">{detail.workload}</h1>
             <div className="flex flex-wrap items-center gap-3 mt-2">
-              <span className="font-mono text-sm text-muted-foreground">{namespace}</span>
+              <span className="font-mono text-sm text-muted-foreground">{detail.namespace}</span>
               <span className="text-muted-foreground">•</span>
-              <span className="text-sm text-muted-foreground">{workload.type}</span>
+              <span className="text-sm text-muted-foreground">{detail.type}</span>
             </div>
           </div>
         </div>
@@ -175,7 +151,7 @@ export default function WorkloadDetail() {
             </div>
             <div>
               <p className="text-xs text-muted-foreground uppercase tracking-wider">CPU Savings Potential</p>
-              <p className="font-mono text-xl font-semibold text-foreground">{formatCpuSigned(workload.potentialCpu)}</p>
+              <p className="font-mono text-xl font-semibold text-foreground">{formatCpuSigned(-detail.potential_cpu_savings)}</p>
             </div>
           </div>
         </div>
@@ -186,7 +162,7 @@ export default function WorkloadDetail() {
             </div>
             <div>
               <p className="text-xs text-muted-foreground uppercase tracking-wider">Memory Savings Potential</p>
-              <p className="font-mono text-xl font-semibold text-foreground">{formatMemorySigned(workload.potentialMem)}</p>
+              <p className="font-mono text-xl font-semibold text-foreground">{formatMemorySigned(-detail.potential_mem_savings)}</p>
             </div>
           </div>
         </div>
@@ -218,40 +194,34 @@ export default function WorkloadDetail() {
                   </td>
                 </tr>
               ) : (
-                asArray(pods).map((podName) => {
-                  const containerRecommendations = getContainerRecommendations(podName);
-                  const nodeName = recommendationAnalysis?.analysis
-                    ? getNodeNameForPod(recommendationAnalysis.analysis, podName)
-                    : undefined;
-                  return (
-                    <>
-                      <tr key={`pod-${podName}`} className="bg-muted/50">
-                        <td className="font-mono text-sm font-medium py-2 px-4">{podName}</td>
-                        <td className="font-mono text-xs text-muted-foreground py-2 px-4">{nodeName ?? "—"}</td>
-                        <td colSpan={5}></td>
-                      </tr>
-                      {asArray(containerRecommendations).length > 0 ? (
-                        asArray(containerRecommendations).map((container) => (
-                          <tr key={`${podName}-${container.container}`}>
-                            <td></td>
-                            <td></td>
-                            <td className="font-medium">{container.container}</td>
-                            <td className="font-mono text-sm">{container.cpuRequest}</td>
-                            <td className="font-mono text-sm text-primary">{container.cpuRecRequest}</td>
-                            <td className="font-mono text-sm">{container.memRequest}</td>
-                            <td className="font-mono text-sm text-primary">{container.memRecRequest}</td>
-                          </tr>
-                        ))
-                      ) : (
-                        <tr key={`${podName}-empty`}>
-                          <td colSpan={7} className="text-muted-foreground text-sm py-2 px-4">
-                            No containers found
-                          </td>
+                pods.map((pod) => (
+                  <Fragment key={pod.pod_name}>
+                    <tr className="bg-muted/50">
+                      <td className="font-mono text-sm font-medium py-2 px-4">{pod.pod_name}</td>
+                      <td className="font-mono text-xs text-muted-foreground py-2 px-4">{pod.node_name ?? "—"}</td>
+                      <td colSpan={5}></td>
+                    </tr>
+                    {asArray(pod.containers).length > 0 ? (
+                      asArray(pod.containers).map((container) => (
+                        <tr key={`${pod.pod_name}-${container.container_name}`}>
+                          <td></td>
+                          <td></td>
+                          <td className="font-medium">{container.container_name}</td>
+                          <td className="font-mono text-sm">{formatCpu(container.cpu_request)}</td>
+                          <td className="font-mono text-sm text-primary">{formatCpu(container.cpu_rec_request)}</td>
+                          <td className="font-mono text-sm">{formatMemory(container.mem_request)}</td>
+                          <td className="font-mono text-sm text-primary">{formatMemory(container.mem_rec_request)}</td>
                         </tr>
-                      )}
-                    </>
-                  );
-                })
+                      ))
+                    ) : (
+                      <tr key={`${pod.pod_name}-empty`}>
+                        <td colSpan={7} className="text-muted-foreground text-sm py-2 px-4">
+                          No containers found
+                        </td>
+                      </tr>
+                    )}
+                  </Fragment>
+                ))
               )}
             </tbody>
           </table>
