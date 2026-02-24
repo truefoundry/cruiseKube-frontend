@@ -126,7 +126,7 @@ function normalizePriority(p: string): "low" | "medium" | "high" | "non-evictabl
 }
 
 function workloadDetailToFrontend(d: WorkloadDetail): FrontendWorkload {
-  const mode = d.config.mode === "enabled" ? "enabled" : "recommend-only";
+  const mode = d.config.cruiseEnabled ? "enabled" : "recommend-only";
   const priority = normalizePriority(d.config.priority);
   const c = d.constraints;
   return {
@@ -495,8 +495,8 @@ export default function Workloads() {
     );
   }
 
-  const costOptimizedWorkloads = (summaryData?.workloadDetails ?? []).filter((w) => w.config.mode === "enabled" && w.dollarSavingsPerMonth > 0).length;
-  const costOptimizedWorkloadsRecommendOnly = (summaryData?.workloadDetails ?? []).filter((w) => w.config.mode !== "enabled" && w.dollarSavingsPerMonth > 0).length;
+  const costOptimizedWorkloads = (summaryData?.workloadDetails ?? []).filter((w) => w.config.cruiseEnabled && w.dollarSavingsPerMonth > 0).length;
+  const costOptimizedWorkloadsRecommendOnly = (summaryData?.workloadDetails ?? []).filter((w) => !w.config.cruiseEnabled && w.dollarSavingsPerMonth > 0).length;
   const reliabilityIssues = (summaryData?.workloadDetails ?? []).filter((w) => w.dollarExpenditurePerMonth > 0).length;
   const overviewMetrics = {
     costOptimizedWorkloads,
