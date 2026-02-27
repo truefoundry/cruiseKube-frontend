@@ -8,20 +8,76 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { useState } from "react";
-import { useQueryClient } from "@tanstack/react-query";
-import { type PrometheusConfig } from "@/lib/api";
+import { useState, useEffect } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { apiClient, type PrometheusConfig, type ClusterSettings } from "@/lib/api";
 import { useCluster } from "@/contexts/ClusterContext";
 import { useConfig } from "@/contexts/ConfigContext";
 import { toast } from "@/hooks/use-toast";
-import { getResourcePricing, setResourcePricing, DEFAULT_CPU, DEFAULT_MEMORY } from "@/lib/pricing";
+import { setResourcePricing } from "@/lib/pricing";
+
+const DEFAULT_CPU = 0.0145;
+const DEFAULT_MEMORY = 0.00725;
 
 export default function Policies() {
   const { selectedClusterId } = useCluster();
   const { config: prometheusConfig, isLoading: prometheusConfigLoading, refetch: refetchPrometheusConfig } = useConfig();
   const queryClient = useQueryClient();
-  const [cpuPrice, setCpuPrice] = useState<string>(() => String(getResourcePricing().cpuPerCorePerHour));
-  const [memoryPrice, setMemoryPrice] = useState<string>(() => String(getResourcePricing().memoryPerGbPerHour));
+
+  const { data: settings, isLoading: settingsLoading } = useQuery<ClusterSettings>({
+    queryKey: ['settings', selectedClusterId],
+    queryFn: () => apiClient.getSettings(selectedClusterId!),
+    enabled: !!selectedClusterId,
+  });
+
+  const [cpuPrice, setCpuPrice] = useState<string>('');
+  const [memoryPrice, setMemoryPrice] = useState<string>('');
+
+  useEffect(() => {
+    if (settings) {
+      setCpuPrice(String(settings.cpuPricePerCorePerHour));
+      setMemoryPrice(String(settings.memoryPricePerGBPerHour));
+    }
+  }, [settings]);
+
+  const updateSettingsMutation = useMutation({
+    mutationFn: (newSettings: ClusterSettings) =>
+      apiClient.updateSettings(selectedClusterId!, newSettings),
+    onSuccess: (saved) => {
+      queryClient.setQueryData(['settings', selectedClusterId], saved);
+      // Keep client-side cost calculations in sync (pricing.ts divides by 2 internally)
+      setResourcePricing({
+        cpuPerCorePerHour: saved.cpuPricePerCorePerHour * 2,
+        memoryPerGbPerHour: saved.memoryPricePerGBPerHour * 2,
+      });
+      queryClient.invalidateQueries({ queryKey: ['workloads-summary', selectedClusterId] });
+      toast({
+        title: "Saved",
+        description: "Resource pricing has been updated. Cost figures will reflect the new values.",
+      });
+    },
+    onError: (error) => {
+      toast({
+        title: "Failed to save",
+        description: error instanceof Error ? error.message : "An unexpected error occurred.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const handleSave = () => {
+    const cpu = parseFloat(cpuPrice);
+    const mem = parseFloat(memoryPrice);
+    if (Number.isNaN(cpu) || cpu < 0 || Number.isNaN(mem) || mem < 0) {
+      toast({
+        title: "Invalid values",
+        description: "Please enter valid non-negative numbers for CPU and Memory price.",
+        variant: "destructive",
+      });
+      return;
+    }
+    updateSettingsMutation.mutate({ cpuPricePerCorePerHour: cpu, memoryPricePerGBPerHour: mem });
+  };
 
   const testConnection = async () => {
     try {
@@ -82,57 +138,55 @@ export default function Policies() {
               </h3>
             </div>
             <p className="text-sm text-muted-foreground mb-4">
-              Set hourly prices for CPU and Memory used in cost calculations on the Workloads page. Values are stored in your browser only.
+              Set hourly prices for CPU and Memory used in cost calculations on the Workloads page. Values are saved to the cluster settings.
             </p>
-            <div className="space-y-4 max-w-md">
-              <div>
-                <label className="text-sm font-medium text-foreground">CPU ($/core/hour)</label>
-                <Input
-                  type="number"
-                  min="0"
-                  step="0.001"
-                  value={cpuPrice}
-                  onChange={(e) => setCpuPrice(e.target.value)}
-                  className="bg-muted/50 mt-2"
-                  placeholder={String(DEFAULT_CPU)}
-                />
-                <p className="text-xs text-muted-foreground mt-1">Default: ${DEFAULT_CPU}/core/hour</p>
+            {settingsLoading ? (
+              <div className="flex items-center justify-center py-8">
+                <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
               </div>
-              <div>
-                <label className="text-sm font-medium text-foreground">Memory ($/GB/hour)</label>
-                <Input
-                  type="number"
-                  min="0"
-                  step="0.001"
-                  value={memoryPrice}
-                  onChange={(e) => setMemoryPrice(e.target.value)}
-                  className="bg-muted/50 mt-2"
-                  placeholder={String(DEFAULT_MEMORY)}
-                />
-                <p className="text-xs text-muted-foreground mt-1">Default: ${DEFAULT_MEMORY}/GB/hour</p>
+            ) : (
+              <div className="space-y-4 max-w-md">
+                <div>
+                  <label className="text-sm font-medium text-foreground">CPU ($/core/hour)</label>
+                  <Input
+                    type="number"
+                    min="0"
+                    step="0.0001"
+                    value={cpuPrice}
+                    onChange={(e) => setCpuPrice(e.target.value)}
+                    className="bg-muted/50 mt-2"
+                    placeholder={String(DEFAULT_CPU)}
+                  />
+                  <p className="text-xs text-muted-foreground mt-1">Default: ${DEFAULT_CPU}/core/hour</p>
+                </div>
+                <div>
+                  <label className="text-sm font-medium text-foreground">Memory ($/GB/hour)</label>
+                  <Input
+                    type="number"
+                    min="0"
+                    step="0.0001"
+                    value={memoryPrice}
+                    onChange={(e) => setMemoryPrice(e.target.value)}
+                    className="bg-muted/50 mt-2"
+                    placeholder={String(DEFAULT_MEMORY)}
+                  />
+                  <p className="text-xs text-muted-foreground mt-1">Default: ${DEFAULT_MEMORY}/GB/hour</p>
+                </div>
+                <Button
+                  onClick={handleSave}
+                  disabled={updateSettingsMutation.isPending}
+                >
+                  {updateSettingsMutation.isPending ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      Saving…
+                    </>
+                  ) : (
+                    "Save"
+                  )}
+                </Button>
               </div>
-              <Button
-                onClick={() => {
-                  const cpu = parseFloat(cpuPrice);
-                  const mem = parseFloat(memoryPrice);
-                  if (Number.isNaN(cpu) || cpu < 0 || Number.isNaN(mem) || mem < 0) {
-                    toast({
-                      title: "Invalid values",
-                      description: "Please enter valid non-negative numbers for CPU and Memory price.",
-                      variant: "destructive",
-                    });
-                    return;
-                  }
-                  setResourcePricing({ cpuPerCorePerHour: cpu, memoryPerGbPerHour: mem });
-                  toast({
-                    title: "Saved",
-                    description: "Resource pricing has been saved. Cost figures on Workloads will use these values.",
-                  });
-                }}
-              >
-                Save 
-              </Button>
-            </div>
+            )}
           </div>
         </TabsContent>
 
