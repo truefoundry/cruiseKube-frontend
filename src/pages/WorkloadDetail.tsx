@@ -28,7 +28,7 @@ export default function WorkloadDetail() {
     return (
       <div className="p-6 text-center">
         <p className="text-muted-foreground">Please select a cluster to view workload details.</p>
-        <Link to="/">
+        <Link to="/workloads">
           <Button variant="link" className="mt-2">Back to workloads</Button>
         </Link>
       </div>
@@ -90,7 +90,7 @@ export default function WorkloadDetail() {
         <p className="text-destructive">
           Error loading workload data: {error instanceof Error ? error.message : 'Unknown error'}
         </p>
-        <Link to="/">
+        <Link to="/workloads">
           <Button variant="link" className="mt-2">Back to workloads</Button>
         </Link>
       </div>
@@ -101,7 +101,7 @@ export default function WorkloadDetail() {
     return (
       <div className="p-6 text-center">
         <p className="text-muted-foreground">Workload not found</p>
-        <Link to="/">
+        <Link to="/workloads">
           <Button variant="link" className="mt-2">Back to workloads</Button>
         </Link>
       </div>
@@ -114,7 +114,7 @@ export default function WorkloadDetail() {
     <div className="p-6 space-y-6 animate-fade-in">
       {/* Breadcrumb */}
       <div className="flex items-center gap-2 text-sm text-muted-foreground">
-        <Link to="/" className="hover:text-foreground transition-colors">
+        <Link to="/workloads" className="hover:text-foreground transition-colors">
           Workloads & Recommendations
         </Link>
         <ChevronRight className="h-4 w-4" />
@@ -126,7 +126,7 @@ export default function WorkloadDetail() {
       {/* Header */}
       <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
         <div className="flex items-start gap-4">
-          <Link to="/">
+          <Link to="/workloads">
             <Button variant="ghost" size="icon" className="shrink-0">
               <ArrowLeft className="h-4 w-4" />
             </Button>

@@ -6,6 +6,7 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { ClusterProvider } from "@/contexts/ClusterContext";
 import { ConfigProvider } from "@/contexts/ConfigContext";
+import Overview from "./pages/Overview";
 import Workloads from "./pages/Workloads";
 import WorkloadDetail from "./pages/WorkloadDetail";
 import Policies from "./pages/Policies";
@@ -23,7 +24,8 @@ const App = () => (
           <BrowserRouter>
             <Routes>
               <Route element={<AppLayout />}>
-                <Route path="/" element={<Workloads />} />
+                <Route path="/" element={<Overview />} />
+                <Route path="/workloads" element={<Workloads />} />
                 <Route path="/workloads/:namespace/:workloadName" element={<WorkloadDetail />} />
                 <Route path="/policies" element={<Policies />} />
               </Route>

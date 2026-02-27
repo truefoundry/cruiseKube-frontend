@@ -1,9 +1,8 @@
 import { useState, useRef, useEffect } from "react";
 import { 
-  Search, 
+  Search,
   ChevronUp,
   ChevronDown,
-  DollarSign,
   AlertTriangle,
   Info,
   Cpu,
@@ -31,8 +30,6 @@ import {
   formatMemory,
   mapPriorityToEvictionRanking,
 } from "@/lib/transformers";
-import { getResourcePricing } from "@/lib/pricing";
-import { MetricCard } from "@/components/ui/metric-card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
 import {
@@ -291,9 +288,6 @@ export default function Workloads() {
   });
 
   const workloads: FrontendWorkload[] = (summaryData?.workloadDetails ?? []).map(workloadDetailToFrontend);
-  const impactSummary = summaryData?.impactSummary;
-  const clusterResources = impactSummary?.clusterResources;
-
 
   const parseCpuValue = (cpuString: string): number => {
     if (!cpuString) return 0;
@@ -342,20 +336,6 @@ export default function Workloads() {
     const daysMatch = timeString.match(/(\d+) days ago/);
     if (daysMatch) return (parseInt(daysMatch[1]) || 0) * 1440;
     return 0;
-  };
-
-  const formatCpuValue = (value: string | null): string => {
-    if (!value) return "N/A";
-    const numValue = parseFloat(value);
-    if (isNaN(numValue)) return "N/A";
-    return `${numValue.toFixed(2)} cores`;
-  };
-
-  const formatMemoryValue = (value: string | null): string => {
-    if (!value) return "N/A";
-    const numValue = parseFloat(value);
-    if (isNaN(numValue)) return "N/A";
-    return `${numValue.toFixed(2)} GB`;
   };
 
   const sortWorkloads = (workloads: FrontendWorkload[]): FrontendWorkload[] => {
@@ -506,97 +486,6 @@ export default function Workloads() {
 
   const hasNoData = !isLoadingMetrics && (summaryData?.workloadDetails?.length ?? 0) === 0;
 
-  const currentCostDollars = impactSummary?.dollarCurrentCost ?? 0;
-  const currentSavingsDollars = impactSummary?.dollarCurrentSavings ?? 0;
-  const possibleSavingsDollars = impactSummary?.dollarPossibleSavings ?? 0;
-  const workloadCostDollars = currentCostDollars + currentSavingsDollars;
-  const optimizedCostDollars = workloadCostDollars - possibleSavingsDollars;
-
-  const pricing = getResourcePricing();
-  const isDev = import.meta.env.DEV;
-  const cpuAllocatable = clusterResources?.cpu?.allocatable ?? 0;
-  const memAllocatable = clusterResources?.memory?.allocatable ?? 0;
-
-  const currentCostTooltipContent = (
-    <div className="space-y-3 text-left">
-      <p className="font-medium text-foreground">Current cost</p>
-      <p className="text-xs text-muted-foreground">
-        Algorithm: (allocatable CPU cores × CPU $/hr + allocatable memory GB × memory $/hr) × 720 hours/month. Prices are from Policies → Resource Pricing.
-      </p>
-      {isDev && (
-        <>
-          <p className="text-xs font-medium text-foreground pt-1 border-t border-border">Values used</p>
-          <ul className="text-xs text-muted-foreground space-y-0.5 font-mono">
-            <li>CPU allocatable: {cpuAllocatable.toFixed(2)} cores</li>
-            <li>Memory allocatable: {memAllocatable.toFixed(2)} GB</li>
-            <li>CPU price: ${pricing.cpuPerCorePerHour}/hr</li>
-            <li>Memory price: ${pricing.memoryPerGbPerHour}/hr</li>
-            <li>Hours per month: 720</li>
-          </ul>
-          <p className="text-xs pt-1 border-t border-border font-mono text-foreground">
-            Result: ${currentCostDollars.toLocaleString()}/month
-          </p>
-        </>
-      )}
-    </div>
-  );
-
-  const currentSavingsTooltipContent = (
-    <div className="space-y-3 text-left">
-      <p className="font-medium text-foreground">Current savings</p>
-      <p className="text-xs text-muted-foreground">
-      Algorithm: workload cost − current cost. 
-      <br/><br/>
-        Req_alloc_ratio = Prometheus requested ÷ Prometheus allocatable (per resource).
-        <br/><br/>
-        Workload cost = (original requested resources from workload ÷ Req_alloc_ratio) × price × 720. 
-        <br/><br/>
-        Current cost = allocatable × price × 720. 
-
-        <br/ ><br/>
-
-        So current savings = what the requested workloads would cost (normalized by ratio) minus what you pay today (allocatable).
-      </p>
-      {isDev && (
-        <>
-          <p className="text-xs font-medium text-foreground pt-1 border-t border-border">Values used</p>
-          <ul className="text-xs text-muted-foreground space-y-0.5 font-mono">
-            <li>Workload cost: ${workloadCostDollars.toLocaleString()}/month</li>
-            <li>Current cost: ${currentCostDollars.toLocaleString()}/month</li>
-          </ul>
-          <p className="text-xs pt-1 border-t border-border font-mono text-foreground">
-            Result: ${workloadCostDollars.toLocaleString()} − ${currentCostDollars.toLocaleString()} = ${currentSavingsDollars.toLocaleString()}/month
-          </p>
-        </>
-      )}
-    </div>
-  );
-
-  const possibleSavingsTooltipContent = (
-    <div className="space-y-3 text-left">
-      <p className="font-medium text-foreground">Possible savings</p>
-      <p className="text-xs text-muted-foreground">
-        Algorithm: workload cost − optimized cost. 
-        <br/><br/>
-        Optimized cost = (recommended request ÷ Req_alloc_ratio) × price × 720. 
-        <br/><br/>
-        Workload cost = (original requested ÷ Req_alloc_ratio) × price × 720. 
-      </p>
-      {isDev && (
-        <>
-          <p className="text-xs font-medium text-foreground pt-1 border-t border-border">Values used</p>
-          <ul className="text-xs text-muted-foreground space-y-0.5 font-mono">
-            <li>Workload cost: ${workloadCostDollars.toLocaleString()}/month</li>
-            <li>Optimized cost: ${optimizedCostDollars.toLocaleString()}/month</li>
-          </ul>
-          <p className="text-xs pt-1 border-t border-border font-mono text-foreground">
-            Result: ${workloadCostDollars.toLocaleString()} − ${optimizedCostDollars.toLocaleString()} = ${possibleSavingsDollars.toLocaleString()}/month
-          </p>
-        </>
-      )}
-    </div>
-  );
-
   return (
     <div className="min-w-0 w-full max-w-full animate-fade-in">
       <div className="mx-auto max-w-[1600px] px-4 py-6 sm:px-6 lg:px-8 space-y-8">
@@ -627,238 +516,6 @@ export default function Workloads() {
             ) : null;
           })()}
         </header>
-
-        {/* Cost & impact — 3 cards */}
-        <section aria-labelledby="cost-impact-heading">
-          <h2 id="cost-impact-heading" className="sr-only">Cost & impact</h2>
-          <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 xl:grid-cols-3">
-            {/* 1. Current cost: allocatable × cost */}
-            <div className="metric-card border-border">
-              {isLoadingMetrics ? (
-                <div className="flex items-start justify-between">
-                  <div className="space-y-1">
-                    <Skeleton className="h-3 w-28" />
-                    <Skeleton className="h-8 w-24" />
-                    <Skeleton className="h-4 w-36" />
-                  </div>
-                  <div className="rounded-lg bg-muted/50 p-2 text-muted-foreground">
-                    <DollarSign className="h-5 w-5" />
-                  </div>
-                </div>
-              ) : (
-                <div className="flex items-start justify-between">
-                  <div className="space-y-1">
-                    <div className="flex items-center gap-1.5">
-                      <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Current cost</p>
-                      <TooltipProvider>
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <button type="button" className="inline-flex text-muted-foreground hover:text-foreground focus:outline-none" onClick={(e) => e.stopPropagation()} aria-label="How current cost is calculated">
-                              <Info className="h-3.5 w-3.5" />
-                            </button>
-                          </TooltipTrigger>
-                          <TooltipContent side="bottom" className="max-w-sm p-4 text-left">
-                            {currentCostTooltipContent}
-                          </TooltipContent>
-                        </Tooltip>
-                      </TooltipProvider>
-                    </div>
-                    <p className="font-mono text-2xl font-semibold tracking-tight text-foreground">
-                      ${currentCostDollars.toLocaleString()}
-                      <span className="text-sm font-normal text-muted-foreground ml-1">/month</span>
-                    </p>
-                    <p className="text-sm text-muted-foreground">Allocatable × cost (CPU + Memory)</p>
-                  </div>
-                  <div className="rounded-lg bg-muted/50 p-2 text-muted-foreground">
-                    <DollarSign className="h-5 w-5" />
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* 2. Current savings: workload cost − current cost */}
-            <div className="metric-card border-border">
-              {isLoadingMetrics ? (
-                <div className="flex items-start justify-between">
-                  <div className="space-y-1">
-                    <Skeleton className="h-3 w-28" />
-                    <Skeleton className="h-8 w-24" />
-                    <Skeleton className="h-4 w-36" />
-                  </div>
-                  <div className="rounded-lg bg-muted/50 p-2 text-muted-foreground">
-                    <DollarSign className="h-5 w-5" />
-                  </div>
-                </div>
-              ) : (
-                <div className="flex items-start justify-between">
-                  <div className="space-y-1">
-                    <div className="flex items-center gap-1.5">
-                      <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Current savings</p>
-                      <TooltipProvider>
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <button type="button" className="inline-flex text-muted-foreground hover:text-foreground focus:outline-none" onClick={(e) => e.stopPropagation()} aria-label="How current savings is calculated">
-                              <Info className="h-3.5 w-3.5" />
-                            </button>
-                          </TooltipTrigger>
-                          <TooltipContent side="bottom" className="max-w-sm p-4 text-left">
-                            {currentSavingsTooltipContent}
-                          </TooltipContent>
-                        </Tooltip>
-                      </TooltipProvider>
-                    </div>
-                    <p className="font-mono text-2xl font-semibold tracking-tight text-foreground">
-                      ${currentSavingsDollars.toLocaleString()}
-                      <span className="text-sm font-normal text-muted-foreground ml-1">/month</span>
-                    </p>
-                    <p className="text-sm text-muted-foreground">You are currently saving this amount per month</p>
-                  </div>
-                  <div className="rounded-lg bg-muted/50 p-2 text-muted-foreground">
-                    <DollarSign className="h-5 w-5" />
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* 3. Possible savings: workload cost − optimized cost; % below vs workload cost */}
-            <div className="metric-card border-border flex flex-col">
-              {isLoadingMetrics ? (
-                <div className="flex items-start justify-between">
-                  <div className="space-y-1">
-                    <Skeleton className="h-3 w-28" />
-                    <Skeleton className="h-8 w-24" />
-                    <Skeleton className="h-4 w-36" />
-                  </div>
-                  <div className="rounded-lg bg-muted/50 p-2 text-muted-foreground">
-                    <DollarSign className="h-5 w-5" />
-                  </div>
-                </div>
-              ) : (
-                <>
-                  <div className="flex items-start justify-between flex-1 min-h-0">
-                    <div className="space-y-1 min-w-0 flex-1">
-                      <div className="flex items-center gap-1.5">
-                        <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Possible savings</p>
-                        <TooltipProvider>
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <button type="button" className="inline-flex text-muted-foreground hover:text-foreground focus:outline-none shrink-0" aria-label="How possible savings is calculated">
-                                <Info className="h-3.5 w-3.5" />
-                              </button>
-                            </TooltipTrigger>
-                            <TooltipContent side="bottom" className="max-w-sm p-4 text-left">
-                              {possibleSavingsTooltipContent}
-                            </TooltipContent>
-                          </Tooltip>
-                        </TooltipProvider>
-                      </div>
-                      <p className="font-mono text-2xl font-semibold tracking-tight text-foreground">
-                        ${possibleSavingsDollars.toLocaleString()}
-                        <span className="text-sm font-normal text-muted-foreground ml-1">/month</span>
-                      </p>
-                    </div>
-                    <div className="rounded-lg bg-muted/50 p-2 text-muted-foreground shrink-0">
-                      <DollarSign className="h-5 w-5" />
-                    </div>
-                  </div>
-                  <p className="text-sm text-muted-foreground">Total possible savings per month</p>
-                </>
-              )}
-            </div>
-          </div>
-        </section>
-
-        {/* Cluster resources */}
-        <section aria-labelledby="cluster-resources-heading">
-          <h2 id="cluster-resources-heading" className="mb-4 text-sm font-semibold uppercase tracking-wider text-muted-foreground">Cluster resources</h2>
-          <div className="grid gap-4 md:grid-cols-2">
-        {isLoadingMetrics ? (
-          <>
-            <div className="metric-card space-y-4">
-              <Skeleton className="h-6 w-24" />
-              <Skeleton className="h-4 w-full" />
-              <Skeleton className="h-4 w-full" />
-              <Skeleton className="h-4 w-full" />
-            </div>
-            <div className="metric-card space-y-4">
-              <Skeleton className="h-6 w-24" />
-              <Skeleton className="h-4 w-full" />
-              <Skeleton className="h-4 w-full" />
-              <Skeleton className="h-4 w-full" />
-            </div>
-          </>
-        ) : (
-          <>
-            {/* CPU: single stacked bar (Utilised | Requested−Utilised | Free) */}
-            <div className="metric-card border-border">
-              <div className="flex items-center justify-between gap-2 mb-3">
-                <div className="flex items-center gap-2">
-                  <div className="rounded-lg bg-muted/50 p-2 text-muted-foreground">
-                    <Cpu className="h-5 w-5" />
-                  </div>
-                  <span className="text-xs font-medium uppercase tracking-wider text-muted-foreground">CPU</span>
-                </div>
-                <span className="font-mono text-sm font-semibold">{formatCpuValue((clusterResources?.cpu?.allocatable != null ? String(clusterResources.cpu.allocatable) : null) ?? null)} allocatable</span>
-              </div>
-              {(() => {
-                const alloc = Number((clusterResources?.cpu?.allocatable != null ? String(clusterResources.cpu.allocatable) : null) ?? 0);
-                const used = Number((clusterResources?.cpu?.utilised != null ? String(clusterResources.cpu.utilised) : null) ?? 0);
-                const req = Number((clusterResources?.cpu?.requested != null ? String(clusterResources.cpu.requested) : null) ?? 0);
-                const pctUsed = alloc > 0 ? Math.min(100, (used / alloc) * 100) : 0;
-                const pctReserved = alloc > 0 ? Math.min(100 - pctUsed, (Math.max(0, req - used) / alloc) * 100) : 0;
-                const pctFree = Math.max(0, 100 - pctUsed - pctReserved);
-                return (
-                  <>
-                    <div className="flex h-6 w-full overflow-hidden rounded-md bg-muted/60">
-                      {pctUsed > 0 && <div className="h-full bg-primary transition-all" style={{ width: `${pctUsed}%` }} title={`Utilised: ${formatCpuValue((clusterResources?.cpu?.utilised != null ? String(clusterResources.cpu.utilised) : null) ?? null)}`} />}
-                      {pctReserved > 0 && <div className="h-full bg-primary/50 transition-all" style={{ width: `${pctReserved}%` }} title={`Requested (unused): ${(req - used).toFixed(2)} cores`} />}
-                      {pctFree > 0 && <div className="h-full flex-1 bg-transparent" style={{ width: `${pctFree}%` }} title="Free" />}
-                    </div>
-                    <div className="flex justify-between text-sm text-muted-foreground mt-2">
-                    <span>Utilised <span className="text-foreground">{formatCpuValue((clusterResources?.cpu?.utilised != null ? String(clusterResources.cpu.utilised) : null) ?? null)}</span></span>
-                    <span>Requested <span className="text-foreground">{formatCpuValue((clusterResources?.cpu?.requested != null ? String(clusterResources.cpu.requested) : null) ?? null)}</span></span>
-                    </div>
-                  </>
-                );
-              })()}
-            </div>
-            {/* Memory: single stacked bar */}
-            <div className="metric-card border-border">
-              <div className="flex items-center justify-between gap-2 mb-3">
-                <div className="flex items-center gap-2">
-                  <div className="rounded-lg bg-muted/50 p-2 text-muted-foreground">
-                    <HardDrive className="h-5 w-5" />
-                  </div>
-                  <span className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Memory</span>
-                </div>
-                <span className="font-mono text-sm font-semibold">{formatMemoryValue((clusterResources?.memory?.allocatable != null ? String(clusterResources.memory.allocatable) : null) ?? null)} allocatable</span>
-              </div>
-              {(() => {
-                const alloc = Number((clusterResources?.memory?.allocatable != null ? String(clusterResources.memory.allocatable) : null) ?? 0);
-                const used = Number((clusterResources?.memory?.utilised != null ? String(clusterResources.memory.utilised) : null) ?? 0);
-                const req = Number((clusterResources?.memory?.requested != null ? String(clusterResources.memory.requested) : null) ?? 0);
-                const pctUsed = alloc > 0 ? Math.min(100, (used / alloc) * 100) : 0;
-                const pctReserved = alloc > 0 ? Math.min(100 - pctUsed, (Math.max(0, req - used) / alloc) * 100) : 0;
-                const pctFree = Math.max(0, 100 - pctUsed - pctReserved);
-                return (
-                  <>
-                    <div className="flex h-6 w-full overflow-hidden rounded-md bg-muted/60">
-                      {pctUsed > 0 && <div className="h-full bg-primary transition-all" style={{ width: `${pctUsed}%` }} title={`Utilised: ${formatMemoryValue((clusterResources?.memory?.utilised != null ? String(clusterResources.memory.utilised) : null) ?? null)}`} />}
-                      {pctReserved > 0 && <div className="h-full bg-primary/50 transition-all" style={{ width: `${pctReserved}%` }} title={`Requested (unused): ${(req - used).toFixed(2)} GB`} />}
-                      {pctFree > 0 && <div className="h-full flex-1 bg-transparent" style={{ width: `${pctFree}%` }} title="Free" />}
-                    </div>
-                    <div className="flex justify-between text-sm text-muted-foreground mt-2">
-                      <span>Utilised <span className="text-foreground">{formatMemoryValue((clusterResources?.memory?.utilised != null ? String(clusterResources.memory.utilised) : null) ?? null)}</span></span>
-                      <span>Requested <span className="text-foreground">{formatMemoryValue((clusterResources?.memory?.requested != null ? String(clusterResources.memory.requested) : null) ?? null)}</span></span>
-                    </div>
-                  </>
-                );
-              })()}
-            </div>
-          </>
-        )}
-          </div>
-        </section>
 
         {/* Workload list */}
         <section aria-labelledby="workloads-heading">
