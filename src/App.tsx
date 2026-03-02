@@ -10,6 +10,7 @@ import Overview from "./pages/Overview";
 import Workloads from "./pages/Workloads";
 import WorkloadDetail from "./pages/WorkloadDetail";
 import Policies from "./pages/Policies";
+import Events from "./pages/Events";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -28,6 +29,7 @@ const App = () => (
                 <Route path="/workloads" element={<Workloads />} />
                 <Route path="/workloads/:namespace/:workloadName" element={<WorkloadDetail />} />
                 <Route path="/policies" element={<Policies />} />
+                <Route path="/events" element={<Events />} />
               </Route>
               <Route path="*" element={<NotFound />} />
             </Routes>

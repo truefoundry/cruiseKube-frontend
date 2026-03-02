@@ -351,6 +351,34 @@ export interface WorkloadDetailResponse {
   pods: WorkloadDetailPod[];
 }
 
+/** Kubernetes workload target for an audit event. */
+export interface AuditEventTarget {
+  kind: string;
+  name: string;
+  namespace: string;
+}
+
+/** Payload for an audit event (message, target, details as raw object). */
+export interface AuditEventPayload {
+  message?: string;
+  target?: AuditEventTarget;
+  details?: Record<string, unknown>;
+}
+
+/** Single audit event from GET .../clusters/:clusterID/audit-events?minutes=... */
+export interface AuditEvent {
+  cluster_id: string;
+  type: string;
+  category: string;
+  payload: AuditEventPayload;
+  created_at: string;
+}
+
+/** Response from GET .../clusters/:clusterID/audit-events?minutes=... */
+export interface AuditEventsResponse {
+  events: AuditEvent[];
+}
+
 class ApiClient {
   private baseUrl: string;
 
@@ -548,6 +576,23 @@ class ApiClient {
   async queryPrometheus(clusterID: string, query: string): Promise<PrometheusQueryResult> {
     const encodedQuery = encodeURIComponent(query);
     return this.request<PrometheusQueryResult>(`/clusters/${clusterID}/prometheus-query?query=${encodedQuery}`);
+  }
+
+  /**
+   * GET .../clusters/:clusterID/audit-events?minutes= — all events.
+   * GET .../clusters/:clusterID/audit-events/:workloadId?minutes= — events for one workload.
+   * workloadId format: TYPE:NAMESPACE:NAME (e.g. Deployment:my-ns:my-app).
+   */
+  async getAuditEvents(clusterID: string, minutes: number, workloadId?: string): Promise<AuditEventsResponse> {
+    const base = `/clusters/${encodeURIComponent(clusterID)}/audit-events`;
+    const path = workloadId?.trim()
+      ? `${base}/${encodeURIComponent(workloadId.trim())}?minutes=${encodeURIComponent(String(minutes))}`
+      : `${base}?minutes=${encodeURIComponent(String(minutes))}`;
+    const data = await this.request<AuditEventsResponse | null>(path);
+    if (data == null || !Array.isArray(data.events)) {
+      return { events: [] };
+    }
+    return { events: data.events };
   }
 }
 

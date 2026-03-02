@@ -8,7 +8,7 @@ import {
   Cpu,
   HardDrive,
 } from "lucide-react";
-import { useQuery } from "@tanstack/react-query";
+import { useQueries } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import {
   Line,
@@ -180,15 +180,6 @@ export default function Overview() {
   const [customStart, setCustomStart] = useState<string>("");
   const [customEnd, setCustomEnd] = useState<string>("");
 
-  const { data: rawData, isLoading, error } = useQuery({
-    queryKey: ["overview", selectedClusterId],
-    queryFn: () => apiClient.getOverview(selectedClusterId!),
-    enabled: !!selectedClusterId,
-    retry: 1,
-  });
-
-  const d = withDefaults(error ? null : rawData);
-
   const historicalDateRange = useMemo(() => {
     const now = Date.now();
     let endMs: number;
@@ -219,31 +210,51 @@ export default function Overview() {
     };
   }, [timeRangePreset, customStart, customEnd]);
 
-  const { data: historicalRaw, isLoading: isLoadingHistorical } = useQuery({
-    queryKey: ["overview", "historical", selectedClusterId, historicalMetric, historicalDateRange.startTime, historicalDateRange.endTime],
-    queryFn: () =>
-      apiClient.getHistoricalTimeline(
-        selectedClusterId!,
-        historicalMetric,
-        historicalDateRange.startTime,
-        historicalDateRange.endTime
-      ),
-    enabled: !!selectedClusterId,
-    retry: 1,
+  const [overviewResult, historicalResult, costHistoricalResult] = useQueries({
+    queries: [
+      {
+        queryKey: ["overview", selectedClusterId],
+        queryFn: () => apiClient.getOverview(selectedClusterId!),
+        enabled: !!selectedClusterId,
+        retry: 1,
+      },
+      {
+        queryKey: ["overview", "historical", selectedClusterId, historicalMetric, historicalDateRange.startTime, historicalDateRange.endTime],
+        queryFn: () =>
+          apiClient.getHistoricalTimeline(
+            selectedClusterId!,
+            historicalMetric,
+            historicalDateRange.startTime,
+            historicalDateRange.endTime
+          ),
+        enabled: !!selectedClusterId,
+        retry: 1,
+      },
+      {
+        queryKey: ["overview", "historical", "cost", selectedClusterId, historicalDateRange.startTime, historicalDateRange.endTime],
+        queryFn: () =>
+          apiClient.getHistoricalTimeline(
+            selectedClusterId!,
+            "cost",
+            historicalDateRange.startTime,
+            historicalDateRange.endTime
+          ),
+        enabled: !!selectedClusterId,
+        retry: 1,
+      },
+    ],
   });
 
-  const { data: costHistoricalRaw, isLoading: isLoadingCostHistorical } = useQuery({
-    queryKey: ["overview", "historical", "cost", selectedClusterId, historicalDateRange.startTime, historicalDateRange.endTime],
-    queryFn: () =>
-      apiClient.getHistoricalTimeline(
-        selectedClusterId!,
-        "cost",
-        historicalDateRange.startTime,
-        historicalDateRange.endTime
-      ),
-    enabled: !!selectedClusterId,
-    retry: 1,
-  });
+  const rawData = overviewResult.data;
+  const error = overviewResult.error;
+  const isLoading = overviewResult.isLoading;
+  const d = withDefaults(error ? null : rawData);
+
+  const historicalRaw = historicalResult.data;
+  const isLoadingHistorical = historicalResult.isLoading;
+
+  const costHistoricalRaw = costHistoricalResult.data;
+  const isLoadingCostHistorical = costHistoricalResult.isLoading;
 
   const { data: historicalTimelineData, config: historicalChartConfig } = useMemo(
     () => transformHistoricalTimelineResponse(historicalRaw),
