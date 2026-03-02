@@ -194,6 +194,11 @@ export interface PrometheusConfig {
   error?: string;
 }
 
+export interface ClusterSettings {
+  cpuPricePerCorePerHour: number;
+  memoryPricePerGBPerHour: number;
+}
+
 export interface PrometheusQueryResult {
   status: string;
   data: {
@@ -254,6 +259,7 @@ export interface WorkloadDetailConfig {
   priority: string;
   cruiseEnabled: boolean;
   disruptionSchedule: WorkloadDetailDisruptionWindow[];
+  inDisruptionWindow: boolean;
 }
 
 export interface WorkloadDetail {
@@ -571,6 +577,19 @@ class ApiClient {
   /** Fetches cluster config (Prometheus). Endpoint: GET /clusters/:clusterID/config */
   async getConfig(clusterID: string): Promise<PrometheusConfig> {
     return this.request<PrometheusConfig>(`/clusters/${clusterID}/config`);
+  }
+
+  /** Fetches cluster cost settings. Endpoint: GET /clusters/:clusterID/settings */
+  async getSettings(clusterID: string): Promise<ClusterSettings> {
+    return this.request<ClusterSettings>(`/clusters/${clusterID}/settings`);
+  }
+
+  /** Updates cluster cost settings. Endpoint: PUT /clusters/:clusterID/settings */
+  async updateSettings(clusterID: string, settings: ClusterSettings): Promise<ClusterSettings> {
+    return this.request<ClusterSettings>(`/clusters/${clusterID}/settings`, {
+      method: 'PUT',
+      body: JSON.stringify(settings),
+    });
   }
 
   async queryPrometheus(clusterID: string, query: string): Promise<PrometheusQueryResult> {

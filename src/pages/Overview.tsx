@@ -7,6 +7,7 @@ import {
   Zap,
   Cpu,
   HardDrive,
+  Info,
 } from "lucide-react";
 import { useQueries } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
@@ -352,9 +353,25 @@ export default function Overview() {
               ) : (
                 <div className="flex items-start justify-between">
                   <div className="space-y-1">
-                    <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                      Monthly cost
-                    </p>
+                    <div className="flex items-center gap-1.5">
+                      <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                        Monthly cost
+                      </p>
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <button type="button" className="inline-flex text-muted-foreground hover:text-foreground focus:outline-none" onClick={(e) => e.stopPropagation()} aria-label="How monthly cost is calculated">
+                              <Info className="h-3.5 w-3.5" />
+                            </button>
+                          </TooltipTrigger>
+                          <TooltipContent side="bottom" className="max-w-sm p-4 text-left">
+                            <p>
+                              Monthly cost is computed from cluster allocatable resources (CPU cores and memory) and your configured cost per core/hour and per GB/hour. It represents the monthly run-rate if all allocatable capacity were billed at those rates.
+                            </p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                    </div>
                     <p className="font-mono text-2xl font-semibold tracking-tight text-foreground">
                       ${d.currentMonthlyCost.toLocaleString()}
                     </p>
