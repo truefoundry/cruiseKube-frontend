@@ -259,6 +259,7 @@ export interface WorkloadDetailConfig {
   priority: string;
   cruiseEnabled: boolean;
   disruptionSchedule: WorkloadDetailDisruptionWindow[];
+  inDisruptionWindow: boolean;
 }
 
 export interface WorkloadDetail {
