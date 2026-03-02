@@ -18,6 +18,7 @@ import {
   type LucideIcon,
   Pencil,
   ShieldAlert,
+  ShieldCheck,
 } from "lucide-react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faCircleArrowUp } from "@fortawesome/free-solid-svg-icons";
@@ -156,6 +157,7 @@ function workloadDetailToFrontend(d: WorkloadDetail): FrontendWorkload {
     blockingConsolidation: c?.blockingConsolidation ?? false,
     blockingConsolidationPdb: c?.pdb ?? false,
     blockingConsolidationDoNotDisrupt: c?.doNotDisruptAnnotation ?? false,
+    inDisruptionWindow: d.config.inDisruptionWindow ?? false,
   };
 }
 
@@ -1143,21 +1145,33 @@ export default function Workloads() {
                           <TooltipProvider>
                             <Tooltip>
                               <TooltipTrigger asChild>
-                                <span className="inline-flex shrink-0 text-amber-600 dark:text-amber-400 cursor-help" onClick={(e) => e.stopPropagation()}>
-                                  <ShieldAlert className="h-4 w-4" aria-hidden />
+                                <span
+                                  className={`inline-flex shrink-0 cursor-help ${workload.inDisruptionWindow ? "text-success" : "text-amber-600 dark:text-amber-400"}`}
+                                  onClick={(e) => e.stopPropagation()}
+                                >
+                                  {workload.inDisruptionWindow
+                                    ? <ShieldCheck className="h-4 w-4" aria-hidden />
+                                    : <ShieldAlert className="h-4 w-4" aria-hidden />
+                                  }
                                 </span>
                               </TooltipTrigger>
                               <TooltipContent side="right" className="max-w-sm">
-                                <p>
-                                  This workload will block consolidation of nodes because of{" "}
-                                  {[workload.blockingConsolidationPdb && "Pod Disruption Budget (PDB)", workload.blockingConsolidationDoNotDisrupt && "do-not-disrupt annotation"]
-                                    .filter(Boolean)
-                                    .join(" and ")}
-                                  .
-                                </p>
-                                <p className="mt-2 font-medium">
-                                  Set up a disruption window in Edit CruiseConfig so that nodes can consolidate during the window.
-                                </p>
+                                {workload.inDisruptionWindow ? (
+                                  <p>This workload is currently inside a disruption window. Do-not-disrupt annotations are temporarily removed to allow node consolidation.</p>
+                                ) : (
+                                  <>
+                                    <p>
+                                      This workload will block consolidation of nodes because of{" "}
+                                      {[workload.blockingConsolidationPdb && "Pod Disruption Budget (PDB)", workload.blockingConsolidationDoNotDisrupt && "do-not-disrupt annotation"]
+                                        .filter(Boolean)
+                                        .join(" and ")}
+                                      .
+                                    </p>
+                                    <p className="mt-2 font-medium">
+                                      Set up a disruption window in Edit CruiseConfig so that nodes can consolidate during the window.
+                                    </p>
+                                  </>
+                                )}
                               </TooltipContent>
                             </Tooltip>
                           </TooltipProvider>

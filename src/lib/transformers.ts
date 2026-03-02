@@ -43,6 +43,8 @@ export interface FrontendWorkload {
   blockingConsolidationPdb?: boolean;
   /** Reason: has do-not-disrupt annotation. */
   blockingConsolidationDoNotDisrupt?: boolean;
+  /** True when the workload is currently inside an active disruption window. */
+  inDisruptionWindow?: boolean;
 }
 
 export interface FrontendContainer {
