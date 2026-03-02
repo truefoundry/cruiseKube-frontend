@@ -179,6 +179,8 @@ export default function Workloads() {
   const [resizingCol, setResizingCol] = useState<number | null>(null);
   const resizeStartXRef = useRef(0);
   const resizeStartWidthRef = useRef(0);
+  const [headerHidden, setHeaderHidden] = useState(false);
+  const tableScrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (resizingCol === null) return;
@@ -500,22 +502,28 @@ export default function Workloads() {
           </Alert>
         )}
 
-        {/* Page header */}
-        <header className="flex flex-wrap items-end justify-between gap-4 border-b border-border/60 pb-6">
-          <div>
-            <h1 className="text-2xl font-bold tracking-tight text-foreground sm:text-3xl">Workloads</h1>
-            <p className="mt-1 text-sm text-muted-foreground">Optimized Kubernetes resources and cost impact</p>
-          </div>
-          {summaryData?.workloadDetails && summaryData.workloadDetails.length > 0 && (() => {
-            const maxUpdated = Math.max(...summaryData.workloadDetails.map((w) => w.updatedAt), 0);
-            return maxUpdated > 0 ? (
-              <div className="flex items-center gap-2 rounded-full border border-border bg-muted/30 px-3 py-1.5 text-xs text-muted-foreground">
-                <span className="h-1.5 w-1.5 rounded-full bg-success animate-pulse" />
-                Last sync: {new Date(maxUpdated * 1000).toLocaleString()}
-              </div>
-            ) : null;
-          })()}
-        </header>
+        {/* Page header — collapses when scrolling the table */}
+        <div
+          className={`overflow-hidden transition-[max-height,opacity] duration-200 ease-out ${
+            headerHidden ? "max-h-0 opacity-0" : "max-h-40 opacity-100"
+          }`}
+        >
+          <header className="flex flex-wrap items-end justify-between gap-4 border-b border-border/60 pb-6">
+            <div>
+              <h1 className="text-2xl font-bold tracking-tight text-foreground sm:text-3xl">Workloads</h1>
+              <p className="mt-1 text-sm text-muted-foreground">Optimized Kubernetes resources and cost impact</p>
+            </div>
+            {summaryData?.workloadDetails && summaryData.workloadDetails.length > 0 && (() => {
+              const maxUpdated = Math.max(...summaryData.workloadDetails.map((w) => w.updatedAt), 0);
+              return maxUpdated > 0 ? (
+                <div className="flex items-center gap-2 rounded-full border border-border bg-muted/30 px-3 py-1.5 text-xs text-muted-foreground">
+                  <span className="h-1.5 w-1.5 rounded-full bg-success animate-pulse" />
+                  Last sync: {new Date(maxUpdated * 1000).toLocaleString()}
+                </div>
+              ) : null;
+            })()}
+          </header>
+        </div>
 
         {/* Workload list */}
         <section aria-labelledby="workloads-heading">
@@ -616,7 +624,25 @@ export default function Workloads() {
                 </div>
               )}
             </div>
-            <div className="overflow-x-auto">
+            <div
+              ref={tableScrollRef}
+              className="overflow-x-auto overflow-y-auto max-h-[calc(100vh-16rem)]"
+              onScroll={(e) => {
+                const el = e.currentTarget;
+                setHeaderHidden(el.scrollTop > 24);
+              }}
+            >
+              {isLoadingSummary ? (
+                <div className="flex flex-col items-center justify-center gap-4 py-24 text-muted-foreground">
+                  <Skeleton className="h-10 w-10 rounded-full" />
+                  <p className="text-sm font-medium">Loading workloads...</p>
+                  <div className="flex gap-1">
+                    <Skeleton className="h-2 w-2 rounded-full animate-pulse" style={{ animationDelay: "0ms" }} />
+                    <Skeleton className="h-2 w-2 rounded-full animate-pulse" style={{ animationDelay: "150ms" }} />
+                    <Skeleton className="h-2 w-2 rounded-full animate-pulse" style={{ animationDelay: "300ms" }} />
+                  </div>
+                </div>
+              ) : (
               <table className="data-table w-full border-collapse" style={{ tableLayout: "fixed" }}>
             <colgroup>
               {columnWidths.map((w, i) => (
@@ -971,10 +997,11 @@ export default function Workloads() {
               ))}
             </tbody>
           </table>
+              )}
         </div>
       </div>
 
-      {sortedWorkloads.length === 0 && (
+      {!isLoadingSummary && sortedWorkloads.length === 0 && (
           <div className="rounded-xl border border-border bg-card/30 py-16 text-center text-sm text-muted-foreground">
             No workloads match your filters
           </div>

@@ -307,6 +307,19 @@ export interface OverviewResponse {
   memoryStats?: OverviewResourceStats;
 }
 
+/** Single data point in historical timeline API response. */
+export interface HistoricalTimelineDataPoint {
+  legend: string;
+  color: string;
+  threshold: { value: number; color: string };
+  data: { timestamp: string; value: number };
+}
+
+/** Response from GET .../ui/overview/historical-timeline/:metric?startTime=...&endTime=... */
+export interface HistoricalTimelineResponse {
+  data: HistoricalTimelineDataPoint[];
+}
+
 /** Container in workload detail pod (from GET .../workloads/:namespace/:workload/detail). */
 export interface WorkloadDetailPodContainer {
   container_name: string;
@@ -484,9 +497,25 @@ class ApiClient {
     return this.request<WorkloadSummaryResponse>(`/clusters/${clusterID}/workloads/summary`);
   }
 
-  /** GET /api/v1/clusters/:clusterID/ui/overview — overview metrics for the Overview page. */
+  /** GET /api/clusters/:clusterID/ui/overview — overview metrics for the Overview page. */
   async getOverview(clusterID: string): Promise<OverviewResponse> {
-    return this.request<OverviewResponse>(`/v1/clusters/${clusterID}/ui/overview`);
+    return this.request<OverviewResponse>(`/clusters/${clusterID}/ui/overview`);
+  }
+
+  /** GET /api/clusters/:clusterID/ui/overview/historical-timeline/:metric — historical timeline for CPU or memory. */
+  async getHistoricalTimeline(
+    clusterID: string,
+    metric: 'cpu' | 'memory',
+    startTime: string,
+    endTime: string
+  ): Promise<HistoricalTimelineResponse> {
+    const params = new URLSearchParams({
+      startTime,
+      endTime,
+    });
+    return this.request<HistoricalTimelineResponse>(
+      `/clusters/${clusterID}/ui/overview/historical-timeline/${metric}?${params.toString()}`
+    );
   }
 
   async updateWorkloadOverrides(
