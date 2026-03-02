@@ -19,6 +19,7 @@ import {
   Pencil,
   ShieldAlert,
   ShieldCheck,
+  Zap,
 } from "lucide-react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faCircleArrowUp } from "@fortawesome/free-solid-svg-icons";
@@ -177,6 +178,8 @@ export default function Workloads() {
   const [editPriority, setEditPriority] = useState<'low' | 'medium' | 'high' | 'non-evictable'>('medium');
   const [editMode, setEditMode] = useState<'enabled' | 'recommend-only'>('recommend-only');
   const [editDisruptionWindows, setEditDisruptionWindows] = useState<{ startCron: string; endCron: string }[]>([]);
+  const [enableAllDialogOpen, setEnableAllDialogOpen] = useState(false);
+  const [isEnablingAll, setIsEnablingAll] = useState(false);
 
   const MIN_COLUMN_WIDTH = 48;
   const DEFAULT_COLUMN_WIDTHS = [190, 110, 48, 72, 100, 72, 100, 90, 64, 72, 120];
@@ -284,6 +287,48 @@ export default function Workloads() {
       workloadId: id,
       overrides,
     });
+  };
+
+  const handleEnableAll = async () => {
+    if (!selectedClusterId) return;
+    const targets = asArray(workloads).filter((w) => !w.excluded && w.mode !== "enabled");
+    if (targets.length === 0) {
+      setEnableAllDialogOpen(false);
+      return;
+    }
+    setIsEnablingAll(true);
+    try {
+      await Promise.all(
+        targets.map((w) => {
+          const overrides: Overrides = {
+            eviction_ranking: mapPriorityToEvictionRanking(w.priority),
+            enabled: true,
+          };
+          const windows = asArray(w.disruptionWindows);
+          if (windows.length > 0) {
+            overrides.disruption_windows = windows.map((dw) => ({
+              start_cron: dw.startCron,
+              end_cron: dw.endCron,
+            }));
+          }
+          return apiClient.updateWorkloadOverrides(selectedClusterId, workloadIdForApi(w.id), overrides);
+        })
+      );
+      queryClient.invalidateQueries({ queryKey: ['workloads-summary', selectedClusterId] });
+      toast({
+        title: "CruiseKube enabled",
+        description: `Enabled Cruise mode for ${targets.length} workload${targets.length !== 1 ? "s" : ""}.`,
+      });
+    } catch (err) {
+      toast({
+        title: "Error",
+        description: err instanceof Error ? err.message : "Failed to enable all workloads",
+        variant: "destructive",
+      });
+    } finally {
+      setIsEnablingAll(false);
+      setEnableAllDialogOpen(false);
+    }
   };
 
   const { data: summaryData, isLoading: isLoadingSummary, error: summaryError } = useQuery({
@@ -619,15 +664,38 @@ export default function Workloads() {
             <h1 className="text-2xl font-bold tracking-tight text-foreground sm:text-3xl">Workloads</h1>
             <p className="mt-1 text-sm text-muted-foreground">Optimized Kubernetes resources and cost impact</p>
           </div>
-          {summaryData?.workloadDetails && summaryData.workloadDetails.length > 0 && (() => {
-            const maxUpdated = Math.max(...summaryData.workloadDetails.map((w) => w.updatedAt), 0);
-            return maxUpdated > 0 ? (
-              <div className="flex items-center gap-2 rounded-full border border-border bg-muted/30 px-3 py-1.5 text-xs text-muted-foreground">
-                <span className="h-1.5 w-1.5 rounded-full bg-success animate-pulse" />
-                Last sync: {new Date(maxUpdated * 1000).toLocaleString()}
-              </div>
-            ) : null;
-          })()}
+          <div className="flex flex-wrap items-center gap-3">
+            {!isLoadingSummary && asArray(workloads).some((w) => !w.excluded && w.mode !== "enabled") && (
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="default"
+                      size="sm"
+                      className="gap-1.5"
+                      onClick={() => setEnableAllDialogOpen(true)}
+                      disabled={isEnablingAll}
+                    >
+                      <Zap className="h-3.5 w-3.5" />
+                      Enable CruiseKube for All
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom">
+                    <p>Switch all non-excluded workloads to Cruise mode (auto-apply recommendations).</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            )}
+            {summaryData?.workloadDetails && summaryData.workloadDetails.length > 0 && (() => {
+              const maxUpdated = Math.max(...summaryData.workloadDetails.map((w) => w.updatedAt), 0);
+              return maxUpdated > 0 ? (
+                <div className="flex items-center gap-2 rounded-full border border-border bg-muted/30 px-3 py-1.5 text-xs text-muted-foreground">
+                  <span className="h-1.5 w-1.5 rounded-full bg-success animate-pulse" />
+                  Last sync: {new Date(maxUpdated * 1000).toLocaleString()}
+                </div>
+              ) : null;
+            })()}
+          </div>
         </header>
 
         {/* Cost & impact — 3 cards */}
@@ -1336,6 +1404,49 @@ export default function Workloads() {
             No workloads match your filters
           </div>
         )}
+
+        {/* Enable CruiseKube for All confirmation dialog */}
+        <Dialog open={enableAllDialogOpen} onOpenChange={(open) => !open && !isEnablingAll && setEnableAllDialogOpen(false)}>
+          <DialogContent className="sm:max-w-md" onClick={(e) => e.stopPropagation()}>
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <Zap className="h-4 w-4 text-primary" />
+                Enable CruiseKube for All Workloads
+              </DialogTitle>
+              <DialogDescription>
+                This will switch all non-excluded workloads to{" "}
+                <span className="font-medium text-foreground">Cruise mode</span>, meaning recommendations will be
+                automatically applied to pods.{" "}
+                {(() => {
+                  const count = asArray(workloads).filter((w) => !w.excluded && w.mode !== "enabled").length;
+                  return count > 0 ? (
+                    <span>
+                      <span className="font-medium text-foreground">{count}</span> workload
+                      {count !== 1 ? "s" : ""} will be updated.
+                    </span>
+                  ) : null;
+                })()}
+              </DialogDescription>
+            </DialogHeader>
+            <Alert className="border-amber-500/50 bg-amber-500/10 [&>svg]:text-amber-600 dark:[&>svg]:text-amber-400">
+              <AlertTriangle className="h-4 w-4" />
+              <AlertTitle>Are you sure?</AlertTitle>
+              <AlertDescription>
+                Cruise mode will allow cruiseKube to automatically resize pod requests on all your workloads. Make sure
+                you have reviewed the recommendations before proceeding.
+              </AlertDescription>
+            </Alert>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setEnableAllDialogOpen(false)} disabled={isEnablingAll}>
+                Cancel
+              </Button>
+              <Button onClick={handleEnableAll} disabled={isEnablingAll} className="gap-1.5">
+                <Zap className="h-3.5 w-3.5" />
+                {isEnablingAll ? "Enabling…" : "Enable All"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
 
         {/* Edit CruiseConfig modal */}
         <Dialog open={!!editWorkload} onOpenChange={(open) => !open && setEditWorkload(null)}>
