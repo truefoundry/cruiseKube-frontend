@@ -1,18 +1,82 @@
-import { DollarSign, TrendingDown, Activity, Server, Zap, Cpu, HardDrive, Info } from "lucide-react";
+import {
+  DollarSign,
+  TrendingDown,
+  Activity,
+  Server,
+  Zap,
+  Cpu,
+  HardDrive,
+} from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { useCluster } from "@/contexts/ClusterContext";
-import { apiClient } from "@/lib/api";
-import { Skeleton } from "@/components/ui/skeleton";
 import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { AlertTriangle } from "lucide-react";
-import { asArray } from "@/lib/utils";
+  apiClient,
+  type OverviewResponse,
+  type OverviewCoveragePair,
+  type OverviewResourceStats,
+} from "@/lib/api";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+
+const DEFAULT_COVERAGE = { enabled: 0, disabled: 0 };
+const DEFAULT_STATS: OverviewResourceStats = {
+  allocatable: 0,
+  requested: 0,
+  usage: 0,
+  recommended: 0,
+};
+
+function safeNumber(v: unknown): number {
+  if (v == null || v === "") return 0;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function safeCoverage(c: OverviewCoveragePair | undefined): { enabled: number; disabled: number } {
+  if (!c || typeof c !== "object") return DEFAULT_COVERAGE;
+  const enabled = safeNumber(c.enabled ?? c.enabed);
+  const disabled = safeNumber(c.disabled);
+  return { enabled, disabled };
+}
+
+function safeStats(s: OverviewResourceStats | undefined): OverviewResourceStats {
+  if (!s || typeof s !== "object") return DEFAULT_STATS;
+  return {
+    allocatable: safeNumber(s.allocatable),
+    requested: safeNumber(s.requested),
+    usage: safeNumber(s.usage),
+    recommended: safeNumber(s.recommended),
+  };
+}
+
+/** Normalize overview response and apply defaults for missing/error data. */
+function withDefaults(raw: OverviewResponse | null | undefined): {
+  currentMonthlyCost: number;
+  currentSavings: number;
+  possibleSavings: number;
+  clusterUtilisation: number;
+  nodeCount: number;
+  adoption: OverviewCoveragePair;
+  cpuCoverage: OverviewCoveragePair;
+  memoryCoverage: OverviewCoveragePair;
+  cpuStats: OverviewResourceStats;
+  memoryStats: OverviewResourceStats;
+} {
+  const c = raw?.coverage;
+  return {
+    currentMonthlyCost: safeNumber(raw?.currentMonthlyCost),
+    currentSavings: safeNumber(raw?.currentSavings),
+    possibleSavings: safeNumber(raw?.possibleSavings),
+    clusterUtilisation: safeNumber(raw?.clusterUtilisation),
+    nodeCount: safeNumber(raw?.nodeCount),
+    adoption: safeCoverage(c?.adoption),
+    cpuCoverage: safeCoverage(c?.cpuCoverage),
+    memoryCoverage: safeCoverage(c?.memoryCoverage),
+    cpuStats: safeStats(raw?.cpuStats),
+    memoryStats: safeStats(raw?.memoryStats),
+  };
+}
 
 function formatCpuValue(value: number): string {
   return `${value.toFixed(1)} cores`;
@@ -25,96 +89,74 @@ export default function Overview() {
   const navigate = useNavigate();
   const { selectedClusterId } = useCluster();
 
-  const { data: summaryData, isLoading, error } = useQuery({
-    queryKey: ["workloads-summary", selectedClusterId],
-    queryFn: () => apiClient.getWorkloadsSummary(selectedClusterId!),
+  const { data: rawData, isLoading, error } = useQuery({
+    queryKey: ["overview", selectedClusterId],
+    queryFn: () => apiClient.getOverview(selectedClusterId!),
     enabled: !!selectedClusterId,
+    retry: 1,
   });
 
-  const impactSummary = summaryData?.impactSummary;
-  const clusterResources = impactSummary?.clusterResources;
-  const workloadDetails = asArray(summaryData?.workloadDetails ?? []);
+  const d = withDefaults(error ? null : rawData);
 
-  const currentCostDollars = impactSummary?.dollarCurrentCost ?? 0;
-  const currentSavingsDollars = impactSummary?.dollarCurrentSavings ?? 0;
-  const possibleSavingsDollars = impactSummary?.dollarPossibleSavings ?? 0;
-  const workloadCostDollars = currentCostDollars + currentSavingsDollars;
   const savingsPercent =
-    workloadCostDollars > 0
-      ? Math.round((currentSavingsDollars / workloadCostDollars) * 100)
-      : 0;
-
-  const cpuAlloc = Number(clusterResources?.cpu?.allocatable ?? 0);
-  const cpuReq = Number(clusterResources?.cpu?.requested ?? 0);
-  const cpuUsed = Number(clusterResources?.cpu?.utilised ?? 0);
-  const memAlloc = Number(clusterResources?.memory?.allocatable ?? 0);
-  const memReq = Number(clusterResources?.memory?.requested ?? 0);
-  const memUsed = Number(clusterResources?.memory?.utilised ?? 0);
-
-  const cpuRecommendedTotal = workloadDetails.reduce(
-    (sum, w) => sum + (w.cpu?.recommended?.max ?? 0),
-    0
-  );
-  const memRecommendedTotal = workloadDetails.reduce(
-    (sum, w) => sum + (w.memory?.recommended?.max ?? 0),
-    0
-  );
-  const memRecommendedGiB = memRecommendedTotal / 1024;
-
-  const clusterUtilization =
-    cpuAlloc > 0 && memAlloc > 0
+    d.currentMonthlyCost + d.currentSavings > 0
       ? Math.round(
-          ((cpuUsed / cpuAlloc + memUsed / memAlloc) / 2) * 100
+          (d.currentSavings / (d.currentMonthlyCost + d.currentSavings)) * 100
         )
       : 0;
 
-  const enabledCount = workloadDetails.filter((w) => w.config?.cruiseEnabled).length;
-  const totalWorkloads = workloadDetails.length;
+  const adoptionTotal = d.adoption.enabled + d.adoption.disabled;
   const adoptionPercent =
-    totalWorkloads > 0 ? Math.round((enabledCount / totalWorkloads) * 100) : 0;
+    adoptionTotal > 0
+      ? Math.round((d.adoption.enabled / adoptionTotal) * 100)
+      : 0;
 
-  const cpuRequestedEnabled = workloadDetails
-    .filter((w) => w.config?.cruiseEnabled)
-    .reduce((sum, w) => sum + (w.cpu?.current ?? 0), 0);
-  const cpuRequestedTotal = workloadDetails.reduce(
-    (sum, w) => sum + (w.cpu?.current ?? 0),
-    0
-  );
+  const cpuCoverageTotal = d.cpuCoverage.enabled + d.cpuCoverage.disabled;
   const cpuCoveragePercent =
-    cpuRequestedTotal > 0
-      ? Math.round((cpuRequestedEnabled / cpuRequestedTotal) * 100)
+    cpuCoverageTotal > 0
+      ? Math.round((d.cpuCoverage.enabled / cpuCoverageTotal) * 100)
       : 0;
 
-  const memRequestedEnabled = workloadDetails
-    .filter((w) => w.config?.cruiseEnabled)
-    .reduce((sum, w) => sum + (w.memory?.current ?? 0), 0);
-  const memRequestedTotal = workloadDetails.reduce(
-    (sum, w) => sum + (w.memory?.current ?? 0),
-    0
-  );
+  const memCoverageTotal = d.memoryCoverage.enabled + d.memoryCoverage.disabled;
   const memCoveragePercent =
-    memRequestedTotal > 0
-      ? Math.round((memRequestedEnabled / memRequestedTotal) * 100)
+    memCoverageTotal > 0
+      ? Math.round((d.memoryCoverage.enabled / memCoverageTotal) * 100)
       : 0;
 
-  const disabledCount = totalWorkloads - enabledCount;
-  const untappedSavings = workloadDetails
-    .filter((w) => !w.config?.cruiseEnabled)
-    .reduce((sum, w) => sum + (w.dollarSavingsPerMonth ?? 0), 0);
+  const disabledCount = d.adoption.disabled;
+  const pctCpuUsed =
+    d.cpuStats.allocatable > 0
+      ? (d.cpuStats.usage / d.cpuStats.allocatable) * 100
+      : 0;
+  const pctCpuReq =
+    d.cpuStats.allocatable > 0
+      ? (d.cpuStats.requested / d.cpuStats.allocatable) * 100
+      : 0;
+  const pctMemUsed =
+    d.memoryStats.allocatable > 0
+      ? (d.memoryStats.usage / d.memoryStats.allocatable) * 100
+      : 0;
+  const pctMemReq =
+    d.memoryStats.allocatable > 0
+      ? (d.memoryStats.requested / d.memoryStats.allocatable) * 100
+      : 0;
 
-  const cpuOverProvisioned = Math.max(0, cpuReq - cpuRecommendedTotal);
+  const cpuOverProvisioned = Math.max(
+    0,
+    d.cpuStats.requested - d.cpuStats.recommended
+  );
   const cpuOverProvisionedPercent =
-    cpuReq > 0 ? Math.round((cpuOverProvisioned / cpuReq) * 100) : 0;
-  const memOverProvisionedGiB = Math.max(0, memReq / 1024 - memRecommendedGiB);
-  const memOverProvisionedPercent =
-    memReq > 0
-      ? Math.round((memOverProvisionedGiB / (memReq / 1024)) * 100)
+    d.cpuStats.requested > 0
+      ? Math.round((cpuOverProvisioned / d.cpuStats.requested) * 100)
       : 0;
-
-  const pctCpuUsed = cpuAlloc > 0 ? (cpuUsed / cpuAlloc) * 100 : 0;
-  const pctCpuReq = cpuAlloc > 0 ? (cpuReq / cpuAlloc) * 100 : 0;
-  const pctMemUsed = memAlloc > 0 ? (memUsed / memAlloc) * 100 : 0;
-  const pctMemReq = memAlloc > 0 ? (memReq / memAlloc) * 100 : 0;
+  const memOverProvisioned = Math.max(
+    0,
+    d.memoryStats.requested - d.memoryStats.recommended
+  );
+  const memOverProvisionedPercent =
+    d.memoryStats.requested > 0
+      ? Math.round((memOverProvisioned / d.memoryStats.requested) * 100)
+      : 0;
 
   if (!selectedClusterId) {
     return (
@@ -122,19 +164,6 @@ export default function Overview() {
         <div className="text-center text-muted-foreground">
           Please select a cluster to view the overview.
         </div>
-      </div>
-    );
-  }
-
-  if (error) {
-    const errorMessage = error instanceof Error ? error.message : "Unknown error";
-    return (
-      <div className="p-6 space-y-4">
-        <Alert variant="destructive">
-          <AlertTriangle className="h-4 w-4" />
-          <AlertTitle>Error loading overview</AlertTitle>
-          <AlertDescription>{errorMessage}</AlertDescription>
-        </Alert>
       </div>
     );
   }
@@ -178,7 +207,7 @@ export default function Overview() {
                       Monthly cost
                     </p>
                     <p className="font-mono text-2xl font-semibold tracking-tight text-foreground">
-                      ${currentCostDollars.toLocaleString()}
+                      ${d.currentMonthlyCost.toLocaleString()}
                     </p>
                     <p className="text-sm text-muted-foreground">/month run-rate</p>
                   </div>
@@ -208,7 +237,7 @@ export default function Overview() {
                       Current savings
                     </p>
                     <p className="font-mono text-2xl font-semibold tracking-tight text-foreground">
-                      ${currentSavingsDollars.toLocaleString()}
+                      ${d.currentSavings.toLocaleString()}
                     </p>
                     <p className="text-sm text-muted-foreground">
                       {savingsPercent}% reduction
@@ -240,7 +269,7 @@ export default function Overview() {
                       Cluster utilization
                     </p>
                     <p className="font-mono text-2xl font-semibold tracking-tight text-foreground">
-                      {clusterUtilization}%
+                      {d.clusterUtilisation}%
                     </p>
                     <p className="text-sm text-muted-foreground">
                       usage / allocatable
@@ -272,22 +301,29 @@ export default function Overview() {
                       Node count
                     </p>
                     <p className="font-mono text-2xl font-semibold tracking-tight text-foreground">
-                      —
+                      {d.nodeCount > 0 ? d.nodeCount : "—"}
                     </p>
                     <p className="text-sm text-muted-foreground">active nodes</p>
                   </div>
-                  <TooltipProvider>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <div className="rounded-lg bg-muted/50 p-2 text-muted-foreground cursor-help">
-                          <Server className="h-5 w-5" />
-                        </div>
-                      </TooltipTrigger>
-                      <TooltipContent>
-                        <p>Node count is not available in the current API.</p>
-                      </TooltipContent>
-                    </Tooltip>
-                  </TooltipProvider>
+                  {d.nodeCount === 0 && (
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <div className="rounded-lg bg-muted/50 p-2 text-muted-foreground cursor-help">
+                            <Server className="h-5 w-5" />
+                          </div>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          <p>Node count not available or zero.</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                  )}
+                  {d.nodeCount > 0 && (
+                    <div className="rounded-lg bg-muted/50 p-2 text-muted-foreground">
+                      <Server className="h-5 w-5" />
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -350,7 +386,7 @@ export default function Overview() {
                   <div>
                     <p className="text-sm text-muted-foreground">Workloads</p>
                     <p className="font-mono text-lg font-semibold text-foreground">
-                      {enabledCount} / {totalWorkloads}
+                      {d.adoption.enabled} / {adoptionTotal || 0}
                     </p>
                   </div>
                   <div className="space-y-2">
@@ -418,7 +454,7 @@ export default function Overview() {
                   </p>
                 </div>
                 <p className="font-mono text-2xl font-semibold tracking-tight text-foreground mt-1">
-                  ${Math.round(untappedSavings).toLocaleString()}/mo
+                  ${Math.round(d.possibleSavings).toLocaleString()}/mo
                 </p>
                 <p className="text-sm text-muted-foreground mt-2 flex-1">
                   Enable CruiseKube on the remaining{" "}
@@ -467,25 +503,25 @@ export default function Overview() {
                     <div>
                       <p className="text-muted-foreground uppercase">Allocatable</p>
                       <p className="font-mono font-semibold text-foreground">
-                        {formatCpuValue(cpuAlloc)}
+                        {formatCpuValue(d.cpuStats.allocatable)}
                       </p>
                     </div>
                     <div>
                       <p className="text-muted-foreground uppercase">Requested</p>
                       <p className="font-mono font-semibold text-foreground">
-                        {formatCpuValue(cpuReq)}
+                        {formatCpuValue(d.cpuStats.requested)}
                       </p>
                     </div>
                     <div>
                       <p className="text-muted-foreground uppercase">Usage</p>
                       <p className="font-mono font-semibold text-foreground">
-                        {formatCpuValue(cpuUsed)}
+                        {formatCpuValue(d.cpuStats.usage)}
                       </p>
                     </div>
                     <div>
                       <p className="text-muted-foreground uppercase">Recommended</p>
                       <p className="font-mono font-semibold text-foreground">
-                        {formatCpuValue(cpuRecommendedTotal)}
+                        {formatCpuValue(d.cpuStats.recommended)}
                       </p>
                     </div>
                   </div>
@@ -516,7 +552,8 @@ export default function Overview() {
                     <p className="text-sm text-muted-foreground">
                       ↓ Over-provisioned by{" "}
                       <span className="font-semibold text-primary">
-                        {formatCpuValue(cpuOverProvisioned)} ({cpuOverProvisionedPercent}%)
+                        {formatCpuValue(cpuOverProvisioned)} (
+                        {cpuOverProvisionedPercent}%)
                       </span>
                     </p>
                   )}
@@ -546,25 +583,25 @@ export default function Overview() {
                     <div>
                       <p className="text-muted-foreground uppercase">Allocatable</p>
                       <p className="font-mono font-semibold text-foreground">
-                        {formatMemoryValue(memAlloc / 1024)}
+                        {formatMemoryValue(d.memoryStats.allocatable)}
                       </p>
                     </div>
                     <div>
                       <p className="text-muted-foreground uppercase">Requested</p>
                       <p className="font-mono font-semibold text-foreground">
-                        {formatMemoryValue(memReq / 1024)}
+                        {formatMemoryValue(d.memoryStats.requested)}
                       </p>
                     </div>
                     <div>
                       <p className="text-muted-foreground uppercase">Usage</p>
                       <p className="font-mono font-semibold text-foreground">
-                        {formatMemoryValue(memUsed / 1024)}
+                        {formatMemoryValue(d.memoryStats.usage)}
                       </p>
                     </div>
                     <div>
                       <p className="text-muted-foreground uppercase">Recommended</p>
                       <p className="font-mono font-semibold text-foreground">
-                        {formatMemoryValue(memRecommendedGiB)}
+                        {formatMemoryValue(d.memoryStats.recommended)}
                       </p>
                     </div>
                   </div>
@@ -591,11 +628,11 @@ export default function Overview() {
                       <span>{Math.round(pctMemReq)}% requested</span>
                     </div>
                   </div>
-                  {memOverProvisionedGiB > 0 && (
+                  {memOverProvisioned > 0 && (
                     <p className="text-sm text-muted-foreground">
                       ↓ Over-provisioned by{" "}
                       <span className="font-semibold text-primary">
-                        {formatMemoryValue(memOverProvisionedGiB)} (
+                        {formatMemoryValue(memOverProvisioned)} (
                         {memOverProvisionedPercent}%)
                       </span>
                     </p>

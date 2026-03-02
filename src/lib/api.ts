@@ -276,6 +276,37 @@ export interface WorkloadSummaryResponse {
   workloadDetails: WorkloadDetail[];
 }
 
+/** Coverage counts for adoption and CPU/Memory (enabled vs disabled). API may return "enabed" typo. */
+export interface OverviewCoveragePair {
+  enabled?: number;
+  enabed?: number;
+  disabled?: number;
+}
+
+export interface OverviewCoverage {
+  adoption: OverviewCoveragePair;
+  cpuCoverage: OverviewCoveragePair;
+  memoryCoverage: OverviewCoveragePair;
+}
+
+export interface OverviewResourceStats {
+  allocatable: number;
+  requested: number;
+  usage: number;
+  recommended: number;
+}
+
+export interface OverviewResponse {
+  currentMonthlyCost?: number;
+  currentSavings?: number;
+  possibleSavings?: number;
+  clusterUtilisation?: number;
+  nodeCount?: number;
+  coverage?: OverviewCoverage;
+  cpuStats?: OverviewResourceStats;
+  memoryStats?: OverviewResourceStats;
+}
+
 /** Container in workload detail pod (from GET .../workloads/:namespace/:workload/detail). */
 export interface WorkloadDetailPodContainer {
   container_name: string;
@@ -451,6 +482,11 @@ class ApiClient {
 
   async getWorkloadsSummary(clusterID: string): Promise<WorkloadSummaryResponse> {
     return this.request<WorkloadSummaryResponse>(`/clusters/${clusterID}/workloads/summary`);
+  }
+
+  /** GET /api/v1/clusters/:clusterID/ui/overview — overview metrics for the Overview page. */
+  async getOverview(clusterID: string): Promise<OverviewResponse> {
+    return this.request<OverviewResponse>(`/v1/clusters/${clusterID}/ui/overview`);
   }
 
   async updateWorkloadOverrides(
