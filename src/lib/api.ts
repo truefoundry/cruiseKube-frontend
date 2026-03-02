@@ -502,10 +502,10 @@ class ApiClient {
     return this.request<OverviewResponse>(`/clusters/${clusterID}/ui/overview`);
   }
 
-  /** GET /api/clusters/:clusterID/ui/overview/historical-timeline/:metric — historical timeline for CPU or memory. */
+  /** GET /api/clusters/:clusterID/ui/overview/historical-timeline/:metric — historical timeline for CPU, memory, or cost. */
   async getHistoricalTimeline(
     clusterID: string,
-    metric: 'cpu' | 'memory',
+    metric: 'cpu' | 'memory' | 'cost',
     startTime: string,
     endTime: string
   ): Promise<HistoricalTimelineResponse> {

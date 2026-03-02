@@ -16,7 +16,6 @@ import {
   YAxis,
   CartesianGrid,
   Area,
-  AreaChart,
   ComposedChart,
 } from "recharts";
 import { useCluster } from "@/contexts/ClusterContext";
@@ -38,6 +37,34 @@ import {
   type ChartConfig,
 } from "@/components/ui/chart";
 import { Button } from "@/components/ui/button";
+import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
+
+/** Min 1 hour, max 30 days (for timeline range). */
+const TIMELINE_MIN_MS = 1 * 60 * 60 * 1000;
+const TIMELINE_MAX_MS = 30 * 24 * 60 * 60 * 1000;
+
+type TimeRangePreset = "6h" | "24h" | "7d" | "30d" | "custom";
+
+function presetToMs(preset: TimeRangePreset): number | null {
+  switch (preset) {
+    case "6h":
+      return 6 * 60 * 60 * 1000;
+    case "24h":
+      return 24 * 60 * 60 * 1000;
+    case "7d":
+      return 7 * 24 * 60 * 60 * 1000;
+    case "30d":
+      return 30 * 24 * 60 * 60 * 1000;
+    default:
+      return null;
+  }
+}
+
+/** Clamp duration to [TIMELINE_MIN_MS, TIMELINE_MAX_MS]. */
+function clampDurationMs(ms: number): number {
+  return Math.max(TIMELINE_MIN_MS, Math.min(TIMELINE_MAX_MS, ms));
+}
 
 const DEFAULT_COVERAGE = { enabled: 0, disabled: 0 };
 const DEFAULT_STATS: OverviewResourceStats = {
@@ -105,16 +132,10 @@ function formatMemoryValue(value: number): string {
   return `${value.toFixed(1)} GiB`;
 }
 
-const LEGEND_LABELS: Record<string, string> = {
-  currentAllocatable: "Allocatable",
-  currentRequested: "Requested",
-  currentUtilized: "Utilized",
-  workloadRequested: "Workload requested",
-  recommendedRequested: "Recommended",
-};
-
-function humanizeLegend(legend: string): string {
-  return LEGEND_LABELS[legend] ?? legend.replace(/([A-Z])/g, " $1").replace(/^./, (s) => s.toUpperCase());
+/** Sanitize legend to a valid CSS/object key (no spaces or special chars) so --color-{key} works. */
+function sanitizeChartKey(legend: string): string {
+  const s = legend.replace(/\s+/g, "_").replace(/[^a-zA-Z0-9_-]/g, "") || "series";
+  return s || "series";
 }
 
 /** Transform historical timeline API response into chart data (one point per timestamp) and chart config. */
@@ -123,68 +144,31 @@ function transformHistoricalTimelineResponse(raw: HistoricalTimelineResponse | n
   config: ChartConfig;
 } {
   const byTime = new Map<string, Record<string, number>>();
-  const legendMeta = new Map<string, string>();
+  const legendMeta = new Map<string, { label: string; color: string }>();
   for (const item of raw?.data ?? []) {
     const ts = item.data?.timestamp ?? "";
     const value = item.data?.value ?? 0;
     const legend = item.legend ?? "";
     if (!ts || !legend) continue;
+    const key = sanitizeChartKey(legend);
     if (!byTime.has(ts)) byTime.set(ts, {});
-    byTime.get(ts)![legend] = value;
-    if (!legendMeta.has(legend)) legendMeta.set(legend, item.color ?? "#888");
+    byTime.get(ts)![key] = value;
+    if (!legendMeta.has(key)) legendMeta.set(key, { label: legend, color: item.color ?? "#888" });
   }
   const sortedTimes = [...byTime.keys()].sort();
   const data: Record<string, unknown>[] = sortedTimes.map((ts) => {
     const point = byTime.get(ts)!;
     const d = new Date(ts);
+    const dateStr = d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
     const timeStr = `${d.getHours().toString().padStart(2, "0")}:${d.getMinutes().toString().padStart(2, "0")}`;
-    return { time: timeStr, ...point };
+    const timeLabel = `${dateStr} ${timeStr}`;
+    return { time: timeLabel, ...point };
   });
   const config: ChartConfig = {};
-  for (const [legend, color] of legendMeta) {
-    config[legend] = { label: humanizeLegend(legend), color };
+  for (const [key, { label, color }] of legendMeta) {
+    config[key] = { label, color };
   }
   return { data, config };
-}
-
-type CostDataPoint = {
-  time: string;
-  withoutCruiseKube: number;
-  currentCost: number;
-  withCruiseKubeCost: number;
-};
-
-function buildCostTimelineData(
-  currentMonthlyCost: number,
-  currentSavings: number,
-  possibleSavings: number
-): CostDataPoint[] {
-  const points = 24;
-  const withoutCruiseKubeMonthly = currentMonthlyCost + currentSavings;
-  const withCruiseKubeMonthly = Math.max(0, currentMonthlyCost - possibleSavings);
-  const hourlyWithout = withoutCruiseKubeMonthly > 0 ? withoutCruiseKubeMonthly / (30 * 24) : 60;
-  const hourlyCurrent = currentMonthlyCost > 0 ? currentMonthlyCost / (30 * 24) : 40;
-  const hourlyWith = withCruiseKubeMonthly > 0 ? withCruiseKubeMonthly / (30 * 24) : 30;
-  const now = Date.now();
-  const data: CostDataPoint[] = [];
-  let runWithout = 0;
-  let runCurrent = 0;
-  let runWith = 0;
-  for (let i = points - 1; i >= 0; i--) {
-    const t = new Date(now - i * 60 * 60 * 1000);
-    const timeStr = `${t.getHours().toString().padStart(2, "0")}:${t.getMinutes().toString().padStart(2, "0")}`;
-    const v = 0.9 + 0.1 * Math.sin((i / points) * 4);
-    runWithout += hourlyWithout * v;
-    runCurrent += hourlyCurrent * v;
-    runWith += hourlyWith * v;
-    data.push({
-      time: timeStr,
-      withoutCruiseKube: Math.round(runWithout * 100) / 100,
-      currentCost: Math.round(runCurrent * 100) / 100,
-      withCruiseKubeCost: Math.round(runWith * 100) / 100,
-    });
-  }
-  return data;
 }
 
 export default function Overview() {
@@ -192,6 +176,9 @@ export default function Overview() {
   const { selectedClusterId } = useCluster();
 
   const [historicalMetric, setHistoricalMetric] = useState<"cpu" | "memory">("cpu");
+  const [timeRangePreset, setTimeRangePreset] = useState<TimeRangePreset>("7d");
+  const [customStart, setCustomStart] = useState<string>("");
+  const [customEnd, setCustomEnd] = useState<string>("");
 
   const { data: rawData, isLoading, error } = useQuery({
     queryKey: ["overview", selectedClusterId],
@@ -203,13 +190,34 @@ export default function Overview() {
   const d = withDefaults(error ? null : rawData);
 
   const historicalDateRange = useMemo(() => {
-    const end = new Date();
-    const start = new Date(end.getTime() - 7 * 24 * 60 * 60 * 1000);
+    const now = Date.now();
+    let endMs: number;
+    let startMs: number;
+
+    if (timeRangePreset === "custom" && customStart && customEnd) {
+      const start = new Date(customStart).getTime();
+      const end = new Date(customEnd).getTime();
+      if (Number.isFinite(start) && Number.isFinite(end) && end > start) {
+        const duration = clampDurationMs(end - start);
+        endMs = Math.min(end, now);
+        startMs = endMs - duration;
+      } else {
+        const duration = clampDurationMs(7 * 24 * 60 * 60 * 1000);
+        endMs = now;
+        startMs = endMs - duration;
+      }
+    } else {
+      const presetMs = presetToMs(timeRangePreset);
+      const duration = presetMs != null ? clampDurationMs(presetMs) : clampDurationMs(7 * 24 * 60 * 60 * 1000);
+      endMs = now;
+      startMs = endMs - duration;
+    }
+
     return {
-      startTime: start.toISOString(),
-      endTime: end.toISOString(),
+      startTime: new Date(startMs).toISOString(),
+      endTime: new Date(endMs).toISOString(),
     };
-  }, []);
+  }, [timeRangePreset, customStart, customEnd]);
 
   const { data: historicalRaw, isLoading: isLoadingHistorical } = useQuery({
     queryKey: ["overview", "historical", selectedClusterId, historicalMetric, historicalDateRange.startTime, historicalDateRange.endTime],
@@ -217,6 +225,19 @@ export default function Overview() {
       apiClient.getHistoricalTimeline(
         selectedClusterId!,
         historicalMetric,
+        historicalDateRange.startTime,
+        historicalDateRange.endTime
+      ),
+    enabled: !!selectedClusterId,
+    retry: 1,
+  });
+
+  const { data: costHistoricalRaw, isLoading: isLoadingCostHistorical } = useQuery({
+    queryKey: ["overview", "historical", "cost", selectedClusterId, historicalDateRange.startTime, historicalDateRange.endTime],
+    queryFn: () =>
+      apiClient.getHistoricalTimeline(
+        selectedClusterId!,
+        "cost",
         historicalDateRange.startTime,
         historicalDateRange.endTime
       ),
@@ -233,9 +254,14 @@ export default function Overview() {
     () => Object.keys(historicalChartConfig).filter((k) => k !== "time"),
     [historicalChartConfig]
   );
-  const costTimelineData = useMemo(
-    () => buildCostTimelineData(d.currentMonthlyCost, d.currentSavings, d.possibleSavings),
-    [d.currentMonthlyCost, d.currentSavings, d.possibleSavings]
+
+  const { data: costTimelineData, config: costChartConfig } = useMemo(
+    () => transformHistoricalTimelineResponse(costHistoricalRaw),
+    [costHistoricalRaw]
+  );
+  const costSeriesKeys = useMemo(
+    () => Object.keys(costChartConfig).filter((k) => k !== "time"),
+    [costChartConfig]
   );
 
   const savingsPercent =
@@ -566,7 +592,7 @@ export default function Overview() {
                   </p>
                 </div>
                 <p className="font-mono text-2xl font-semibold tracking-tight text-foreground mt-1">
-                  ${Math.round(d.possibleSavings - d.currentMonthlyCost).toLocaleString()}/mo
+                  ${Math.round(d.possibleSavings - d.currentSavings).toLocaleString()}/mo
                 </p>
                 <p className="text-sm text-muted-foreground mt-2 flex-1">
                   Enable CruiseKube on the remaining{" "}
@@ -737,6 +763,96 @@ export default function Overview() {
           </div>
         </section>
 
+    {/* Time range (for Historical + Cost timelines) */}
+        <section aria-labelledby="time-range-heading" className="space-y-3">
+          <h2
+            id="time-range-heading"
+            className="text-sm font-semibold uppercase tracking-wider text-muted-foreground"
+          >
+            Time range
+          </h2>
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="flex gap-1 rounded-md border border-border bg-muted/30 p-0.5">
+              <Button
+                variant={timeRangePreset === "6h" ? "default" : "ghost"}
+                size="sm"
+                className="h-8 px-3 text-xs"
+                onClick={() => setTimeRangePreset("6h")}
+              >
+                6 hours
+              </Button>
+              <Button
+                variant={timeRangePreset === "24h" ? "default" : "ghost"}
+                size="sm"
+                className="h-8 px-3 text-xs"
+                onClick={() => setTimeRangePreset("24h")}
+              >
+                24 hours
+              </Button>
+              <Button
+                variant={timeRangePreset === "7d" ? "default" : "ghost"}
+                size="sm"
+                className="h-8 px-3 text-xs"
+                onClick={() => setTimeRangePreset("7d")}
+              >
+                7 days
+              </Button>
+              <Button
+                variant={timeRangePreset === "30d" ? "default" : "ghost"}
+                size="sm"
+                className="h-8 px-3 text-xs"
+                onClick={() => setTimeRangePreset("30d")}
+              >
+                30 days
+              </Button>
+              <Button
+                variant={timeRangePreset === "custom" ? "default" : "ghost"}
+                size="sm"
+                className="h-8 px-3 text-xs"
+                onClick={() => {
+                  setTimeRangePreset("custom");
+                  if (!customStart || !customEnd) {
+                    const end = new Date();
+                    const start = new Date(end.getTime() - 7 * 24 * 60 * 60 * 1000);
+                    setCustomEnd(end.toISOString().slice(0, 16));
+                    setCustomStart(start.toISOString().slice(0, 16));
+                  }
+                }}
+              >
+                Custom
+              </Button>
+            </div>
+            {timeRangePreset === "custom" && (
+              <div className="flex flex-wrap items-center gap-3">
+                <div className="flex items-center gap-2">
+                  <Label htmlFor="timeline-start" className="text-xs text-muted-foreground whitespace-nowrap">
+                    Start
+                  </Label>
+                  <Input
+                    id="timeline-start"
+                    type="datetime-local"
+                    value={customStart}
+                    onChange={(e) => setCustomStart(e.target.value)}
+                    className="h-8 text-xs w-[11rem]"
+                  />
+                </div>
+                <div className="flex items-center gap-2">
+                  <Label htmlFor="timeline-end" className="text-xs text-muted-foreground whitespace-nowrap">
+                    End
+                  </Label>
+                  <Input
+                    id="timeline-end"
+                    type="datetime-local"
+                    value={customEnd}
+                    onChange={(e) => setCustomEnd(e.target.value)}
+                    className="h-8 text-xs w-[11rem]"
+                  />
+                </div>
+              </div>
+            )}
+          </div>
+        </section>
+
     {/* Historical Timeline */}
     <section aria-labelledby="historical-timeline-heading" className="space-y-4">
           <div className="flex flex-wrap items-center justify-between gap-4">
@@ -791,9 +907,22 @@ export default function Overview() {
                     axisLine={{ stroke: "hsl(var(--border))" }}
                     tickLine={{ stroke: "hsl(var(--border))" }}
                   />
-                  <ChartTooltip content={<ChartTooltipContent />} />
+                  <ChartTooltip
+                    content={
+                      <ChartTooltipContent
+                        formatter={(value, name) => (
+                          <div className="flex flex-1 justify-between items-center gap-4">
+                            <span className="text-muted-foreground">{String(historicalChartConfig[name as keyof typeof historicalChartConfig]?.label ?? name)}</span>
+                            <span className="font-mono font-medium tabular-nums text-foreground">
+                              {historicalMetric === "cpu" ? `${Number(value).toLocaleString()} cores` : `${Number(value).toLocaleString()} GiB`}
+                            </span>
+                          </div>
+                        )}
+                      />
+                    }
+                  />
                   <ChartLegend content={<ChartLegendContent />} />
-                  {historicalSeriesKeys.map((key, index) =>
+                  {historicalSeriesKeys.map((key) =>
                     key === "currentAllocatable" ? (
                       <Area
                         key={key}
@@ -802,7 +931,7 @@ export default function Overview() {
                         fill={`var(--color-${key})`}
                         fillOpacity={0.3}
                         stroke={`var(--color-${key})`}
-                        strokeWidth={2}
+                        strokeWidth={2.5}
                       />
                     ) : (
                       <Line
@@ -810,7 +939,7 @@ export default function Overview() {
                         type="monotone"
                         dataKey={key}
                         stroke={`var(--color-${key})`}
-                        strokeWidth={2}
+                        strokeWidth={3}
                         dot={false}
                       />
                     )
@@ -840,20 +969,18 @@ export default function Overview() {
             )}
           </div>
           <div className="metric-card border-border overflow-hidden">
-            {isLoading ? (
+            {isLoading || isLoadingCostHistorical ? (
               <Skeleton className="h-[320px] w-full" />
+            ) : costTimelineData.length === 0 ? (
+              <div className="flex h-[320px] items-center justify-center text-sm text-muted-foreground">
+                No historical cost data for this period
+              </div>
             ) : (
               <ChartContainer
-                config={
-                  {
-                    withoutCruiseKube: { label: "Without CruiseKube", color: "hsl(0 70% 50%)" },
-                    currentCost: { label: "Current Cost", color: "hsl(25 95% 53%)" },
-                    withCruiseKubeCost: { label: "With CruiseKube Cost", color: "hsl(142 71% 45%)" },
-                  } satisfies ChartConfig
-                }
+                config={costChartConfig}
                 className="h-[320px] w-full"
               >
-                <AreaChart data={costTimelineData} margin={{ top: 8, right: 8, left: 8, bottom: 8 }}>
+                <ComposedChart data={costTimelineData} margin={{ top: 8, right: 8, left: 8, bottom: 8 }}>
                   <CartesianGrid strokeDasharray="3 3" className="stroke-border/50" />
                   <XAxis
                     dataKey="time"
@@ -870,15 +997,39 @@ export default function Overview() {
                   <ChartTooltip
                     content={
                       <ChartTooltipContent
-                        formatter={(value) => `$${Number(value).toLocaleString()}`}
+                        formatter={(value, name) => (
+                          <div className="flex flex-1 justify-between items-center gap-4">
+                            <span className="text-muted-foreground">{String(costChartConfig[name as keyof typeof costChartConfig]?.label ?? name)}</span>
+                            <span className="font-mono font-medium tabular-nums text-foreground">${Number(value).toLocaleString()}</span>
+                          </div>
+                        )}
                       />
                     }
                   />
                   <ChartLegend content={<ChartLegendContent />} />
-                  <Area type="monotone" dataKey="withoutCruiseKube" fill="var(--color-withoutCruiseKube)" fillOpacity={0.3} stroke="var(--color-withoutCruiseKube)" strokeWidth={2} />
-                  <Area type="monotone" dataKey="currentCost" fill="var(--color-currentCost)" fillOpacity={0.3} stroke="var(--color-currentCost)" strokeWidth={2} />
-                  <Area type="monotone" dataKey="withCruiseKubeCost" fill="var(--color-withCruiseKubeCost)" fillOpacity={0.3} stroke="var(--color-withCruiseKubeCost)" strokeWidth={2} />
-                </AreaChart>
+                  {costSeriesKeys.map((key) =>
+                    key === "currentAllocatable" ? (
+                      <Area
+                        key={key}
+                        type="monotone"
+                        dataKey={key}
+                        fill={`var(--color-${key})`}
+                        fillOpacity={0.3}
+                        stroke={`var(--color-${key})`}
+                        strokeWidth={2.5}
+                      />
+                    ) : (
+                      <Line
+                        key={key}
+                        type="monotone"
+                        dataKey={key}
+                        stroke={`var(--color-${key})`}
+                        strokeWidth={3}
+                        dot={false}
+                      />
+                    )
+                  )}
+                </ComposedChart>
               </ChartContainer>
             )}
           </div>
