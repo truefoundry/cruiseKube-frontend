@@ -177,7 +177,7 @@ export default function Overview() {
   const { selectedClusterId } = useCluster();
 
   const [historicalMetric, setHistoricalMetric] = useState<"cpu" | "memory">("cpu");
-  const [timeRangePreset, setTimeRangePreset] = useState<TimeRangePreset>("7d");
+  const [timeRangePreset, setTimeRangePreset] = useState<TimeRangePreset>("6h");
   const [customStart, setCustomStart] = useState<string>("");
   const [customEnd, setCustomEnd] = useState<string>("");
 
