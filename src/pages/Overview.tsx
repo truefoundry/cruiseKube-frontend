@@ -641,7 +641,7 @@ export default function Overview() {
                 <p className="font-mono text-2xl font-semibold tracking-tight text-foreground mt-1">
                   ${Math.round(d.possibleSavings - d.currentSavings).toLocaleString()}/mo
                 </p>
-                <p className="text-sm text-muted-foreground mt-2 flex-1">
+                <p className="text-sm text-muted-foreground mt-2">
                   Enable CruiseKube on the remaining{" "}
                   <button
                     type="button"
@@ -652,6 +652,15 @@ export default function Overview() {
                   </button>{" "}
                   to unlock additional monthly savings.
                 </p>
+                <Button
+                  variant="default"
+                  size="sm"
+                  className="mt-4 w-fit gap-1.5 shadow-sm ring-1 ring-primary/20"
+                  onClick={() => navigate("/workloads")}
+                >
+                  <Zap className="h-3.5 w-3.5" />
+                  Enable CruiseKube for All
+                </Button>
               </div>
             )}
           </div>
