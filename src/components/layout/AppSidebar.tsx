@@ -1,5 +1,7 @@
-import { 
-  Layers, 
+import {
+  LayoutDashboard,
+  Layers,
+  Activity,
   Settings,
 } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
@@ -18,7 +20,9 @@ import {
 } from "@/components/ui/sidebar";
 
 const navItems = [
-  { title: "Workloads & Recommendations", url: "/", icon: Layers },
+  { title: "Overview", url: "/", icon: LayoutDashboard },
+  { title: "Workloads", url: "/workloads", icon: Layers },
+  { title: "Events", url: "/events", icon: Activity },
   { title: "Policies & Configuration", url: "/policies", icon: Settings },
 ];
 

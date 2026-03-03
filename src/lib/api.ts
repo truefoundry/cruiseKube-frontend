@@ -282,6 +282,50 @@ export interface WorkloadSummaryResponse {
   workloadDetails: WorkloadDetail[];
 }
 
+/** Coverage counts for adoption and CPU/Memory (enabled vs disabled). API may return "enabed" typo. */
+export interface OverviewCoveragePair {
+  enabled?: number;
+  enabed?: number;
+  disabled?: number;
+}
+
+export interface OverviewCoverage {
+  adoption: OverviewCoveragePair;
+  cpuCoverage: OverviewCoveragePair;
+  memoryCoverage: OverviewCoveragePair;
+}
+
+export interface OverviewResourceStats {
+  allocatable: number;
+  requested: number;
+  usage: number;
+  recommended: number;
+}
+
+export interface OverviewResponse {
+  currentMonthlyCost?: number;
+  currentSavings?: number;
+  possibleSavings?: number;
+  clusterUtilisation?: number;
+  nodeCount?: number;
+  coverage?: OverviewCoverage;
+  cpuStats?: OverviewResourceStats;
+  memoryStats?: OverviewResourceStats;
+}
+
+/** Single data point in historical timeline API response. */
+export interface HistoricalTimelineDataPoint {
+  legend: string;
+  color: string;
+  threshold: { value: number; color: string };
+  data: { timestamp: string; value: number };
+}
+
+/** Response from GET .../ui/overview/historical-timeline/:metric?startTime=...&endTime=... */
+export interface HistoricalTimelineResponse {
+  data: HistoricalTimelineDataPoint[];
+}
+
 /** Container in workload detail pod (from GET .../workloads/:namespace/:workload/detail). */
 export interface WorkloadDetailPodContainer {
   container_name: string;
@@ -311,6 +355,34 @@ export interface WorkloadDetailResponse {
   potential_cpu_savings: number;
   potential_mem_savings: number;
   pods: WorkloadDetailPod[];
+}
+
+/** Kubernetes workload target for an audit event. */
+export interface AuditEventTarget {
+  kind: string;
+  name: string;
+  namespace: string;
+}
+
+/** Payload for an audit event (message, target, details as raw object). */
+export interface AuditEventPayload {
+  message?: string;
+  target?: AuditEventTarget;
+  details?: Record<string, unknown>;
+}
+
+/** Single audit event from GET .../clusters/:clusterID/audit-events?minutes=... */
+export interface AuditEvent {
+  cluster_id: string;
+  type: string;
+  category: string;
+  payload: AuditEventPayload;
+  created_at: string;
+}
+
+/** Response from GET .../clusters/:clusterID/audit-events?minutes=... */
+export interface AuditEventsResponse {
+  events: AuditEvent[];
 }
 
 class ApiClient {
@@ -459,6 +531,27 @@ class ApiClient {
     return this.request<WorkloadSummaryResponse>(`/clusters/${clusterID}/workloads/summary`);
   }
 
+  /** GET /api/clusters/:clusterID/ui/overview — overview metrics for the Overview page. */
+  async getOverview(clusterID: string): Promise<OverviewResponse> {
+    return this.request<OverviewResponse>(`/clusters/${clusterID}/ui/overview`);
+  }
+
+  /** GET /api/clusters/:clusterID/ui/overview/historical-timeline/:metric — historical timeline for CPU, memory, or cost. */
+  async getHistoricalTimeline(
+    clusterID: string,
+    metric: 'cpu' | 'memory' | 'cost',
+    startTime: string,
+    endTime: string
+  ): Promise<HistoricalTimelineResponse> {
+    const params = new URLSearchParams({
+      startTime,
+      endTime,
+    });
+    return this.request<HistoricalTimelineResponse>(
+      `/clusters/${clusterID}/ui/overview/historical-timeline/${metric}?${params.toString()}`
+    );
+  }
+
   async updateWorkloadOverrides(
     clusterID: string,
     workloadID: string,
@@ -502,6 +595,23 @@ class ApiClient {
   async queryPrometheus(clusterID: string, query: string): Promise<PrometheusQueryResult> {
     const encodedQuery = encodeURIComponent(query);
     return this.request<PrometheusQueryResult>(`/clusters/${clusterID}/prometheus-query?query=${encodedQuery}`);
+  }
+
+  /**
+   * GET .../clusters/:clusterID/audit-events?minutes= — all events.
+   * GET .../clusters/:clusterID/audit-events/:workloadId?minutes= — events for one workload.
+   * workloadId format: TYPE:NAMESPACE:NAME (e.g. Deployment:my-ns:my-app).
+   */
+  async getAuditEvents(clusterID: string, minutes: number, workloadId?: string): Promise<AuditEventsResponse> {
+    const base = `/clusters/${encodeURIComponent(clusterID)}/audit-events`;
+    const path = workloadId?.trim()
+      ? `${base}/${encodeURIComponent(workloadId.trim())}?minutes=${encodeURIComponent(String(minutes))}`
+      : `${base}?minutes=${encodeURIComponent(String(minutes))}`;
+    const data = await this.request<AuditEventsResponse | null>(path);
+    if (data == null || !Array.isArray(data.events)) {
+      return { events: [] };
+    }
+    return { events: data.events };
   }
 }
 

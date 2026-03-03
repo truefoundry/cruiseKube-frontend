@@ -1,0 +1,1087 @@
+import { useMemo, useState } from "react";
+import {
+  DollarSign,
+  TrendingDown,
+  Activity,
+  Server,
+  Zap,
+  Cpu,
+  HardDrive,
+  Info,
+} from "lucide-react";
+import { useQueries } from "@tanstack/react-query";
+import { useNavigate } from "react-router-dom";
+import {
+  Line,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Area,
+  ComposedChart,
+} from "recharts";
+import { useCluster } from "@/contexts/ClusterContext";
+import {
+  apiClient,
+  type OverviewResponse,
+  type OverviewCoveragePair,
+  type OverviewResourceStats,
+  type HistoricalTimelineResponse,
+} from "@/lib/api";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import {
+  ChartContainer,
+  ChartTooltip,
+  ChartTooltipContent,
+  ChartLegend,
+  ChartLegendContent,
+  type ChartConfig,
+} from "@/components/ui/chart";
+import { Button } from "@/components/ui/button";
+import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
+
+/** Min 1 hour, max 30 days (for timeline range). */
+const TIMELINE_MIN_MS = 1 * 60 * 60 * 1000;
+const TIMELINE_MAX_MS = 30 * 24 * 60 * 60 * 1000;
+
+type TimeRangePreset = "6h" | "24h" | "7d" | "30d" | "custom";
+
+function presetToMs(preset: TimeRangePreset): number | null {
+  switch (preset) {
+    case "6h":
+      return 6 * 60 * 60 * 1000;
+    case "24h":
+      return 24 * 60 * 60 * 1000;
+    case "7d":
+      return 7 * 24 * 60 * 60 * 1000;
+    case "30d":
+      return 30 * 24 * 60 * 60 * 1000;
+    default:
+      return null;
+  }
+}
+
+/** Clamp duration to [TIMELINE_MIN_MS, TIMELINE_MAX_MS]. */
+function clampDurationMs(ms: number): number {
+  return Math.max(TIMELINE_MIN_MS, Math.min(TIMELINE_MAX_MS, ms));
+}
+
+const DEFAULT_COVERAGE = { enabled: 0, disabled: 0 };
+const DEFAULT_STATS: OverviewResourceStats = {
+  allocatable: 0,
+  requested: 0,
+  usage: 0,
+  recommended: 0,
+};
+
+function safeNumber(v: unknown): number {
+  if (v == null || v === "") return 0;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function safeCoverage(c: OverviewCoveragePair | undefined): { enabled: number; disabled: number } {
+  if (!c || typeof c !== "object") return DEFAULT_COVERAGE;
+  const enabled = safeNumber(c.enabled ?? c.enabed);
+  const disabled = safeNumber(c.disabled);
+  return { enabled, disabled };
+}
+
+function safeStats(s: OverviewResourceStats | undefined): OverviewResourceStats {
+  if (!s || typeof s !== "object") return DEFAULT_STATS;
+  return {
+    allocatable: safeNumber(s.allocatable),
+    requested: safeNumber(s.requested),
+    usage: safeNumber(s.usage),
+    recommended: safeNumber(s.recommended),
+  };
+}
+
+/** Normalize overview response and apply defaults for missing/error data. */
+function withDefaults(raw: OverviewResponse | null | undefined): {
+  currentMonthlyCost: number;
+  currentSavings: number;
+  possibleSavings: number;
+  clusterUtilisation: number;
+  nodeCount: number;
+  adoption: OverviewCoveragePair;
+  cpuCoverage: OverviewCoveragePair;
+  memoryCoverage: OverviewCoveragePair;
+  cpuStats: OverviewResourceStats;
+  memoryStats: OverviewResourceStats;
+} {
+  const c = raw?.coverage;
+  return {
+    currentMonthlyCost: safeNumber(raw?.currentMonthlyCost),
+    currentSavings: safeNumber(raw?.currentSavings),
+    possibleSavings: safeNumber(raw?.possibleSavings),
+    clusterUtilisation: safeNumber(raw?.clusterUtilisation),
+    nodeCount: safeNumber(raw?.nodeCount),
+    adoption: safeCoverage(c?.adoption),
+    cpuCoverage: safeCoverage(c?.cpuCoverage),
+    memoryCoverage: safeCoverage(c?.memoryCoverage),
+    cpuStats: safeStats(raw?.cpuStats),
+    memoryStats: safeStats(raw?.memoryStats),
+  };
+}
+
+function formatCpuValue(value: number): string {
+  return `${value.toFixed(1)} cores`;
+}
+function formatMemoryValue(value: number): string {
+  return `${value.toFixed(1)} GiB`;
+}
+
+/** Sanitize legend to a valid CSS/object key (no spaces or special chars) so --color-{key} works. */
+function sanitizeChartKey(legend: string): string {
+  const s = legend.replace(/\s+/g, "_").replace(/[^a-zA-Z0-9_-]/g, "") || "series";
+  return s || "series";
+}
+
+/** Transform historical timeline API response into chart data (one point per timestamp) and chart config. */
+function transformHistoricalTimelineResponse(raw: HistoricalTimelineResponse | null | undefined): {
+  data: Record<string, unknown>[];
+  config: ChartConfig;
+} {
+  const byTime = new Map<string, Record<string, number>>();
+  const legendMeta = new Map<string, { label: string; color: string }>();
+  for (const item of raw?.data ?? []) {
+    const ts = item.data?.timestamp ?? "";
+    const value = item.data?.value ?? 0;
+    const legend = item.legend ?? "";
+    if (!ts || !legend) continue;
+    const key = sanitizeChartKey(legend);
+    if (!byTime.has(ts)) byTime.set(ts, {});
+    byTime.get(ts)![key] = value;
+    if (!legendMeta.has(key)) legendMeta.set(key, { label: legend, color: item.color ?? "#888" });
+  }
+  const sortedTimes = [...byTime.keys()].sort();
+  const data: Record<string, unknown>[] = sortedTimes.map((ts) => {
+    const point = byTime.get(ts)!;
+    const d = new Date(ts);
+    const dateStr = d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+    const timeStr = `${d.getHours().toString().padStart(2, "0")}:${d.getMinutes().toString().padStart(2, "0")}`;
+    const timeLabel = `${dateStr} ${timeStr}`;
+    return { time: timeLabel, ...point };
+  });
+  const config: ChartConfig = {};
+  for (const [key, { label, color }] of legendMeta) {
+    config[key] = { label, color };
+  }
+  return { data, config };
+}
+
+export default function Overview() {
+  const navigate = useNavigate();
+  const { selectedClusterId } = useCluster();
+
+  const [historicalMetric, setHistoricalMetric] = useState<"cpu" | "memory">("cpu");
+  const [timeRangePreset, setTimeRangePreset] = useState<TimeRangePreset>("6h");
+  const [customStart, setCustomStart] = useState<string>("");
+  const [customEnd, setCustomEnd] = useState<string>("");
+
+  const historicalDateRange = useMemo(() => {
+    const now = Date.now();
+    let endMs: number;
+    let startMs: number;
+
+    if (timeRangePreset === "custom" && customStart && customEnd) {
+      const start = new Date(customStart).getTime();
+      const end = new Date(customEnd).getTime();
+      if (Number.isFinite(start) && Number.isFinite(end) && end > start) {
+        const duration = clampDurationMs(end - start);
+        endMs = Math.min(end, now);
+        startMs = endMs - duration;
+      } else {
+        const duration = clampDurationMs(7 * 24 * 60 * 60 * 1000);
+        endMs = now;
+        startMs = endMs - duration;
+      }
+    } else {
+      const presetMs = presetToMs(timeRangePreset);
+      const duration = presetMs != null ? clampDurationMs(presetMs) : clampDurationMs(7 * 24 * 60 * 60 * 1000);
+      endMs = now;
+      startMs = endMs - duration;
+    }
+
+    return {
+      startTime: new Date(startMs).toISOString(),
+      endTime: new Date(endMs).toISOString(),
+    };
+  }, [timeRangePreset, customStart, customEnd]);
+
+  const [overviewResult, historicalResult, costHistoricalResult] = useQueries({
+    queries: [
+      {
+        queryKey: ["overview", selectedClusterId],
+        queryFn: () => apiClient.getOverview(selectedClusterId!),
+        enabled: !!selectedClusterId,
+        retry: 1,
+      },
+      {
+        queryKey: ["overview", "historical", selectedClusterId, historicalMetric, historicalDateRange.startTime, historicalDateRange.endTime],
+        queryFn: () =>
+          apiClient.getHistoricalTimeline(
+            selectedClusterId!,
+            historicalMetric,
+            historicalDateRange.startTime,
+            historicalDateRange.endTime
+          ),
+        enabled: !!selectedClusterId,
+        retry: 1,
+      },
+      {
+        queryKey: ["overview", "historical", "cost", selectedClusterId, historicalDateRange.startTime, historicalDateRange.endTime],
+        queryFn: () =>
+          apiClient.getHistoricalTimeline(
+            selectedClusterId!,
+            "cost",
+            historicalDateRange.startTime,
+            historicalDateRange.endTime
+          ),
+        enabled: !!selectedClusterId,
+        retry: 1,
+      },
+    ],
+  });
+
+  const rawData = overviewResult.data;
+  const error = overviewResult.error;
+  const isLoading = overviewResult.isLoading;
+  const d = withDefaults(error ? null : rawData);
+
+  const historicalRaw = historicalResult.data;
+  const isLoadingHistorical = historicalResult.isLoading;
+
+  const costHistoricalRaw = costHistoricalResult.data;
+  const isLoadingCostHistorical = costHistoricalResult.isLoading;
+
+  const { data: historicalTimelineData, config: historicalChartConfig } = useMemo(
+    () => transformHistoricalTimelineResponse(historicalRaw),
+    [historicalRaw]
+  );
+
+  const historicalSeriesKeys = useMemo(
+    () => Object.keys(historicalChartConfig).filter((k) => k !== "time"),
+    [historicalChartConfig]
+  );
+
+  const { data: costTimelineData, config: costChartConfig } = useMemo(
+    () => transformHistoricalTimelineResponse(costHistoricalRaw),
+    [costHistoricalRaw]
+  );
+  const costSeriesKeys = useMemo(
+    () =>
+      Object.keys(costChartConfig).filter(
+        (k) => k !== "time" && !/cumulative|savings/i.test((costChartConfig[k]?.label as string) ?? k)
+      ),
+    [costChartConfig]
+  );
+
+  const savingsPercent =
+    d.currentMonthlyCost + d.currentSavings > 0
+      ? Math.round(
+          (d.currentSavings / (d.currentMonthlyCost + d.currentSavings)) * 100
+        )
+      : 0;
+
+  const adoptionTotal = d.adoption.enabled + d.adoption.disabled;
+  const adoptionPercent =
+    adoptionTotal > 0
+      ? Math.round((d.adoption.enabled / adoptionTotal) * 100)
+      : 0;
+
+  const cpuCoverageTotal = d.cpuCoverage.enabled + d.cpuCoverage.disabled;
+  const cpuCoveragePercent =
+    cpuCoverageTotal > 0
+      ? Math.round((d.cpuCoverage.enabled / cpuCoverageTotal) * 100)
+      : 0;
+
+  const memCoverageTotal = d.memoryCoverage.enabled + d.memoryCoverage.disabled;
+  const memCoveragePercent =
+    memCoverageTotal > 0
+      ? Math.round((d.memoryCoverage.enabled / memCoverageTotal) * 100)
+      : 0;
+
+  const disabledCount = d.adoption.disabled;
+  const pctCpuUsed =
+    d.cpuStats.allocatable > 0
+      ? (d.cpuStats.usage / d.cpuStats.allocatable) * 100
+      : 0;
+  const pctCpuReq =
+    d.cpuStats.allocatable > 0
+      ? (d.cpuStats.requested / d.cpuStats.allocatable) * 100
+      : 0;
+  const pctMemUsed =
+    d.memoryStats.allocatable > 0
+      ? (d.memoryStats.usage / d.memoryStats.allocatable) * 100
+      : 0;
+  const pctMemReq =
+    d.memoryStats.allocatable > 0
+      ? (d.memoryStats.requested / d.memoryStats.allocatable) * 100
+      : 0;
+
+  if (!selectedClusterId) {
+    return (
+      <div className="p-6">
+        <div className="text-center text-muted-foreground">
+          Please select a cluster to view the overview.
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-w-0 w-full max-w-full animate-fade-in">
+      <div className="mx-auto max-w-[1600px] px-4 py-6 sm:px-6 lg:px-8 space-y-8">
+        {/* Top row: 4 metric cards */}
+        <section aria-labelledby="overview-metrics-heading">
+          <h2 id="overview-metrics-heading" className="sr-only">
+            Key metrics
+          </h2>
+          <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 xl:grid-cols-4">
+            <div className="metric-card border-border">
+              {isLoading ? (
+                <div className="flex items-start justify-between">
+                  <div className="space-y-1">
+                    <Skeleton className="h-3 w-28" />
+                    <Skeleton className="h-8 w-24" />
+                    <Skeleton className="h-4 w-36" />
+                  </div>
+                  <div className="rounded-lg bg-muted/50 p-2 text-muted-foreground">
+                    <DollarSign className="h-5 w-5" />
+                  </div>
+                </div>
+              ) : (
+                <div className="flex items-start justify-between">
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-1.5">
+                      <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                        Monthly cost
+                      </p>
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <button type="button" className="inline-flex text-muted-foreground hover:text-foreground focus:outline-none" onClick={(e) => e.stopPropagation()} aria-label="How monthly cost is calculated">
+                              <Info className="h-3.5 w-3.5" />
+                            </button>
+                          </TooltipTrigger>
+                          <TooltipContent side="bottom" className="max-w-sm p-4 text-left">
+                            <p>
+                              Monthly cost is computed from cluster allocatable resources (CPU cores and memory) and your configured cost per core/hour and per GB/hour. It represents the monthly run-rate if all allocatable capacity were billed at those rates.
+                            </p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                    </div>
+                    <p className="font-mono text-2xl font-semibold tracking-tight text-foreground">
+                      ${d.currentMonthlyCost.toLocaleString()}
+                    </p>
+                    <p className="text-sm text-muted-foreground">/month run-rate</p>
+                  </div>
+                  <div className="rounded-lg bg-muted/50 p-2 text-muted-foreground">
+                    <DollarSign className="h-5 w-5" />
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="metric-card border-border">
+              {isLoading ? (
+                <div className="flex items-start justify-between">
+                  <div className="space-y-1">
+                    <Skeleton className="h-3 w-28" />
+                    <Skeleton className="h-8 w-24" />
+                    <Skeleton className="h-4 w-36" />
+                  </div>
+                  <div className="rounded-lg bg-muted/50 p-2 text-muted-foreground">
+                    <TrendingDown className="h-5 w-5" />
+                  </div>
+                </div>
+              ) : (
+                <div className="flex items-start justify-between">
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-1.5">
+                      <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                        Current savings
+                      </p>
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <button type="button" className="inline-flex text-muted-foreground hover:text-foreground focus:outline-none" onClick={(e) => e.stopPropagation()} aria-label="How current savings is calculated">
+                              <Info className="h-3.5 w-3.5" />
+                            </button>
+                          </TooltipTrigger>
+                          <TooltipContent side="bottom" className="max-w-sm p-4 text-left">
+                            <p>
+                              Savings already realized from CruiseKube optimizations (resources right-sized on workloads in Cruise mode). The percentage is reduction relative to cost before optimization.
+                            </p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                    </div>
+                    <p className="font-mono text-2xl font-semibold tracking-tight text-foreground">
+                      ${d.currentSavings.toLocaleString()}
+                    </p>
+                    <p className="text-sm text-muted-foreground">
+                      {savingsPercent}% reduction
+                    </p>
+                  </div>
+                  <div className="rounded-lg bg-muted/50 p-2 text-muted-foreground">
+                    <TrendingDown className="h-5 w-5" />
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="metric-card border-border">
+              {isLoading ? (
+                <div className="flex items-start justify-between">
+                  <div className="space-y-1">
+                    <Skeleton className="h-3 w-28" />
+                    <Skeleton className="h-8 w-24" />
+                    <Skeleton className="h-4 w-36" />
+                  </div>
+                  <div className="rounded-lg bg-muted/50 p-2 text-muted-foreground">
+                    <Activity className="h-5 w-5" />
+                  </div>
+                </div>
+              ) : (
+                <div className="flex items-start justify-between">
+                  <div className="space-y-1">
+                    <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                      Cluster utilization
+                    </p>
+                    <p className="font-mono text-2xl font-semibold tracking-tight text-foreground">
+                      {d.clusterUtilisation}%
+                    </p>
+                    <p className="text-sm text-muted-foreground">
+                      usage / allocatable
+                    </p>
+                  </div>
+                  <div className="rounded-lg bg-muted/50 p-2 text-muted-foreground">
+                    <Activity className="h-5 w-5" />
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="metric-card border-border">
+              {isLoading ? (
+                <div className="flex items-start justify-between">
+                  <div className="space-y-1">
+                    <Skeleton className="h-3 w-28" />
+                    <Skeleton className="h-8 w-24" />
+                    <Skeleton className="h-4 w-36" />
+                  </div>
+                  <div className="rounded-lg bg-muted/50 p-2 text-muted-foreground">
+                    <Server className="h-5 w-5" />
+                  </div>
+                </div>
+              ) : (
+                <div className="flex items-start justify-between">
+                  <div className="space-y-1">
+                    <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                      Node count
+                    </p>
+                    <p className="font-mono text-2xl font-semibold tracking-tight text-foreground">
+                      {d.nodeCount > 0 ? d.nodeCount : "—"}
+                    </p>
+                    <p className="text-sm text-muted-foreground">active nodes</p>
+                  </div>
+                  {d.nodeCount === 0 && (
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <div className="rounded-lg bg-muted/50 p-2 text-muted-foreground cursor-help">
+                            <Server className="h-5 w-5" />
+                          </div>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          <p>Node count not available or zero.</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                  )}
+                  {d.nodeCount > 0 && (
+                    <div className="rounded-lg bg-muted/50 p-2 text-muted-foreground">
+                      <Server className="h-5 w-5" />
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        </section>
+
+        {/* Middle: CruiseKube Adoption + Untapped Savings */}
+        <section aria-labelledby="adoption-heading" className="grid gap-4 md:grid-cols-3">
+          <div
+            id="adoption-heading"
+            className="metric-card border-border md:col-span-2 flex flex-col sm:flex-row items-stretch gap-6"
+          >
+            {isLoading ? (
+              <div className="flex-1 flex items-center gap-6">
+                <Skeleton className="h-32 w-32 rounded-full shrink-0" />
+                <div className="space-y-4 flex-1">
+                  <Skeleton className="h-6 w-40" />
+                  <Skeleton className="h-4 w-full" />
+                  <Skeleton className="h-4 w-full" />
+                </div>
+              </div>
+            ) : (
+              <>
+                <div className="flex flex-col items-center gap-2 shrink-0">
+                  <div className="relative h-32 w-32">
+                    <svg viewBox="0 0 36 36" className="h-32 w-32 -rotate-90">
+                      <circle
+                        cx="18"
+                        cy="18"
+                        r="16"
+                        fill="none"
+                        className="stroke-muted/60"
+                        strokeWidth="3"
+                      />
+                      <circle
+                        cx="18"
+                        cy="18"
+                        r="16"
+                        fill="none"
+                        className="stroke-primary"
+                        strokeWidth="3"
+                        strokeDasharray={`${adoptionPercent} ${100 - adoptionPercent}`}
+                        strokeLinecap="round"
+                      />
+                    </svg>
+                    <div className="absolute inset-0 flex flex-col items-center justify-center">
+                      <span className="font-mono text-2xl font-bold text-foreground">
+                        {adoptionPercent}%
+                      </span>
+                      <span className="text-xs text-muted-foreground">
+                        enabled
+                      </span>
+                    </div>
+                  </div>
+                </div>
+                <div className="flex-1 space-y-4 min-w-0">
+                  <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                    CruiseKube adoption
+                  </p>
+                  <div>
+                    <p className="text-sm text-muted-foreground">Workloads</p>
+                    <p className="font-mono text-lg font-semibold text-foreground">
+                      {d.adoption.enabled} / {adoptionTotal || 0}
+                    </p>
+                  </div>
+                  <div className="space-y-2">
+                    <div>
+                      <div className="flex justify-between text-xs text-muted-foreground mb-1">
+                        <span>CPU coverage</span>
+                        <span>
+                          {cpuCoveragePercent}% enabled{" "}
+                          <span className="text-muted-foreground/80">
+                            {100 - cpuCoveragePercent}% disabled
+                          </span>
+                        </span>
+                      </div>
+                      <div className="flex h-2 w-full overflow-hidden rounded-full bg-muted/60">
+                        <div
+                          className="h-full bg-primary transition-all"
+                          style={{ width: `${cpuCoveragePercent}%` }}
+                        />
+                        <div
+                          className="h-full bg-warning/60 transition-all"
+                          style={{ width: `${100 - cpuCoveragePercent}%` }}
+                        />
+                      </div>
+                    </div>
+                    <div>
+                      <div className="flex justify-between text-xs text-muted-foreground mb-1">
+                        <span>Memory coverage</span>
+                        <span>
+                          {memCoveragePercent}% enabled{" "}
+                          <span className="text-muted-foreground/80">
+                            {100 - memCoveragePercent}% disabled
+                          </span>
+                        </span>
+                      </div>
+                      <div className="flex h-2 w-full overflow-hidden rounded-full bg-muted/60">
+                        <div
+                          className="h-full bg-primary transition-all"
+                          style={{ width: `${memCoveragePercent}%` }}
+                        />
+                        <div
+                          className="h-full bg-warning/60 transition-all"
+                          style={{ width: `${100 - memCoveragePercent}%` }}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
+
+          <div className="metric-card border border-warning/50 bg-warning/5">
+            {isLoading ? (
+              <div className="space-y-2">
+                <Skeleton className="h-4 w-32" />
+                <Skeleton className="h-8 w-24" />
+                <Skeleton className="h-4 w-full" />
+              </div>
+            ) : (
+              <div className="flex flex-col h-full">
+                <div className="flex items-center gap-2">
+                  <Zap className="h-4 w-4 text-warning" />
+                  <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                    Untapped savings
+                  </p>
+                </div>
+                <p className="font-mono text-2xl font-semibold tracking-tight text-foreground mt-1">
+                  ${Math.round(d.possibleSavings - d.currentSavings).toLocaleString()}/mo
+                </p>
+                <p className="text-sm text-muted-foreground mt-2">
+                  Enable CruiseKube on the remaining{" "}
+                  <button
+                    type="button"
+                    onClick={() => navigate("/workloads")}
+                    className="font-semibold text-foreground underline underline-offset-2 hover:text-primary"
+                  >
+                    {disabledCount} workloads
+                  </button>{" "}
+                  to unlock additional monthly savings.
+                </p>
+                <Button
+                  variant="default"
+                  size="sm"
+                  className="mt-4 w-fit gap-1.5 shadow-sm ring-1 ring-primary/20"
+                  onClick={() => navigate("/workloads")}
+                >
+                  <Zap className="h-3.5 w-3.5" />
+                  Enable CruiseKube for All
+                </Button>
+              </div>
+            )}
+          </div>
+        </section>
+
+        {/* Bottom: CPU & Memory efficiency */}
+        <section aria-labelledby="efficiency-heading">
+          <h2
+            id="efficiency-heading"
+            className="mb-4 text-sm font-semibold uppercase tracking-wider text-muted-foreground"
+          >
+            Resource efficiency
+          </h2>
+          <div className="grid gap-4 md:grid-cols-2">
+            <div className="metric-card border-border space-y-4">
+              {isLoading ? (
+                <>
+                  <Skeleton className="h-6 w-20" />
+                  <Skeleton className="h-4 w-full" />
+                  <Skeleton className="h-6 w-full" />
+                  <Skeleton className="h-4 w-48" />
+                </>
+              ) : (
+                <>
+                  <div className="flex items-center gap-2">
+                    <div className="rounded-lg bg-muted/50 p-2 text-muted-foreground">
+                      <Cpu className="h-5 w-5" />
+                    </div>
+                    <span className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                      CPU
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-4 gap-2 text-xs">
+                    <div>
+                      <p className="text-muted-foreground uppercase">Allocatable</p>
+                      <p className="font-mono font-semibold text-foreground">
+                        {formatCpuValue(d.cpuStats.allocatable)}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-muted-foreground uppercase">Requested</p>
+                      <p className="font-mono font-semibold text-foreground">
+                        {formatCpuValue(d.cpuStats.requested)}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-muted-foreground uppercase">Usage</p>
+                      <p className="font-mono font-semibold text-foreground">
+                        {formatCpuValue(d.cpuStats.usage)}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-muted-foreground uppercase">Recommended</p>
+                      <p className="font-mono font-semibold text-foreground">
+                        {formatCpuValue(d.cpuStats.recommended)}
+                      </p>
+                    </div>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground uppercase mb-1">
+                      Efficiency
+                    </p>
+                    <div className="flex h-6 w-full overflow-hidden rounded-md bg-muted/60">
+                      <div
+                        className="h-full bg-primary transition-all"
+                        style={{ width: `${Math.min(100, pctCpuUsed)}%` }}
+                        title={`${Math.round(pctCpuUsed)}% utilized`}
+                      />
+                      <div
+                        className="h-full bg-muted-foreground/30 transition-all"
+                        style={{
+                          width: `${Math.min(100 - pctCpuUsed, Math.max(0, pctCpuReq - pctCpuUsed))}%`,
+                        }}
+                        title={`${Math.round(pctCpuReq)}% requested`}
+                      />
+                    </div>
+                    <div className="flex justify-between text-xs text-muted-foreground mt-1">
+                      <span>{Math.round(pctCpuUsed)}% utilized</span>
+                      <span>{Math.round(pctCpuReq)}% requested</span>
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
+
+            <div className="metric-card border-border space-y-4">
+              {isLoading ? (
+                <>
+                  <Skeleton className="h-6 w-20" />
+                  <Skeleton className="h-4 w-full" />
+                  <Skeleton className="h-6 w-full" />
+                  <Skeleton className="h-4 w-48" />
+                </>
+              ) : (
+                <>
+                  <div className="flex items-center gap-2">
+                    <div className="rounded-lg bg-muted/50 p-2 text-muted-foreground">
+                      <HardDrive className="h-5 w-5" />
+                    </div>
+                    <span className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                      Memory
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-4 gap-2 text-xs">
+                    <div>
+                      <p className="text-muted-foreground uppercase">Allocatable</p>
+                      <p className="font-mono font-semibold text-foreground">
+                        {formatMemoryValue(d.memoryStats.allocatable)}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-muted-foreground uppercase">Requested</p>
+                      <p className="font-mono font-semibold text-foreground">
+                        {formatMemoryValue(d.memoryStats.requested)}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-muted-foreground uppercase">Usage</p>
+                      <p className="font-mono font-semibold text-foreground">
+                        {formatMemoryValue(d.memoryStats.usage)}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-muted-foreground uppercase">Recommended</p>
+                      <p className="font-mono font-semibold text-foreground">
+                        {formatMemoryValue(d.memoryStats.recommended)}
+                      </p>
+                    </div>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground uppercase mb-1">
+                      Efficiency
+                    </p>
+                    <div className="flex h-6 w-full overflow-hidden rounded-md bg-muted/60">
+                      <div
+                        className="h-full bg-primary transition-all"
+                        style={{ width: `${Math.min(100, pctMemUsed)}%` }}
+                        title={`${Math.round(pctMemUsed)}% utilized`}
+                      />
+                      <div
+                        className="h-full bg-muted-foreground/30 transition-all"
+                        style={{
+                          width: `${Math.min(100 - pctMemUsed, Math.max(0, pctMemReq - pctMemUsed))}%`,
+                        }}
+                        title={`${Math.round(pctMemReq)}% requested`}
+                      />
+                    </div>
+                    <div className="flex justify-between text-xs text-muted-foreground mt-1">
+                      <span>{Math.round(pctMemUsed)}% utilized</span>
+                      <span>{Math.round(pctMemReq)}% requested</span>
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        </section>
+
+    {/* Time range (for Historical + Cost timelines) */}
+        <section aria-labelledby="time-range-heading" className="space-y-3">
+          <h2
+            id="time-range-heading"
+            className="text-sm font-semibold uppercase tracking-wider text-muted-foreground"
+          >
+            Time range
+          </h2>
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="flex gap-1 rounded-md border border-border bg-muted/30 p-0.5">
+              <Button
+                variant={timeRangePreset === "6h" ? "default" : "ghost"}
+                size="sm"
+                className="h-8 px-3 text-xs"
+                onClick={() => setTimeRangePreset("6h")}
+              >
+                6 hours
+              </Button>
+              <Button
+                variant={timeRangePreset === "24h" ? "default" : "ghost"}
+                size="sm"
+                className="h-8 px-3 text-xs"
+                onClick={() => setTimeRangePreset("24h")}
+              >
+                24 hours
+              </Button>
+              <Button
+                variant={timeRangePreset === "7d" ? "default" : "ghost"}
+                size="sm"
+                className="h-8 px-3 text-xs"
+                onClick={() => setTimeRangePreset("7d")}
+              >
+                7 days
+              </Button>
+              <Button
+                variant={timeRangePreset === "30d" ? "default" : "ghost"}
+                size="sm"
+                className="h-8 px-3 text-xs"
+                onClick={() => setTimeRangePreset("30d")}
+              >
+                30 days
+              </Button>
+              <Button
+                variant={timeRangePreset === "custom" ? "default" : "ghost"}
+                size="sm"
+                className="h-8 px-3 text-xs"
+                onClick={() => {
+                  setTimeRangePreset("custom");
+                  if (!customStart || !customEnd) {
+                    const end = new Date();
+                    const start = new Date(end.getTime() - 7 * 24 * 60 * 60 * 1000);
+                    setCustomEnd(end.toISOString().slice(0, 16));
+                    setCustomStart(start.toISOString().slice(0, 16));
+                  }
+                }}
+              >
+                Custom
+              </Button>
+            </div>
+            {timeRangePreset === "custom" && (
+              <div className="flex flex-wrap items-center gap-3">
+                <div className="flex items-center gap-2">
+                  <Label htmlFor="timeline-start" className="text-xs text-muted-foreground whitespace-nowrap">
+                    Start
+                  </Label>
+                  <Input
+                    id="timeline-start"
+                    type="datetime-local"
+                    value={customStart}
+                    onChange={(e) => setCustomStart(e.target.value)}
+                    className="h-8 text-xs w-[11rem]"
+                  />
+                </div>
+                <div className="flex items-center gap-2">
+                  <Label htmlFor="timeline-end" className="text-xs text-muted-foreground whitespace-nowrap">
+                    End
+                  </Label>
+                  <Input
+                    id="timeline-end"
+                    type="datetime-local"
+                    value={customEnd}
+                    onChange={(e) => setCustomEnd(e.target.value)}
+                    className="h-8 text-xs w-[11rem]"
+                  />
+                </div>
+              </div>
+            )}
+          </div>
+        </section>
+
+    {/* Historical Timeline */}
+    <section aria-labelledby="historical-timeline-heading" className="space-y-4">
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <h2
+              id="historical-timeline-heading"
+              className="text-sm font-semibold uppercase tracking-wider text-muted-foreground"
+            >
+              Historical timeline
+            </h2>
+            <div className="flex gap-1 rounded-md border border-border bg-muted/30 p-0.5">
+              <Button
+                variant={historicalMetric === "cpu" ? "default" : "ghost"}
+                size="sm"
+                className="h-8 px-3 text-xs"
+                onClick={() => setHistoricalMetric("cpu")}
+              >
+                CPU
+              </Button>
+              <Button
+                variant={historicalMetric === "memory" ? "default" : "ghost"}
+                size="sm"
+                className="h-8 px-3 text-xs"
+                onClick={() => setHistoricalMetric("memory")}
+              >
+                Memory
+              </Button>
+            </div>
+          </div>
+          <div className="metric-card border-border overflow-hidden">
+            {isLoading || isLoadingHistorical ? (
+              <Skeleton className="h-[320px] w-full" />
+            ) : historicalTimelineData.length === 0 ? (
+              <div className="flex h-[320px] items-center justify-center text-sm text-muted-foreground">
+                No historical data for this period
+              </div>
+            ) : (
+              <ChartContainer
+                config={historicalChartConfig}
+                className="h-[320px] w-full"
+              >
+                <ComposedChart data={historicalTimelineData} margin={{ top: 8, right: 8, left: 8, bottom: 8 }}>
+                  <CartesianGrid strokeDasharray="3 3" className="stroke-border/50" />
+                  <XAxis
+                    dataKey="time"
+                    tick={{ fill: "hsl(var(--muted-foreground))" }}
+                    axisLine={{ stroke: "hsl(var(--border))" }}
+                    tickLine={{ stroke: "hsl(var(--border))" }}
+                  />
+                  <YAxis
+                    unit={historicalMetric === "cpu" ? " cores" : " GiB"}
+                    tick={{ fill: "hsl(var(--muted-foreground))" }}
+                    axisLine={{ stroke: "hsl(var(--border))" }}
+                    tickLine={{ stroke: "hsl(var(--border))" }}
+                  />
+                  <ChartTooltip
+                    content={
+                      <ChartTooltipContent
+                        formatter={(value, name) => (
+                          <div className="flex flex-1 justify-between items-center gap-4">
+                            <span className="text-muted-foreground">{String(historicalChartConfig[name as keyof typeof historicalChartConfig]?.label ?? name)}</span>
+                            <span className="font-mono font-medium tabular-nums text-foreground">
+                              {historicalMetric === "cpu" ? `${Number(value).toLocaleString()} cores` : `${Number(value).toLocaleString()} GiB`}
+                            </span>
+                          </div>
+                        )}
+                      />
+                    }
+                  />
+                  <ChartLegend content={<ChartLegendContent />} />
+                  {historicalSeriesKeys.map((key) =>
+                    key === "currentAllocatable" ? (
+                      <Area
+                        key={key}
+                        type="monotone"
+                        dataKey={key}
+                        fill={`var(--color-${key})`}
+                        fillOpacity={0.3}
+                        stroke={`var(--color-${key})`}
+                        strokeWidth={2.5}
+                      />
+                    ) : (
+                      <Line
+                        key={key}
+                        type="monotone"
+                        dataKey={key}
+                        stroke={`var(--color-${key})`}
+                        strokeWidth={3}
+                        dot={false}
+                      />
+                    )
+                  )}
+                </ComposedChart>
+              </ChartContainer>
+            )}
+          </div>
+        </section>
+
+        {/* Cost Timeline */}
+        <section aria-labelledby="cost-timeline-heading" className="space-y-4">
+          <h2
+            id="cost-timeline-heading"
+            className="text-sm font-semibold uppercase tracking-wider text-muted-foreground"
+          >
+            Cost timeline
+          </h2>
+          <div className="metric-card border-border overflow-hidden">
+            {isLoading || isLoadingCostHistorical ? (
+              <Skeleton className="h-[320px] w-full" />
+            ) : costTimelineData.length === 0 ? (
+              <div className="flex h-[320px] items-center justify-center text-sm text-muted-foreground">
+                No historical cost data for this period
+              </div>
+            ) : (
+              <ChartContainer
+                config={costChartConfig}
+                className="h-[320px] w-full"
+              >
+                <ComposedChart data={costTimelineData} margin={{ top: 8, right: 8, left: 8, bottom: 8 }}>
+                  <CartesianGrid strokeDasharray="3 3" className="stroke-border/50" />
+                  <XAxis
+                    dataKey="time"
+                    tick={{ fill: "hsl(var(--muted-foreground))" }}
+                    axisLine={{ stroke: "hsl(var(--border))" }}
+                    tickLine={{ stroke: "hsl(var(--border))" }}
+                  />
+                  <YAxis
+                    tickFormatter={(v) => `$${v}`}
+                    tick={{ fill: "hsl(var(--muted-foreground))" }}
+                    axisLine={{ stroke: "hsl(var(--border))" }}
+                    tickLine={{ stroke: "hsl(var(--border))" }}
+                  />
+                  <ChartTooltip
+                    content={
+                      <ChartTooltipContent
+                        formatter={(value, name) => (
+                          <div className="flex flex-1 justify-between items-center gap-4">
+                            <span className="text-muted-foreground">{String(costChartConfig[name as keyof typeof costChartConfig]?.label ?? name)}</span>
+                            <span className="font-mono font-medium tabular-nums text-foreground">${Number(value).toLocaleString()}</span>
+                          </div>
+                        )}
+                      />
+                    }
+                  />
+                  <ChartLegend content={<ChartLegendContent />} />
+                  {costSeriesKeys.map((key) =>
+                    key === "currentAllocatable" ? (
+                      <Area
+                        key={key}
+                        type="monotone"
+                        dataKey={key}
+                        fill={`var(--color-${key})`}
+                        fillOpacity={0.3}
+                        stroke={`var(--color-${key})`}
+                        strokeWidth={2.5}
+                      />
+                    ) : (
+                      <Line
+                        key={key}
+                        type="monotone"
+                        dataKey={key}
+                        stroke={`var(--color-${key})`}
+                        strokeWidth={3}
+                        dot={false}
+                      />
+                    )
+                  )}
+                </ComposedChart>
+              </ChartContainer>
+            )}
+          </div>
+        </section>
+
+      </div>
+    </div>
+  );
+}
