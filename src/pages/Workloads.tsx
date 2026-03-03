@@ -184,7 +184,6 @@ export default function Workloads() {
   const [resizingCol, setResizingCol] = useState<number | null>(null);
   const resizeStartXRef = useRef(0);
   const resizeStartWidthRef = useRef(0);
-  const [headerHidden, setHeaderHidden] = useState(false);
   const tableScrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -549,18 +548,16 @@ export default function Workloads() {
           </Alert>
         )}
 
-        {/* Page header — collapses when scrolling the table */}
-        <div
-          className={`overflow-hidden transition-[max-height,opacity] duration-200 ease-out ${
-            headerHidden ? "max-h-0 opacity-0" : "max-h-40 opacity-100"
-          }`}
-        >
-          <header className="flex flex-wrap items-end justify-between gap-4 border-b border-border/60 pb-6">
-            <div>
-              <h1 className="text-2xl font-bold tracking-tight text-foreground sm:text-3xl">Workloads</h1>
-              <p className="mt-1 text-sm text-muted-foreground">Optimized Kubernetes resources and cost impact</p>
-            </div>
-            <div className="flex flex-wrap items-center gap-3">
+        {/* Workload list */}
+        <section aria-labelledby="workloads-heading">
+          <div className="flex flex-wrap items-center justify-between gap-4 mb-4">
+            <div className="flex flex-wrap items-center gap-2">
+              <h2 id="workloads-heading" className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
+                Workload list
+                {sortedWorkloads.length > 0 && (
+                  <span className="ml-2 font-normal normal-case text-foreground">({sortedWorkloads.length})</span>
+                )}
+              </h2>
               {!isLoadingSummary && asArray(workloads).some((w) => !w.excluded && w.mode !== "enabled") && (
                 <TooltipProvider>
                   <Tooltip>
@@ -568,11 +565,11 @@ export default function Workloads() {
                       <Button
                         variant="default"
                         size="sm"
-                        className="gap-1.5"
+                        className="h-8 gap-1.5 rounded-md text-xs font-medium shadow-sm ring-1 ring-primary/20"
                         onClick={() => setEnableAllDialogOpen(true)}
                         disabled={isEnablingAll}
                       >
-                        <Zap className="h-3.5 w-3.5" />
+                        <Zap className="h-3 w-3" />
                         Enable CruiseKube for All
                       </Button>
                     </TooltipTrigger>
@@ -582,28 +579,7 @@ export default function Workloads() {
                   </Tooltip>
                 </TooltipProvider>
               )}
-              {summaryData?.workloadDetails && summaryData.workloadDetails.length > 0 && (() => {
-                const maxUpdated = Math.max(...summaryData.workloadDetails.map((w) => w.updatedAt), 0);
-                return maxUpdated > 0 ? (
-                  <div className="flex items-center gap-2 rounded-full border border-border bg-muted/30 px-3 py-1.5 text-xs text-muted-foreground">
-                    <span className="h-1.5 w-1.5 rounded-full bg-success animate-pulse" />
-                    Last sync: {new Date(maxUpdated * 1000).toLocaleString()}
-                  </div>
-                ) : null;
-              })()}
             </div>
-          </header>
-        </div>
-
-        {/* Workload list */}
-        <section aria-labelledby="workloads-heading">
-          <div className="flex flex-wrap items-center justify-between gap-4 mb-4">
-            <h2 id="workloads-heading" className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
-              Workload list
-              {sortedWorkloads.length > 0 && (
-                <span className="ml-2 font-normal normal-case text-foreground">({sortedWorkloads.length})</span>
-              )}
-            </h2>
             <div className="flex flex-wrap items-center gap-2">
               <div className="relative w-56 sm:w-64">
                 <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
@@ -647,6 +623,15 @@ export default function Workloads() {
                   <SelectItem value="non-evictable">Non-evictable</SelectItem>
                 </SelectContent>
               </Select>
+              {!isLoadingSummary && summaryData?.workloadDetails && summaryData.workloadDetails.length > 0 && (() => {
+                const maxUpdated = Math.max(...summaryData.workloadDetails.map((w) => w.updatedAt), 0);
+                return maxUpdated > 0 ? (
+                  <div className="flex items-center gap-2 rounded-full border border-border bg-muted/30 px-3 py-1.5 text-xs text-muted-foreground">
+                    <span className="h-1.5 w-1.5 rounded-full bg-success animate-pulse" />
+                    Last sync: {new Date(maxUpdated * 1000).toLocaleString()}
+                  </div>
+                ) : null;
+              })()}
             </div>
           </div>
 
@@ -696,11 +681,7 @@ export default function Workloads() {
             </div>
             <div
               ref={tableScrollRef}
-              className="overflow-x-auto overflow-y-auto max-h-[calc(100vh-16rem)]"
-              onScroll={(e) => {
-                const el = e.currentTarget;
-                setHeaderHidden(el.scrollTop > 24);
-              }}
+              className="overflow-x-auto"
             >
               {isLoadingSummary ? (
                 <div className="flex flex-col items-center justify-center gap-4 py-24 text-muted-foreground">

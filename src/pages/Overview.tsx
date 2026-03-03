@@ -272,7 +272,10 @@ export default function Overview() {
     [costHistoricalRaw]
   );
   const costSeriesKeys = useMemo(
-    () => Object.keys(costChartConfig).filter((k) => k !== "time"),
+    () =>
+      Object.keys(costChartConfig).filter(
+        (k) => k !== "time" && !/cumulative|savings/i.test((costChartConfig[k]?.label as string) ?? k)
+      ),
     [costChartConfig]
   );
 
@@ -399,9 +402,25 @@ export default function Overview() {
               ) : (
                 <div className="flex items-start justify-between">
                   <div className="space-y-1">
-                    <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                      Current savings
-                    </p>
+                    <div className="flex items-center gap-1.5">
+                      <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                        Current savings
+                      </p>
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <button type="button" className="inline-flex text-muted-foreground hover:text-foreground focus:outline-none" onClick={(e) => e.stopPropagation()} aria-label="How current savings is calculated">
+                              <Info className="h-3.5 w-3.5" />
+                            </button>
+                          </TooltipTrigger>
+                          <TooltipContent side="bottom" className="max-w-sm p-4 text-left">
+                            <p>
+                              Savings already realized from CruiseKube optimizations (resources right-sized on workloads in Cruise mode). The percentage is reduction relative to cost before optimization.
+                            </p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                    </div>
                     <p className="font-mono text-2xl font-semibold tracking-tight text-foreground">
                       ${d.currentSavings.toLocaleString()}
                     </p>
@@ -980,22 +999,12 @@ export default function Overview() {
 
         {/* Cost Timeline */}
         <section aria-labelledby="cost-timeline-heading" className="space-y-4">
-          <div className="flex flex-wrap items-center justify-between gap-4">
-            <h2
-              id="cost-timeline-heading"
-              className="text-sm font-semibold uppercase tracking-wider text-muted-foreground"
-            >
-              Cost timeline
-            </h2>
-            {!isLoading && (
-              <div className="flex items-center gap-2 text-sm">
-                <span className="text-muted-foreground uppercase tracking-wider">Cumulative savings</span>
-                <span className="font-mono font-semibold text-green-600 dark:text-green-400">
-                  ${d.currentSavings.toLocaleString()}
-                </span>
-              </div>
-            )}
-          </div>
+          <h2
+            id="cost-timeline-heading"
+            className="text-sm font-semibold uppercase tracking-wider text-muted-foreground"
+          >
+            Cost timeline
+          </h2>
           <div className="metric-card border-border overflow-hidden">
             {isLoading || isLoadingCostHistorical ? (
               <Skeleton className="h-[320px] w-full" />
