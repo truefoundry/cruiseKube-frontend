@@ -1048,6 +1048,15 @@ export default function Workloads() {
                   </td>
                   <td onClick={(e) => e.stopPropagation()}>
                     <div className="flex items-center gap-1">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-8 text-xs font-medium"
+                        onClick={() => navigate(`/workloads/${workload.namespace}/${workload.workload}`)}
+                        disabled={workload.excluded}
+                      >
+                        Pod Details
+                      </Button>
                       <TooltipProvider>
                         <Tooltip>
                           <TooltipTrigger asChild>
@@ -1066,15 +1075,6 @@ export default function Workloads() {
                           </TooltipContent>
                         </Tooltip>
                       </TooltipProvider>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="h-8 text-xs font-medium"
-                        onClick={() => navigate(`/workloads/${workload.namespace}/${workload.workload}`)}
-                        disabled={workload.excluded}
-                      >
-                        Pod Details
-                      </Button>
                       <TooltipProvider>
                         <Tooltip>
                           <TooltipTrigger asChild>
