@@ -441,87 +441,6 @@ class ApiClient {
     };
   }
 
-  /** Normalizes empty response: API may return {"stats": null}. Always returns { stats: array }. */
-  async getClusterStats(clusterID: string): Promise<StatsResponse> {
-    const data = await this.request<StatsResponse | null>(`/clusters/${clusterID}/stats`);
-    if (data == null) {
-      return { stats: [] };
-    }
-    /** Normalized stats array (workload stats with container_stats, original_container_resources). */
-    const stats = data.stats != null && Array.isArray(data.stats) ? data.stats : [];
-    return { ...data, stats };
-  }
-
-  /** Fetches workloads from /workloads. Every workload must have a valid overrides object; otherwise throws. */
-  async getWorkloads(clusterID: string): Promise<WorkloadOverrideInfo[]> {
-    const data = await this.request<WorkloadOverrideInfo[] | null>(`/clusters/${clusterID}/workloads`);
-    if (data == null || !Array.isArray(data)) {
-      return [];
-    }
-    return data.map((w) => this.assertWorkloadOverrides(w));
-  }
-
-  /** Validates that a workload has a valid overrides object. Throws if missing or invalid. */
-  private assertWorkloadOverrides(
-    w: { workload_id: string; name: string; namespace: string; kind: string; overrides?: unknown }
-  ): WorkloadOverrideInfo {
-    const raw = w.overrides;
-    if (raw == null || typeof raw !== 'object' || Array.isArray(raw)) {
-      throw new Error(
-        `getWorkloads: workload at index has missing or invalid overrides (workload_id=${w.workload_id}, name=${w.name})`
-      );
-    }
-    const o = raw as Record<string, unknown>;
-    if (typeof o.eviction_ranking !== 'number') {
-      throw new Error(
-        `getWorkloads: workload overrides.eviction_ranking must be a number (workload_id=${w.workload_id}, name=${w.name})`
-      );
-    }
-    if (typeof o.enabled !== 'boolean') {
-      throw new Error(
-        `getWorkloads: workload overrides.enabled must be a boolean (workload_id=${w.workload_id}, name=${w.name})`
-      );
-    }
-    let disruption_windows: DisruptionWindow[] | undefined;
-    if (Array.isArray(o.disruption_windows)) {
-      disruption_windows = o.disruption_windows.filter(
-        (w): w is DisruptionWindow =>
-          w != null && typeof w === 'object' && typeof (w as DisruptionWindow).start_cron === 'string' && typeof (w as DisruptionWindow).end_cron === 'string'
-      ) as DisruptionWindow[];
-      if (disruption_windows.length === 0) disruption_windows = undefined;
-    }
-    return {
-      workload_id: w.workload_id,
-      name: w.name,
-      namespace: w.namespace,
-      kind: w.kind,
-      overrides: {
-        eviction_ranking: o.eviction_ranking,
-        enabled: o.enabled,
-        ...(disruption_windows != null && disruption_windows.length > 0 ? { disruption_windows } : {}),
-      },
-    };
-  }
-
-  /** Normalizes empty response: API may return { "analysis": null, "summary": {...} }. Always returns { analysis: array, summary }. */
-  async getRecommendationAnalysis(clusterID: string): Promise<RecommendationAnalysisResponse> {
-    const data = await this.request<RecommendationAnalysisResponse | null>(`/clusters/${clusterID}/recommendation-analysis`);
-    const defaultSummary: RecommendationSummary = {
-      total_current_cpu_requests: 0,
-      total_cpu_differences: 0,
-      total_current_memory_requests: 0,
-      total_memory_differences: 0,
-    };
-    if (data == null) {
-      return { analysis: [], summary: defaultSummary };
-    }
-    /** Normalized analysis array (per-container recommendation items). */
-    const analysis = data.analysis != null && Array.isArray(data.analysis) ? data.analysis : [];
-    /** Summary totals (current requests, differences) from the API. */
-    const summary = data.summary ?? defaultSummary;
-    return { ...data, analysis, summary };
-  }
-
   async getWorkloadAnalysis(clusterID: string): Promise<WorkloadAnalysisItem[]> {
     const data = await this.request<WorkloadAnalysisItem[] | null>(`/clusters/${clusterID}/workload-analysis`);
     return Array.isArray(data) ? data : [];
@@ -590,11 +509,6 @@ class ApiClient {
       method: 'PUT',
       body: JSON.stringify(settings),
     });
-  }
-
-  async queryPrometheus(clusterID: string, query: string): Promise<PrometheusQueryResult> {
-    const encodedQuery = encodeURIComponent(query);
-    return this.request<PrometheusQueryResult>(`/clusters/${clusterID}/prometheus-query?query=${encodedQuery}`);
   }
 
   /**
