@@ -12,11 +12,6 @@ export function AppLayout() {
           <header className="border-b border-border px-6 py-4">
             <div className="flex items-center justify-between gap-4">
               <ClusterSelector />
-              <div className="flex items-center gap-2 shrink-0">
-                <span className="rounded-md border border-primary/40 bg-primary/10 px-2.5 py-1 text-xs font-semibold text-primary">
-                  Beta
-                </span>
-              </div>
             </div>
           </header>
           <main className="min-w-0 flex-1 overflow-auto">
