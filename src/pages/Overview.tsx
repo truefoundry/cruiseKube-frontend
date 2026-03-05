@@ -5,6 +5,7 @@ import {
   Activity,
   Server,
   Zap,
+  LayoutList,
   Cpu,
   HardDrive,
   Info,
@@ -32,7 +33,6 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import {
   ChartContainer,
   ChartTooltip,
-  ChartTooltipContent,
   ChartLegend,
   ChartLegendContent,
   type ChartConfig,
@@ -658,8 +658,8 @@ export default function Overview() {
                   className="mt-4 w-fit gap-1.5 shadow-sm ring-1 ring-primary/20"
                   onClick={() => navigate("/workloads")}
                 >
-                  <Zap className="h-3.5 w-3.5" />
-                  Enable CruiseKube for All
+                  <LayoutList className="h-3.5 w-3.5" />
+                  View Workloads
                 </Button>
               </div>
             )}
@@ -668,12 +668,37 @@ export default function Overview() {
 
         {/* Bottom: CPU & Memory efficiency */}
         <section aria-labelledby="efficiency-heading">
-          <h2
-            id="efficiency-heading"
-            className="mb-4 text-sm font-semibold uppercase tracking-wider text-muted-foreground"
-          >
-            Resource efficiency
-          </h2>
+          <div className="mb-4 flex items-center gap-2">
+            <h2
+              id="efficiency-heading"
+              className="text-sm font-semibold uppercase tracking-wider text-muted-foreground"
+            >
+              Resource efficiency
+            </h2>
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    type="button"
+                    className="inline-flex text-muted-foreground hover:text-foreground focus:outline-none"
+                    onClick={(e) => e.stopPropagation()}
+                    aria-label="Resource efficiency metrics explained"
+                  >
+                    <Info className="h-3.5 w-3.5" />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom" className="max-w-sm p-4 text-left text-xs">
+                  <p className="font-medium mb-2">Cluster-wide CPU and memory metrics (Kubernetes):</p>
+                  <ul className="space-y-1.5 list-none">
+                    <li><strong>Allocatable</strong> — Total capacity the scheduler can assign to pods (node capacity minus system/kube-reserved).</li>
+                    <li><strong>Requested</strong> — Sum of resource requests from all pods in the cluster.</li>
+                    <li><strong>Recommended</strong> — CruiseKube’s recommended total after applying right-sizing suggestions cluster-wide.</li>
+                    <li><strong>Usage</strong> — Actual current usage from cluster metrics.</li>
+                  </ul>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          </div>
           <div className="grid gap-4 md:grid-cols-2">
             <div className="metric-card border-border space-y-4">
               {isLoading ? (
@@ -707,15 +732,15 @@ export default function Overview() {
                       </p>
                     </div>
                     <div>
-                      <p className="text-muted-foreground uppercase">Usage</p>
-                      <p className="font-mono font-semibold text-foreground">
-                        {formatCpuValue(d.cpuStats.usage)}
-                      </p>
-                    </div>
-                    <div>
                       <p className="text-muted-foreground uppercase">Recommended</p>
                       <p className="font-mono font-semibold text-foreground">
                         {formatCpuValue(d.cpuStats.recommended)}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-muted-foreground uppercase">Usage</p>
+                      <p className="font-mono font-semibold text-foreground">
+                        {formatCpuValue(d.cpuStats.usage)}
                       </p>
                     </div>
                   </div>
@@ -778,15 +803,15 @@ export default function Overview() {
                       </p>
                     </div>
                     <div>
-                      <p className="text-muted-foreground uppercase">Usage</p>
-                      <p className="font-mono font-semibold text-foreground">
-                        {formatMemoryValue(d.memoryStats.usage)}
-                      </p>
-                    </div>
-                    <div>
                       <p className="text-muted-foreground uppercase">Recommended</p>
                       <p className="font-mono font-semibold text-foreground">
                         {formatMemoryValue(d.memoryStats.recommended)}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-muted-foreground uppercase">Usage</p>
+                      <p className="font-mono font-semibold text-foreground">
+                        {formatMemoryValue(d.memoryStats.usage)}
                       </p>
                     </div>
                   </div>
@@ -964,18 +989,36 @@ export default function Overview() {
                     tickLine={{ stroke: "hsl(var(--border))" }}
                   />
                   <ChartTooltip
-                    content={
-                      <ChartTooltipContent
-                        formatter={(value, name) => (
-                          <div className="flex flex-1 justify-between items-center gap-4">
-                            <span className="text-muted-foreground">{String(historicalChartConfig[name as keyof typeof historicalChartConfig]?.label ?? name)}</span>
-                            <span className="font-mono font-medium tabular-nums text-foreground">
-                              {historicalMetric === "cpu" ? `${Number(value).toLocaleString()} cores` : `${Number(value).toLocaleString()} GiB`}
-                            </span>
+                    content={({ active, payload }) => {
+                      if (!active || !payload?.length) return null;
+                      const sorted = [...payload].sort(
+                        (a, b) => (Number(b.value) || 0) - (Number(a.value) || 0)
+                      );
+                      return (
+                        <div className="grid min-w-[8rem] items-start gap-1.5 rounded-lg border border-border/50 bg-background px-2.5 py-1.5 text-xs shadow-xl">
+                          <div className="grid gap-1.5">
+                            {sorted.map((item) => (
+                              <div
+                                key={item.dataKey}
+                                className="flex flex-1 justify-between items-center gap-4"
+                              >
+                                <span
+                                  className="font-medium"
+                                  style={{ color: `var(--color-${String(item.name)})` }}
+                                >
+                                  {String(historicalChartConfig[item.name as keyof typeof historicalChartConfig]?.label ?? item.name)}
+                                </span>
+                                <span className="font-mono font-medium tabular-nums text-foreground">
+                                  {historicalMetric === "cpu"
+                                    ? `${Number(item.value).toLocaleString()} cores`
+                                    : `${Number(item.value).toLocaleString()} GiB`}
+                                </span>
+                              </div>
+                            ))}
                           </div>
-                        )}
-                      />
-                    }
+                        </div>
+                      );
+                    }}
                   />
                   <ChartLegend content={<ChartLegendContent />} />
                   {historicalSeriesKeys.map((key) =>
@@ -1041,16 +1084,34 @@ export default function Overview() {
                     tickLine={{ stroke: "hsl(var(--border))" }}
                   />
                   <ChartTooltip
-                    content={
-                      <ChartTooltipContent
-                        formatter={(value, name) => (
-                          <div className="flex flex-1 justify-between items-center gap-4">
-                            <span className="text-muted-foreground">{String(costChartConfig[name as keyof typeof costChartConfig]?.label ?? name)}</span>
-                            <span className="font-mono font-medium tabular-nums text-foreground">${Number(value).toLocaleString()}</span>
+                    content={({ active, payload }) => {
+                      if (!active || !payload?.length) return null;
+                      const sorted = [...payload].sort(
+                        (a, b) => (Number(b.value) || 0) - (Number(a.value) || 0)
+                      );
+                      return (
+                        <div className="grid min-w-[8rem] items-start gap-1.5 rounded-lg border border-border/50 bg-background px-2.5 py-1.5 text-xs shadow-xl">
+                          <div className="grid gap-1.5">
+                            {sorted.map((item) => (
+                              <div
+                                key={item.dataKey}
+                                className="flex flex-1 justify-between items-center gap-4"
+                              >
+                                <span
+                                  className="font-medium"
+                                  style={{ color: `var(--color-${String(item.name)})` }}
+                                >
+                                  {String(costChartConfig[item.name as keyof typeof costChartConfig]?.label ?? item.name)}
+                                </span>
+                                <span className="font-mono font-medium tabular-nums text-foreground">
+                                  ${Number(item.value).toLocaleString()}
+                                </span>
+                              </div>
+                            ))}
                           </div>
-                        )}
-                      />
-                    }
+                        </div>
+                      );
+                    }}
                   />
                   <ChartLegend content={<ChartLegendContent />} />
                   {costSeriesKeys.map((key) =>
