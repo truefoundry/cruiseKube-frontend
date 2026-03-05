@@ -71,6 +71,7 @@ const DEFAULT_COVERAGE = { enabled: 0, disabled: 0 };
 const DEFAULT_STATS: OverviewResourceStats = {
   allocatable: 0,
   requested: 0,
+  workloadRequested: 0,
   usage: 0,
   recommended: 0,
 };
@@ -93,6 +94,7 @@ function safeStats(s: OverviewResourceStats | undefined): OverviewResourceStats 
   return {
     allocatable: safeNumber(s.allocatable),
     requested: safeNumber(s.requested),
+    workloadRequested: safeNumber(s.workloadRequested),
     usage: safeNumber(s.usage),
     recommended: safeNumber(s.recommended),
   };
@@ -692,6 +694,7 @@ export default function Overview() {
                   <ul className="space-y-1.5 list-none">
                     <li><strong>Allocatable</strong> — Total capacity the scheduler can assign to pods (node capacity minus system/kube-reserved).</li>
                     <li><strong>Requested</strong> — Sum of resource requests from all pods in the cluster.</li>
+                    <li><strong>Workload Requested</strong> — Total CPU/memory requested by workloads from manifests (cluster-wide).</li>
                     <li><strong>Recommended</strong> — CruiseKube’s recommended total after applying right-sizing suggestions cluster-wide.</li>
                     <li><strong>Usage</strong> — Actual current usage from cluster metrics.</li>
                   </ul>
@@ -718,7 +721,7 @@ export default function Overview() {
                       CPU
                     </span>
                   </div>
-                  <div className="grid grid-cols-4 gap-2 text-xs">
+                  <div className="grid grid-cols-5 gap-2 text-xs">
                     <div>
                       <p className="text-muted-foreground uppercase">Allocatable</p>
                       <p className="font-mono font-semibold text-foreground">
@@ -729,6 +732,12 @@ export default function Overview() {
                       <p className="text-muted-foreground uppercase">Requested</p>
                       <p className="font-mono font-semibold text-foreground">
                         {formatCpuValue(d.cpuStats.requested)}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-muted-foreground uppercase">Workload Req.</p>
+                      <p className="font-mono font-semibold text-foreground">
+                        {formatCpuValue(d.cpuStats.workloadRequested ?? 0)}
                       </p>
                     </div>
                     <div>
@@ -789,7 +798,7 @@ export default function Overview() {
                       Memory
                     </span>
                   </div>
-                  <div className="grid grid-cols-4 gap-2 text-xs">
+                  <div className="grid grid-cols-5 gap-2 text-xs">
                     <div>
                       <p className="text-muted-foreground uppercase">Allocatable</p>
                       <p className="font-mono font-semibold text-foreground">
@@ -800,6 +809,12 @@ export default function Overview() {
                       <p className="text-muted-foreground uppercase">Requested</p>
                       <p className="font-mono font-semibold text-foreground">
                         {formatMemoryValue(d.memoryStats.requested)}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-muted-foreground uppercase">Workload Req.</p>
+                      <p className="font-mono font-semibold text-foreground">
+                        {formatMemoryValue(d.memoryStats.workloadRequested ?? 0)}
                       </p>
                     </div>
                     <div>

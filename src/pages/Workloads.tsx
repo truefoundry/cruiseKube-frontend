@@ -98,7 +98,7 @@ function WorkloadTypeIcon({ type }: { type: string }) {
 }
 
 function WorkloadStatusIcons({ workload }: { workload: FrontendWorkload }) {
-  const isGpuExcluded = workload.excluded && workload.excludedReason?.toLowerCase().includes("gpu");
+  const isGpuWorkload = workload.isGpuWorkload === true || (workload.excluded && workload.excludedReason?.toLowerCase().includes("gpu"));
   return (
     <span className="inline-flex items-center gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
       {workload.excluded && (
@@ -118,7 +118,7 @@ function WorkloadStatusIcons({ workload }: { workload: FrontendWorkload }) {
           </Tooltip>
         </TooltipProvider>
       )}
-      {isGpuExcluded && (
+      {isGpuWorkload && (
         <TooltipProvider>
           <Tooltip>
             <TooltipTrigger asChild>
@@ -129,7 +129,7 @@ function WorkloadStatusIcons({ workload }: { workload: FrontendWorkload }) {
             <TooltipContent side="right" className="max-w-sm">
               <p className="font-semibold">GPU workload</p>
               <p className="mt-1 text-muted-foreground">
-                This workload is excluded from optimization because it uses GPU resources.
+                This workload is identified as a GPU workload. {workload.excluded ? "It is excluded from optimization because it uses GPU resources." : "It may be excluded from optimization when it uses GPU resources."}
               </p>
             </TooltipContent>
           </Tooltip>
@@ -270,6 +270,7 @@ function workloadDetailToFrontend(d: WorkloadDetail): FrontendWorkload {
     blockingConsolidationPdb: c?.pdb ?? false,
     blockingConsolidationDoNotDisrupt: c?.doNotDisruptAnnotation ?? false,
     inDisruptionWindow: d.config.inDisruptionWindow ?? false,
+    isGpuWorkload: c?.isGPUWorkload ?? false,
   };
 }
 
@@ -283,7 +284,7 @@ export default function Workloads() {
   const [modeFilter, setModeFilter] = useState("all");
   const [priorityFilter, setPriorityFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState<
-    "all" | "excluded" | "not-excluded" | "has-pdb" | "blocking-consolidation"
+    "all" | "excluded" | "not-excluded" | "has-pdb" | "blocking-consolidation" | "gpu"
   >("all");
   const [typeFilter, setTypeFilter] = useState<string>("all");
   const [hasRecommendations, setHasRecommendations] = useState("all");
@@ -367,7 +368,7 @@ export default function Workloads() {
   };
 
   const handleModeToggle = (workload: FrontendWorkload) => {
-    if (workload.excluded) return;
+    if (workload.excluded || workload.isGpuWorkload) return;
     const newMode = workload.mode === "enabled" ? "recommend-only" : "enabled";
     const overrides: Overrides = {
       eviction_ranking: mapPriorityToEvictionRanking(workload.priority),
@@ -597,7 +598,8 @@ export default function Workloads() {
       (statusFilter === "excluded" && w.excluded === true) ||
       (statusFilter === "not-excluded" && !w.excluded) ||
       (statusFilter === "has-pdb" && w.blockingConsolidationPdb === true) ||
-      (statusFilter === "blocking-consolidation" && w.blockingConsolidation === true);
+      (statusFilter === "blocking-consolidation" && w.blockingConsolidation === true) ||
+      (statusFilter === "gpu" && w.isGpuWorkload === true);
     const matchesType = typeFilter === "all" || w.type === typeFilter;
     const matchesRecommendations = hasRecommendations === "all" || 
       (hasRecommendations === "yes" && w.hasRecommendations) ||
@@ -759,6 +761,7 @@ export default function Workloads() {
                   <SelectItem value="not-excluded">Not excluded</SelectItem>
                   <SelectItem value="has-pdb">Has PDB</SelectItem>
                   <SelectItem value="blocking-consolidation">Blocking consolidation</SelectItem>
+                  <SelectItem value="gpu">GPU workload</SelectItem>
                 </SelectContent>
               </Select>
               <Select value={typeFilter} onValueChange={setTypeFilter}>
@@ -1010,7 +1013,7 @@ export default function Workloads() {
                 <tr
                   key={workload.id}
                   className={`group transition-colors ${
-                    workload.excluded
+                    workload.excluded || workload.isGpuWorkload
                       ? "opacity-60 bg-muted/40 border-l-2 border-l-muted-foreground/40 hover:bg-muted/50"
                       : "hover:bg-muted/50 " + (index % 2 === 1 ? "bg-muted/10" : "")
                   }`}
@@ -1021,7 +1024,7 @@ export default function Workloads() {
                         <span className="shrink-0" onClick={(e) => e.stopPropagation()}>
                           <WorkloadTypeIcon type={workload.type} />
                         </span>
-                        <span className={`font-medium break-words ${workload.excluded ? "text-muted-foreground" : ""}`}>{workload.workload}</span>
+                        <span className={`font-medium break-words ${workload.excluded || workload.isGpuWorkload ? "text-muted-foreground" : ""}`}>{workload.workload}</span>
                         <WorkloadStatusIcons workload={workload} />
                       </div>
                       {workload.excluded && (
@@ -1089,7 +1092,7 @@ export default function Workloads() {
                               <Switch
                                 checked={workload.mode === "enabled"}
                                 onCheckedChange={() => handleModeToggle(workload)}
-                                disabled={workload.excluded || updateOverrideMutation.isPending}
+                                disabled={workload.excluded || workload.isGpuWorkload || updateOverrideMutation.isPending}
                                 className="scale-90 opacity-90 data-[state=checked]:bg-muted-foreground/80"
                                 aria-label={workload.mode === "enabled" ? "Cruise on; click to switch to Recommend" : "Recommend; click to switch to Cruise"}
                               />
@@ -1141,7 +1144,7 @@ export default function Workloads() {
                         size="sm"
                         className="h-8 text-xs font-medium"
                         onClick={() => navigate(`/workloads/${workload.namespace}/${workload.workload}`)}
-                        disabled={workload.excluded}
+                        disabled={workload.excluded || workload.isGpuWorkload}
                       >
                         Pod Details
                       </Button>
@@ -1153,6 +1156,7 @@ export default function Workloads() {
                               size="icon"
                               className="h-8 w-8 shrink-0"
                               onClick={() => navigate(`/events?workload=${encodeURIComponent(workloadIdForApi(workload.id))}`)}
+                              disabled={workload.excluded || workload.isGpuWorkload}
                               aria-label={`View events for ${workload.workload}`}
                             >
                               <Activity className="h-3.5 w-3.5" />
@@ -1171,7 +1175,7 @@ export default function Workloads() {
                               size="icon"
                               className="h-8 w-8 shrink-0"
                               onClick={() => openEditModal(workload)}
-                              disabled={workload.excluded}
+                              disabled={workload.excluded || workload.isGpuWorkload}
                               aria-label="Edit CruiseConfig"
                             >
                               <Pencil className="h-3.5 w-3.5" />
