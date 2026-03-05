@@ -168,6 +168,7 @@ export default function Workloads() {
   const [namespaceFilter, setNamespaceFilter] = useState("all");
   const [modeFilter, setModeFilter] = useState("all");
   const [priorityFilter, setPriorityFilter] = useState("all");
+  const [blockingConsolidationFilter, setBlockingConsolidationFilter] = useState<"all" | "yes">("all");
   const [hasRecommendations, setHasRecommendations] = useState("all");
   const [sortColumn, setSortColumn] = useState<string | null>("potentialDollars");
   const [sortDirection, setSortDirection] = useState<"asc" | "desc" | null>("desc");
@@ -474,10 +475,12 @@ export default function Workloads() {
     const matchesNamespace = namespaceFilter === "all" || w.namespace === namespaceFilter;
     const matchesMode = modeFilter === "all" || w.mode === modeFilter;
     const matchesPriority = priorityFilter === "all" || w.priority === priorityFilter;
+    const matchesBlockingConsolidation =
+      blockingConsolidationFilter === "all" || (blockingConsolidationFilter === "yes" && w.blockingConsolidation === true);
     const matchesRecommendations = hasRecommendations === "all" || 
       (hasRecommendations === "yes" && w.hasRecommendations) ||
       (hasRecommendations === "no" && !w.hasRecommendations);
-    return matchesSearch && matchesNamespace && matchesMode && matchesPriority && matchesRecommendations;
+    return matchesSearch && matchesNamespace && matchesMode && matchesPriority && matchesBlockingConsolidation && matchesRecommendations;
   });
 
   const sortedWorkloads = sortWorkloads(filteredWorkloads);
@@ -621,6 +624,15 @@ export default function Workloads() {
                   <SelectItem value="medium">Medium</SelectItem>
                   <SelectItem value="high">High</SelectItem>
                   <SelectItem value="non-evictable">Non-evictable</SelectItem>
+                </SelectContent>
+              </Select>
+              <Select value={blockingConsolidationFilter} onValueChange={(v) => setBlockingConsolidationFilter(v as "all" | "yes")}>
+                <SelectTrigger className="h-9 w-[180px] bg-muted/30 border-border rounded-md text-sm">
+                  <SelectValue placeholder="Blocking consolidation" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All workloads</SelectItem>
+                  <SelectItem value="yes">Blocking consolidation</SelectItem>
                 </SelectContent>
               </Select>
               {!isLoadingSummary && summaryData?.workloadDetails && summaryData.workloadDetails.length > 0 && (() => {
