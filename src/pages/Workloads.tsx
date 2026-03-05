@@ -20,6 +20,9 @@ import {
   ShieldCheck,
   Zap,
   Activity,
+  Ban,
+  LockKeyhole,
+  Shield,
 } from "lucide-react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faCircleArrowUp } from "@fortawesome/free-solid-svg-icons";
@@ -91,6 +94,116 @@ function WorkloadTypeIcon({ type }: { type: string }) {
         </TooltipContent>
       </Tooltip>
     </TooltipProvider>
+  );
+}
+
+function WorkloadStatusIcons({ workload }: { workload: FrontendWorkload }) {
+  const isGpuExcluded = workload.excluded && workload.excludedReason?.toLowerCase().includes("gpu");
+  return (
+    <span className="inline-flex items-center gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
+      {workload.excluded && (
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span className="inline-flex cursor-help text-muted-foreground">
+                <Ban className="h-4 w-4" aria-hidden />
+              </span>
+            </TooltipTrigger>
+            <TooltipContent side="right" className="max-w-sm">
+              <p className="font-semibold">Excluded</p>
+              <p className="mt-1 text-muted-foreground">
+                {workload.excludedReason || "Excluded from optimization."}
+              </p>
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+      )}
+      {isGpuExcluded && (
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span className="inline-flex cursor-help text-violet-500 dark:text-violet-400">
+                <Cpu className="h-4 w-4" aria-hidden />
+              </span>
+            </TooltipTrigger>
+            <TooltipContent side="right" className="max-w-sm">
+              <p className="font-semibold">GPU workload</p>
+              <p className="mt-1 text-muted-foreground">
+                This workload is excluded from optimization because it uses GPU resources.
+              </p>
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+      )}
+      {workload.blockingConsolidationPdb && (
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span className="inline-flex cursor-help text-amber-600 dark:text-amber-400">
+                <LockKeyhole className="h-4 w-4" aria-hidden />
+              </span>
+            </TooltipTrigger>
+            <TooltipContent side="right" className="max-w-sm">
+              <p className="font-semibold">Has PDB</p>
+              <p className="mt-1 text-muted-foreground">
+                This workload will block consolidation of nodes because of its Pod Disruption Budget (PDB). Set up a disruption window in Edit CruiseConfig so that nodes can consolidate during the window.
+              </p>
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+      )}
+      {workload.blockingConsolidationDoNotDisrupt && !workload.inDisruptionWindow && (
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span className="inline-flex cursor-help text-amber-600 dark:text-amber-400">
+                <Shield className="h-4 w-4" aria-hidden />
+              </span>
+            </TooltipTrigger>
+            <TooltipContent side="right" className="max-w-sm">
+              <p className="font-semibold">Do-not-disrupt</p>
+              <p className="mt-1 text-muted-foreground">
+                This workload will block consolidation of nodes because of its do-not-disrupt annotation. Set up a disruption window in Edit CruiseConfig so that nodes can consolidate during the window.
+              </p>
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+      )}
+      {workload.blockingConsolidation && workload.inDisruptionWindow && (
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span className="inline-flex cursor-help text-success">
+                <ShieldCheck className="h-4 w-4" aria-hidden />
+              </span>
+            </TooltipTrigger>
+            <TooltipContent side="right" className="max-w-sm">
+              <p className="font-semibold">In disruption window</p>
+              <p className="mt-1 text-muted-foreground">
+                This workload is currently inside a disruption window. Do-not-disrupt annotations are temporarily removed to allow node consolidation.
+              </p>
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+      )}
+      {workload.blockingConsolidation && !workload.inDisruptionWindow && !workload.blockingConsolidationPdb && !workload.blockingConsolidationDoNotDisrupt && (
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span className="inline-flex cursor-help text-amber-600 dark:text-amber-400">
+                <ShieldAlert className="h-4 w-4" aria-hidden />
+              </span>
+            </TooltipTrigger>
+            <TooltipContent side="right" className="max-w-sm">
+              <p className="font-semibold">Blocks node consolidation</p>
+              <p className="mt-1 text-muted-foreground">
+                This workload blocks consolidation of nodes. Set up a disruption window in Edit CruiseConfig so that nodes can consolidate during the window.
+              </p>
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+      )}
+    </span>
   );
 }
 
@@ -172,6 +285,7 @@ export default function Workloads() {
   const [statusFilter, setStatusFilter] = useState<
     "all" | "excluded" | "not-excluded" | "has-pdb" | "blocking-consolidation"
   >("all");
+  const [typeFilter, setTypeFilter] = useState<string>("all");
   const [hasRecommendations, setHasRecommendations] = useState("all");
   const [sortColumn, setSortColumn] = useState<string | null>("potentialDollars");
   const [sortDirection, setSortDirection] = useState<"asc" | "desc" | null>("desc");
@@ -484,15 +598,17 @@ export default function Workloads() {
       (statusFilter === "not-excluded" && !w.excluded) ||
       (statusFilter === "has-pdb" && w.blockingConsolidationPdb === true) ||
       (statusFilter === "blocking-consolidation" && w.blockingConsolidation === true);
+    const matchesType = typeFilter === "all" || w.type === typeFilter;
     const matchesRecommendations = hasRecommendations === "all" || 
       (hasRecommendations === "yes" && w.hasRecommendations) ||
       (hasRecommendations === "no" && !w.hasRecommendations);
-    return matchesSearch && matchesNamespace && matchesMode && matchesPriority && matchesStatus && matchesRecommendations;
+    return matchesSearch && matchesNamespace && matchesMode && matchesPriority && matchesStatus && matchesType && matchesRecommendations;
   });
 
   const sortedWorkloads = sortWorkloads(filteredWorkloads);
 
   const namespaces = [...new Set(asArray(workloads).map((w) => w.namespace))];
+  const workloadTypesInData = [...new Set(asArray(workloads).map((w) => w.type))].sort();
 
   const handleSort = (column: string) => {
     if (sortColumn === column) {
@@ -643,6 +759,17 @@ export default function Workloads() {
                   <SelectItem value="not-excluded">Not excluded</SelectItem>
                   <SelectItem value="has-pdb">Has PDB</SelectItem>
                   <SelectItem value="blocking-consolidation">Blocking consolidation</SelectItem>
+                </SelectContent>
+              </Select>
+              <Select value={typeFilter} onValueChange={setTypeFilter}>
+                <SelectTrigger className="h-9 w-[140px] bg-muted/30 border-border rounded-md text-sm">
+                  <SelectValue placeholder="Type" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All types</SelectItem>
+                  {workloadTypesInData.map((t) => (
+                    <SelectItem key={t} value={t}>{t}</SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
               {!isLoadingSummary && summaryData?.workloadDetails && summaryData.workloadDetails.length > 0 && (() => {
@@ -895,46 +1022,7 @@ export default function Workloads() {
                           <WorkloadTypeIcon type={workload.type} />
                         </span>
                         <span className={`font-medium break-words ${workload.excluded ? "text-muted-foreground" : ""}`}>{workload.workload}</span>
-                        {workload.blockingConsolidation && (
-                          <TooltipProvider>
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <span
-                                  className={`inline-flex shrink-0 cursor-help ${workload.inDisruptionWindow ? "text-success" : "text-amber-600 dark:text-amber-400"}`}
-                                  onClick={(e) => e.stopPropagation()}
-                                >
-                                  {workload.inDisruptionWindow
-                                    ? <ShieldCheck className="h-4 w-4" aria-hidden />
-                                    : <ShieldAlert className="h-4 w-4" aria-hidden />
-                                  }
-                                </span>
-                              </TooltipTrigger>
-                              <TooltipContent side="right" className="max-w-sm">
-                                {workload.inDisruptionWindow ? (
-                                  <p>This workload is currently inside a disruption window. Do-not-disrupt annotations are temporarily removed to allow node consolidation.</p>
-                                ) : (
-                                  <>
-                                    <p>
-                                      This workload will block consolidation of nodes because of{" "}
-                                      {[workload.blockingConsolidationPdb && "Pod Disruption Budget (PDB)", workload.blockingConsolidationDoNotDisrupt && "do-not-disrupt annotation"]
-                                        .filter(Boolean)
-                                        .join(" and ")}
-                                      .
-                                    </p>
-                                    <p className="mt-2 font-medium">
-                                      Set up a disruption window in Edit CruiseConfig so that nodes can consolidate during the window.
-                                    </p>
-                                  </>
-                                )}
-                              </TooltipContent>
-                            </Tooltip>
-                          </TooltipProvider>
-                        )}
-                        {workload.excluded && (
-                          <Badge variant="secondary" className="text-xs font-normal bg-muted text-muted-foreground border border-border">
-                            Excluded
-                          </Badge>
-                        )}
+                        <WorkloadStatusIcons workload={workload} />
                       </div>
                       {workload.excluded && (
                         <p className="text-xs text-muted-foreground mt-0.5">
