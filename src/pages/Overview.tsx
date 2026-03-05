@@ -37,6 +37,7 @@ import {
   ChartLegendContent,
   type ChartConfig,
 } from "@/components/ui/chart";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
@@ -307,6 +308,7 @@ export default function Overview() {
       : 0;
 
   const disabledCount = d.adoption.disabled;
+  const hasNoWorkloads = !isLoading && !error && adoptionTotal === 0;
   const pctCpuUsed =
     d.cpuStats.allocatable > 0
       ? (d.cpuStats.usage / d.cpuStats.allocatable) * 100
@@ -337,6 +339,15 @@ export default function Overview() {
   return (
     <div className="min-w-0 w-full max-w-full animate-fade-in">
       <div className="mx-auto max-w-[1600px] px-4 py-6 sm:px-6 lg:px-8 space-y-8">
+        {hasNoWorkloads && (
+          <Alert className="border-muted-foreground/30 bg-muted/30">
+            <Activity className="h-4 w-4" />
+            <AlertTitle>Stats are still updating</AlertTitle>
+            <AlertDescription>
+              Workload stats have not been generated yet. It may take 5–10 minutes for the overview to populate after the cluster is connected.
+            </AlertDescription>
+          </Alert>
+        )}
         {/* Top row: 4 metric cards */}
         <section aria-labelledby="overview-metrics-heading">
           <h2 id="overview-metrics-heading" className="sr-only">
