@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useSearchParams } from "react-router-dom";
 import {
   Activity,
   ChevronDown,
@@ -58,6 +59,21 @@ const CATEGORY_META: Record<
 const DEFAULT_CATEGORY_META = { icon: Activity, color: "text-muted-foreground" };
 
 const MINUTES_OPTIONS = [1, 5, 15, 30, 60];
+
+const CATEGORY_OPTIONS = [
+  "all",
+  ...Object.keys(CATEGORY_META),
+] as const;
+
+function categoryLabel(category: string): string {
+  if (category === "all") return "All categories";
+  return category.replace(/_/g, " ");
+}
+
+function categoryIcon(category: string): { Icon: LucideIcon; color: string } {
+  const meta = category === "all" ? DEFAULT_CATEGORY_META : (CATEGORY_META[category] ?? DEFAULT_CATEGORY_META);
+  return { Icon: meta.icon, color: meta.color };
+}
 
 function formatEventTime(iso: string): string {
   try {
@@ -144,8 +160,15 @@ const WORKLOAD_ID_PLACEHOLDER = "Deployment:namespace:workload-name";
 
 export default function Events() {
   const { selectedClusterId } = useCluster();
-  const [minutes, setMinutes] = useState(1);
-  const [workloadSearch, setWorkloadSearch] = useState("");
+  const [searchParams] = useSearchParams();
+  const [minutes, setMinutes] = useState(5);
+  const [workloadSearch, setWorkloadSearch] = useState(() => searchParams.get("workload") ?? "");
+  const [categoryFilter, setCategoryFilter] = useState<string>("all");
+
+  useEffect(() => {
+    const w = searchParams.get("workload");
+    if (w != null && w !== "") setWorkloadSearch(w);
+  }, [searchParams]);
 
   const workloadId = workloadSearch.trim() || undefined;
 
@@ -156,7 +179,14 @@ export default function Events() {
     retry: 1,
   });
 
-  const events = data?.events ?? [];
+  const allEvents = data?.events ?? [];
+  const events =
+    categoryFilter === "all"
+      ? allEvents
+      : allEvents.filter((e) => e.category === categoryFilter);
+
+  const categoryCount = (cat: string) =>
+    cat === "all" ? allEvents.length : allEvents.filter((e) => e.category === cat).length;
 
   if (!selectedClusterId) {
     return (
@@ -198,6 +228,28 @@ export default function Events() {
             </SelectContent>
           </Select>
         </div>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-1.5 rounded-md border border-border bg-muted/30 p-1.5">
+        <span className="px-2 py-1 text-xs font-medium text-muted-foreground self-center">Category:</span>
+        {CATEGORY_OPTIONS.map((cat) => {
+          const { Icon, color } = categoryIcon(cat);
+          return (
+            <Button
+              key={cat}
+              type="button"
+              variant={categoryFilter === cat ? "default" : "ghost"}
+              size="sm"
+              className="h-8 text-xs shrink-0 gap-1.5"
+              onClick={() => setCategoryFilter(cat)}
+            >
+              <Icon className={`h-3.5 w-3.5 shrink-0 ${categoryFilter === cat ? "text-primary-foreground" : color}`} />
+              <span className="tabular-nums">{categoryCount(cat)}</span>
+              {" · "}
+              {categoryLabel(cat)}
+            </Button>
+          );
+        })}
       </div>
 
       <div className="flex flex-wrap items-center gap-2">
@@ -245,9 +297,11 @@ export default function Events() {
             </div>
           ) : events.length === 0 ? (
             <div className="p-6 text-sm text-muted-foreground text-center">
-              {workloadId
-                ? `No events for workload "${workloadId}" in the last ${minutes} minute${minutes !== 1 ? "s" : ""}`
-                : `No events in the last ${minutes} minute${minutes !== 1 ? "s" : ""}`}
+              {categoryFilter !== "all" && allEvents.length > 0
+                ? `No events match the selected category (${categoryLabel(categoryFilter)}).`
+                : workloadId
+                  ? `No events for workload "${workloadId}" in the last ${minutes} minute${minutes !== 1 ? "s" : ""}`
+                  : `No events in the last ${minutes} minute${minutes !== 1 ? "s" : ""}`}
             </div>
           ) : (
             <div className="divide-y-0">

@@ -19,6 +19,7 @@ import {
   ShieldAlert,
   ShieldCheck,
   Zap,
+  Activity,
 } from "lucide-react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faCircleArrowUp } from "@fortawesome/free-solid-svg-icons";
@@ -168,7 +169,9 @@ export default function Workloads() {
   const [namespaceFilter, setNamespaceFilter] = useState("all");
   const [modeFilter, setModeFilter] = useState("all");
   const [priorityFilter, setPriorityFilter] = useState("all");
-  const [blockingConsolidationFilter, setBlockingConsolidationFilter] = useState<"all" | "yes">("all");
+  const [statusFilter, setStatusFilter] = useState<
+    "all" | "excluded" | "not-excluded" | "has-pdb" | "blocking-consolidation"
+  >("all");
   const [hasRecommendations, setHasRecommendations] = useState("all");
   const [sortColumn, setSortColumn] = useState<string | null>("potentialDollars");
   const [sortDirection, setSortDirection] = useState<"asc" | "desc" | null>("desc");
@@ -475,12 +478,16 @@ export default function Workloads() {
     const matchesNamespace = namespaceFilter === "all" || w.namespace === namespaceFilter;
     const matchesMode = modeFilter === "all" || w.mode === modeFilter;
     const matchesPriority = priorityFilter === "all" || w.priority === priorityFilter;
-    const matchesBlockingConsolidation =
-      blockingConsolidationFilter === "all" || (blockingConsolidationFilter === "yes" && w.blockingConsolidation === true);
+    const matchesStatus =
+      statusFilter === "all" ||
+      (statusFilter === "excluded" && w.excluded === true) ||
+      (statusFilter === "not-excluded" && !w.excluded) ||
+      (statusFilter === "has-pdb" && w.blockingConsolidationPdb === true) ||
+      (statusFilter === "blocking-consolidation" && w.blockingConsolidation === true);
     const matchesRecommendations = hasRecommendations === "all" || 
       (hasRecommendations === "yes" && w.hasRecommendations) ||
       (hasRecommendations === "no" && !w.hasRecommendations);
-    return matchesSearch && matchesNamespace && matchesMode && matchesPriority && matchesBlockingConsolidation && matchesRecommendations;
+    return matchesSearch && matchesNamespace && matchesMode && matchesPriority && matchesStatus && matchesRecommendations;
   });
 
   const sortedWorkloads = sortWorkloads(filteredWorkloads);
@@ -594,7 +601,7 @@ export default function Workloads() {
                 />
               </div>
               <Select value={namespaceFilter} onValueChange={setNamespaceFilter}>
-                <SelectTrigger className="h-9 w-[140px] bg-muted/30 border-border rounded-md text-sm">
+                <SelectTrigger className="h-9 min-w-[180px] flex-1 max-w-[280px] bg-muted/30 border-border rounded-md text-sm">
                   <SelectValue placeholder="Namespace" />
                 </SelectTrigger>
                 <SelectContent>
@@ -626,13 +633,16 @@ export default function Workloads() {
                   <SelectItem value="non-evictable">Non-evictable</SelectItem>
                 </SelectContent>
               </Select>
-              <Select value={blockingConsolidationFilter} onValueChange={(v) => setBlockingConsolidationFilter(v as "all" | "yes")}>
-                <SelectTrigger className="h-9 w-[180px] bg-muted/30 border-border rounded-md text-sm">
-                  <SelectValue placeholder="Blocking consolidation" />
+              <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v as typeof statusFilter)}>
+                <SelectTrigger className="h-9 w-[200px] bg-muted/30 border-border rounded-md text-sm">
+                  <SelectValue placeholder="Excluded / PDB / Blocking" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All workloads</SelectItem>
-                  <SelectItem value="yes">Blocking consolidation</SelectItem>
+                  <SelectItem value="excluded">Excluded</SelectItem>
+                  <SelectItem value="not-excluded">Not excluded</SelectItem>
+                  <SelectItem value="has-pdb">Has PDB</SelectItem>
+                  <SelectItem value="blocking-consolidation">Blocking consolidation</SelectItem>
                 </SelectContent>
               </Select>
               {!isLoadingSummary && summaryData?.workloadDetails && summaryData.workloadDetails.length > 0 && (() => {
@@ -1038,6 +1048,24 @@ export default function Workloads() {
                   </td>
                   <td onClick={(e) => e.stopPropagation()}>
                     <div className="flex items-center gap-1">
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8 shrink-0"
+                              onClick={() => navigate(`/events?workload=${encodeURIComponent(workloadIdForApi(workload.id))}`)}
+                              aria-label={`View events for ${workload.workload}`}
+                            >
+                              <Activity className="h-3.5 w-3.5" />
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            <p>View events for this workload</p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
                       <Button
                         variant="outline"
                         size="sm"
