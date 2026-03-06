@@ -45,6 +45,8 @@ export interface FrontendWorkload {
   blockingConsolidationDoNotDisrupt?: boolean;
   /** True when the workload is currently inside an active disruption window. */
   inDisruptionWindow?: boolean;
+  /** True when the workload is identified as a GPU workload. */
+  isGpuWorkload?: boolean;
 }
 
 export interface FrontendContainer {

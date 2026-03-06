@@ -237,6 +237,8 @@ export interface WorkloadDetailConstraints {
   topologySpreadConstraint: boolean;
   podAntiAffinity: boolean;
   excludedAnnotation: boolean;
+  /** Whether the workload is identified as a GPU workload. */
+  isGPUWorkload?: boolean;
 }
 
 export interface WorkloadDetailResourceRecommended {
@@ -298,6 +300,8 @@ export interface OverviewCoverage {
 export interface OverviewResourceStats {
   allocatable: number;
   requested: number;
+  /** Total CPU/memory requested by workloads from manifests (CPU in cores, memory in GiB). */
+  workloadRequested?: number;
   usage: number;
   recommended: number;
 }

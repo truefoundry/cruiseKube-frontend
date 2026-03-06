@@ -6,6 +6,7 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { ClusterProvider } from "@/contexts/ClusterContext";
 import { ConfigProvider } from "@/contexts/ConfigContext";
+import { DevModeProvider } from "@/contexts/DevModeContext";
 import Overview from "./pages/Overview";
 import Workloads from "./pages/Workloads";
 import WorkloadDetail from "./pages/WorkloadDetail";
@@ -20,6 +21,7 @@ const App = () => (
     <TooltipProvider>
       <ClusterProvider>
         <ConfigProvider>
+          <DevModeProvider>
           <Toaster />
           <Sonner />
           <BrowserRouter>
@@ -34,6 +36,7 @@ const App = () => (
               <Route path="*" element={<NotFound />} />
             </Routes>
           </BrowserRouter>
+          </DevModeProvider>
         </ConfigProvider>
       </ClusterProvider>
     </TooltipProvider>

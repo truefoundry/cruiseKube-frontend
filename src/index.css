@@ -115,6 +115,18 @@
     @apply px-4 py-3 border-b border-border/50;
   }
 
+  .data-table-compact th {
+    @apply px-1.5 py-2;
+  }
+
+  .data-table-compact td {
+    @apply px-1.5 py-2;
+  }
+
+  .data-table-compact tbody tr {
+    @apply cursor-default;
+  }
+
   .data-table tr:hover {
     @apply bg-muted/30;
   }

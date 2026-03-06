@@ -21,6 +21,7 @@ import {
   ComposedChart,
 } from "recharts";
 import { useCluster } from "@/contexts/ClusterContext";
+import { useDevMode } from "@/contexts/DevModeContext";
 import {
   apiClient,
   type OverviewResponse,
@@ -37,6 +38,7 @@ import {
   ChartLegendContent,
   type ChartConfig,
 } from "@/components/ui/chart";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
@@ -71,6 +73,7 @@ const DEFAULT_COVERAGE = { enabled: 0, disabled: 0 };
 const DEFAULT_STATS: OverviewResourceStats = {
   allocatable: 0,
   requested: 0,
+  workloadRequested: 0,
   usage: 0,
   recommended: 0,
 };
@@ -93,6 +96,7 @@ function safeStats(s: OverviewResourceStats | undefined): OverviewResourceStats 
   return {
     allocatable: safeNumber(s.allocatable),
     requested: safeNumber(s.requested),
+    workloadRequested: safeNumber(s.workloadRequested),
     usage: safeNumber(s.usage),
     recommended: safeNumber(s.recommended),
   };
@@ -175,6 +179,7 @@ function transformHistoricalTimelineResponse(raw: HistoricalTimelineResponse | n
 export default function Overview() {
   const navigate = useNavigate();
   const { selectedClusterId } = useCluster();
+  const { verboseMode } = useDevMode();
 
   const [historicalMetric, setHistoricalMetric] = useState<"cpu" | "memory">("cpu");
   const [timeRangePreset, setTimeRangePreset] = useState<TimeRangePreset>("6h");
@@ -305,6 +310,7 @@ export default function Overview() {
       : 0;
 
   const disabledCount = d.adoption.disabled;
+  const hasNoWorkloads = !isLoading && !error && adoptionTotal === 0;
   const pctCpuUsed =
     d.cpuStats.allocatable > 0
       ? (d.cpuStats.usage / d.cpuStats.allocatable) * 100
@@ -335,6 +341,15 @@ export default function Overview() {
   return (
     <div className="min-w-0 w-full max-w-full animate-fade-in">
       <div className="mx-auto max-w-[1600px] px-4 py-6 sm:px-6 lg:px-8 space-y-8">
+        {hasNoWorkloads && (
+          <Alert className="border-muted-foreground/30 bg-muted/30">
+            <Activity className="h-4 w-4" />
+            <AlertTitle>Stats are still updating</AlertTitle>
+            <AlertDescription>
+              Workload stats have not been generated yet. It may take 5–10 minutes for the overview to populate after the cluster is connected.
+            </AlertDescription>
+          </Alert>
+        )}
         {/* Top row: 4 metric cards */}
         <section aria-labelledby="overview-metrics-heading">
           <h2 id="overview-metrics-heading" className="sr-only">
@@ -692,6 +707,9 @@ export default function Overview() {
                   <ul className="space-y-1.5 list-none">
                     <li><strong>Allocatable</strong> — Total capacity the scheduler can assign to pods (node capacity minus system/kube-reserved).</li>
                     <li><strong>Requested</strong> — Sum of resource requests from all pods in the cluster.</li>
+                    {verboseMode && (
+                      <li><strong>Workload Requested</strong> — Total CPU/memory requested by workloads from manifests (cluster-wide).</li>
+                    )}
                     <li><strong>Recommended</strong> — CruiseKube’s recommended total after applying right-sizing suggestions cluster-wide.</li>
                     <li><strong>Usage</strong> — Actual current usage from cluster metrics.</li>
                   </ul>
@@ -718,7 +736,7 @@ export default function Overview() {
                       CPU
                     </span>
                   </div>
-                  <div className="grid grid-cols-4 gap-2 text-xs">
+                  <div className={`grid gap-2 text-xs ${verboseMode ? "grid-cols-5" : "grid-cols-4"}`}>
                     <div>
                       <p className="text-muted-foreground uppercase">Allocatable</p>
                       <p className="font-mono font-semibold text-foreground">
@@ -731,6 +749,14 @@ export default function Overview() {
                         {formatCpuValue(d.cpuStats.requested)}
                       </p>
                     </div>
+                    {verboseMode && (
+                      <div>
+                        <p className="text-muted-foreground uppercase">Workload Req.</p>
+                        <p className="font-mono font-semibold text-foreground">
+                          {formatCpuValue(d.cpuStats.workloadRequested ?? 0)}
+                        </p>
+                      </div>
+                    )}
                     <div>
                       <p className="text-muted-foreground uppercase">Recommended</p>
                       <p className="font-mono font-semibold text-foreground">
@@ -789,7 +815,7 @@ export default function Overview() {
                       Memory
                     </span>
                   </div>
-                  <div className="grid grid-cols-4 gap-2 text-xs">
+                  <div className={`grid gap-2 text-xs ${verboseMode ? "grid-cols-5" : "grid-cols-4"}`}>
                     <div>
                       <p className="text-muted-foreground uppercase">Allocatable</p>
                       <p className="font-mono font-semibold text-foreground">
@@ -802,6 +828,14 @@ export default function Overview() {
                         {formatMemoryValue(d.memoryStats.requested)}
                       </p>
                     </div>
+                    {verboseMode && (
+                      <div>
+                        <p className="text-muted-foreground uppercase">Workload Req.</p>
+                        <p className="font-mono font-semibold text-foreground">
+                          {formatMemoryValue(d.memoryStats.workloadRequested ?? 0)}
+                        </p>
+                      </div>
+                    )}
                     <div>
                       <p className="text-muted-foreground uppercase">Recommended</p>
                       <p className="font-mono font-semibold text-foreground">
