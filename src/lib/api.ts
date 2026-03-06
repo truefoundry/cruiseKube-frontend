@@ -121,7 +121,6 @@ export interface WorkloadStat {
   name: string;
   creation_time: string;
   updated_at: string;
-  continuous_optimization: boolean;
   is_horizontally_autoscaled_on_cpu: boolean;
   is_horizontally_autoscaled_on_memory: boolean;
   constraints?: WorkloadStatConstraints;

@@ -553,7 +553,7 @@ export function transformStatsToWastefulWorkloads(
   recommendationAnalysis?: RecommendationAnalysisItem[]
 ): WastefulWorkload[] {
   const stats = Array.isArray(statsResponse?.stats) ? statsResponse.stats : [];
-  /** Normalized overrides; lookup by workload_id for continuous_optimization. */
+  /** Normalized overrides; lookup by workload_id. */
   const overrideList = Array.isArray(overrides) ? overrides : [];
   const overrideMap = new Map(overrideList.map(o => [o.workload_id, o]));
   /** Lookup by "namespace:workload:container" for recommended CPU/memory. */
@@ -737,4 +737,3 @@ export function getContainersForPod(
     memRecRequest: formatMemory(item.recommended_memory),
   }));
 }
-
