@@ -4,15 +4,19 @@ import {
   XCircle,
   Loader2,
   DollarSign,
+  Bug,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiClient, type PrometheusConfig, type ClusterSettings } from "@/lib/api";
 import { useCluster } from "@/contexts/ClusterContext";
 import { useConfig } from "@/contexts/ConfigContext";
+import { useDevMode } from "@/contexts/DevModeContext";
 import { toast } from "@/hooks/use-toast";
 import { setResourcePricing } from "@/lib/pricing";
 
@@ -22,6 +26,7 @@ const DEFAULT_MEMORY = 0.00725;
 export default function Policies() {
   const { selectedClusterId } = useCluster();
   const { config: prometheusConfig, isLoading: prometheusConfigLoading, refetch: refetchPrometheusConfig } = useConfig();
+  const { verboseMode, setVerboseMode } = useDevMode();
   const queryClient = useQueryClient();
 
   const { data: settings, isLoading: settingsLoading } = useQuery<ClusterSettings>({
@@ -126,6 +131,7 @@ export default function Policies() {
         <TabsList className="bg-muted/50">
           <TabsTrigger value="pricing">Resource Pricing</TabsTrigger>
           <TabsTrigger value="prometheus">Prometheus Config</TabsTrigger>
+          <TabsTrigger value="developer">Developer</TabsTrigger>
         </TabsList>
 
         {/* Resource Pricing Tab */}
@@ -243,6 +249,31 @@ export default function Policies() {
                 )}
               </div>
             )}
+          </div>
+        </TabsContent>
+
+        {/* Developer Tab */}
+        <TabsContent value="developer" className="space-y-6">
+          <div className="metric-card">
+            <div className="flex items-center gap-2 mb-4">
+              <Bug className="h-4 w-4 text-muted-foreground" />
+              <h3 className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                Verbose / dev mode
+              </h3>
+            </div>
+            <p className="text-sm text-muted-foreground mb-4">
+              When enabled, the Overview page shows extra details (Workload Requested in the resource efficiency section). 
+            </p>
+            <div className="flex items-center space-x-2">
+              <Switch
+                id="verbose-mode"
+                checked={verboseMode}
+                onCheckedChange={setVerboseMode}
+              />
+              <Label htmlFor="verbose-mode" className="text-sm font-medium cursor-pointer">
+                {verboseMode ? "Verbose mode on" : "Verbose mode off"}
+              </Label>
+            </div>
           </div>
         </TabsContent>
       </Tabs>

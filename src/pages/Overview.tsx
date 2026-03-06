@@ -21,6 +21,7 @@ import {
   ComposedChart,
 } from "recharts";
 import { useCluster } from "@/contexts/ClusterContext";
+import { useDevMode } from "@/contexts/DevModeContext";
 import {
   apiClient,
   type OverviewResponse,
@@ -178,6 +179,7 @@ function transformHistoricalTimelineResponse(raw: HistoricalTimelineResponse | n
 export default function Overview() {
   const navigate = useNavigate();
   const { selectedClusterId } = useCluster();
+  const { verboseMode } = useDevMode();
 
   const [historicalMetric, setHistoricalMetric] = useState<"cpu" | "memory">("cpu");
   const [timeRangePreset, setTimeRangePreset] = useState<TimeRangePreset>("6h");
@@ -705,7 +707,9 @@ export default function Overview() {
                   <ul className="space-y-1.5 list-none">
                     <li><strong>Allocatable</strong> — Total capacity the scheduler can assign to pods (node capacity minus system/kube-reserved).</li>
                     <li><strong>Requested</strong> — Sum of resource requests from all pods in the cluster.</li>
-                    <li><strong>Workload Requested</strong> — Total CPU/memory requested by workloads from manifests (cluster-wide).</li>
+                    {verboseMode && (
+                      <li><strong>Workload Requested</strong> — Total CPU/memory requested by workloads from manifests (cluster-wide).</li>
+                    )}
                     <li><strong>Recommended</strong> — CruiseKube’s recommended total after applying right-sizing suggestions cluster-wide.</li>
                     <li><strong>Usage</strong> — Actual current usage from cluster metrics.</li>
                   </ul>
@@ -732,7 +736,7 @@ export default function Overview() {
                       CPU
                     </span>
                   </div>
-                  <div className="grid grid-cols-5 gap-2 text-xs">
+                  <div className={`grid gap-2 text-xs ${verboseMode ? "grid-cols-5" : "grid-cols-4"}`}>
                     <div>
                       <p className="text-muted-foreground uppercase">Allocatable</p>
                       <p className="font-mono font-semibold text-foreground">
@@ -745,12 +749,14 @@ export default function Overview() {
                         {formatCpuValue(d.cpuStats.requested)}
                       </p>
                     </div>
-                    <div>
-                      <p className="text-muted-foreground uppercase">Workload Req.</p>
-                      <p className="font-mono font-semibold text-foreground">
-                        {formatCpuValue(d.cpuStats.workloadRequested ?? 0)}
-                      </p>
-                    </div>
+                    {verboseMode && (
+                      <div>
+                        <p className="text-muted-foreground uppercase">Workload Req.</p>
+                        <p className="font-mono font-semibold text-foreground">
+                          {formatCpuValue(d.cpuStats.workloadRequested ?? 0)}
+                        </p>
+                      </div>
+                    )}
                     <div>
                       <p className="text-muted-foreground uppercase">Recommended</p>
                       <p className="font-mono font-semibold text-foreground">
@@ -809,7 +815,7 @@ export default function Overview() {
                       Memory
                     </span>
                   </div>
-                  <div className="grid grid-cols-5 gap-2 text-xs">
+                  <div className={`grid gap-2 text-xs ${verboseMode ? "grid-cols-5" : "grid-cols-4"}`}>
                     <div>
                       <p className="text-muted-foreground uppercase">Allocatable</p>
                       <p className="font-mono font-semibold text-foreground">
@@ -822,12 +828,14 @@ export default function Overview() {
                         {formatMemoryValue(d.memoryStats.requested)}
                       </p>
                     </div>
-                    <div>
-                      <p className="text-muted-foreground uppercase">Workload Req.</p>
-                      <p className="font-mono font-semibold text-foreground">
-                        {formatMemoryValue(d.memoryStats.workloadRequested ?? 0)}
-                      </p>
-                    </div>
+                    {verboseMode && (
+                      <div>
+                        <p className="text-muted-foreground uppercase">Workload Req.</p>
+                        <p className="font-mono font-semibold text-foreground">
+                          {formatMemoryValue(d.memoryStats.workloadRequested ?? 0)}
+                        </p>
+                      </div>
+                    )}
                     <div>
                       <p className="text-muted-foreground uppercase">Recommended</p>
                       <p className="font-mono font-semibold text-foreground">
