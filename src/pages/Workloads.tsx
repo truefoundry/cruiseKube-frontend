@@ -150,7 +150,7 @@ function WorkloadStatusIcons({ workload }: { workload: FrontendWorkload }) {
             <TooltipContent side="right" className="max-w-sm">
               <p className="font-semibold">Scaled down</p>
               <p className="mt-1 text-muted-foreground">
-                This workload has been scaled down (e.g. fewer replicas).
+                This workload has been scaled down to 0 replicas.
               </p>
             </TooltipContent>
           </Tooltip>
@@ -256,6 +256,7 @@ function getPriorityColor(priority: string): string {
     case "medium": return "text-warning";
     case "high": return "text-success";
     case "non-evictable": return "text-primary";
+    case "excluded": return "text-muted-foreground";
     default: return "text-muted-foreground";
   }
 }
@@ -1100,16 +1101,13 @@ export default function Workloads() {
                 >
                   <td className="w-11 px-2 align-middle border-r border-border text-center" onClick={(e) => e.stopPropagation()}>
                     <div className="flex items-center justify-center min-h-[2rem]">
-                      {!isWorkloadDisabled(workload) ? (
-                        <Checkbox
-                          checked={selectedWorkloadIds.has(workload.id)}
-                          onCheckedChange={() => toggleSelection(workload.id)}
-                          aria-label={`Select ${workload.workload}`}
-                          className="h-4 w-4"
-                        />
-                      ) : (
-                        <span className="inline-block w-4 h-4" aria-hidden />
-                      )}
+                      <Checkbox
+                        checked={selectedWorkloadIds.has(workload.id)}
+                        onCheckedChange={() => !isWorkloadDisabled(workload) && toggleSelection(workload.id)}
+                        disabled={isWorkloadDisabled(workload)}
+                        aria-label={`Select ${workload.workload}`}
+                        className="h-4 w-4"
+                      />
                     </div>
                   </td>
                   <td className="min-w-0 break-words align-top">
@@ -1184,36 +1182,40 @@ export default function Workloads() {
                   </td>
                   <td className={`bg-muted/20 min-w-0 overflow-hidden ${index === 0 ? "border-t" : ""} border-l border-b border-border align-middle`}>
                     <div className="flex justify-center min-w-0" onClick={(e) => e.stopPropagation()}>
-                      <TooltipProvider>
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <span className="inline-flex items-center gap-1.5 cursor-default">
-                              <Switch
-                                checked={workload.mode === "enabled"}
-                                onCheckedChange={() => handleModeToggle(workload)}
-                                disabled={isWorkloadDisabled(workload) || updateOverrideMutation.isPending}
-                                className="scale-90 opacity-90 data-[state=checked]:bg-muted-foreground/80"
-                                aria-label={workload.mode === "enabled" ? "Cruise on; click to switch to Recommend" : "Recommend; click to switch to Cruise"}
-                              />
-                              <span className={`text-xs ${workload.mode === "enabled" ? "text-success" : "text-muted-foreground"}`}>
-                                {workload.mode === "enabled" ? "On" : "Off"}
+                      {isWorkloadDisabled(workload) ? (
+                        <span className="text-xs font-medium text-muted-foreground">Excluded</span>
+                      ) : (
+                        <TooltipProvider>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <span className="inline-flex items-center gap-1.5 cursor-default">
+                                <Switch
+                                  checked={workload.mode === "enabled"}
+                                  onCheckedChange={() => handleModeToggle(workload)}
+                                  disabled={updateOverrideMutation.isPending}
+                                  className="scale-90 opacity-90 data-[state=checked]:bg-muted-foreground/80"
+                                  aria-label={workload.mode === "enabled" ? "Cruise on; click to switch to Recommend" : "Recommend; click to switch to Cruise"}
+                                />
+                                <span className={`text-xs ${workload.mode === "enabled" ? "text-success" : "text-muted-foreground"}`}>
+                                  {workload.mode === "enabled" ? "On" : "Off"}
+                                </span>
                               </span>
-                            </span>
-                          </TooltipTrigger>
-                          <TooltipContent>
-                            <p>When on, recommendations are auto-applied (Cruise). When off, recommend only. Click to toggle.</p>
-                          </TooltipContent>
-                        </Tooltip>
-                      </TooltipProvider>
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              <p>When on, recommendations are auto-applied (Cruise). When off, recommend only. Click to toggle.</p>
+                            </TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
+                      )}
                     </div>
                   </td>
                   <td className={`bg-muted/20 border-r border-b border-border min-w-0 overflow-hidden ${index === 0 ? "border-t" : ""} align-middle`}>
                     <div className="flex flex-col gap-0.5 justify-center min-w-0">
                       <div className="flex items-center gap-1 flex-wrap min-w-0">
-                        <span className={`text-xs font-medium capitalize ${getPriorityColor(workload.priority)}`}>
-                          {workload.priority}
+                        <span className={`text-xs font-medium capitalize ${getPriorityColor(isWorkloadDisabled(workload) ? "excluded" : workload.priority)}`}>
+                          {isWorkloadDisabled(workload) ? "Excluded" : workload.priority}
                         </span>
-                        {asArray(workload.disruptionWindows).length > 0 && (
+                        {!isWorkloadDisabled(workload) && asArray(workload.disruptionWindows).length > 0 && (
                           <TooltipProvider>
                             <Tooltip>
                               <TooltipTrigger asChild>

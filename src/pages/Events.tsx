@@ -15,6 +15,7 @@ import {
   Cloud,
   Search,
   X,
+  Copy,
   type LucideIcon,
 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
@@ -51,25 +52,26 @@ import {
 } from "@/components/ui/tooltip";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { useToast } from "@/hooks/use-toast";
 
 const CATEGORY_META: Record<
   string,
-  { icon: LucideIcon; color: string; description: string; short: string }
+  { icon: LucideIcon; color: string; description: string }
 > = {
-  CPU_RECOMMENDATION_APPLIED: { icon: Cpu, color: "text-blue-600 dark:text-blue-400", description: "CPU request/limit was updated by CruiseKube based on recommendations.", short: "CPU rec." },
-  MEMORY_RECOMMENDATION_APPLIED: { icon: HardDrive, color: "text-violet-600 dark:text-violet-400", description: "Memory request/limit was updated by CruiseKube based on recommendations.", short: "Mem rec." },
-  POD_DISRUPTION_BLOCK_REMOVED: { icon: ShieldOff, color: "text-amber-600 dark:text-amber-400", description: "A pod disruption block was removed so the workload can be optimized.", short: "PDB off" },
-  POD_DISRUPTION_BLOCK_RESTORED: { icon: Shield, color: "text-emerald-600 dark:text-emerald-400", description: "A pod disruption block was restored after the optimization window.", short: "PDB on" },
-  PDB_RELAXED: { icon: LockKeyholeOpen, color: "text-amber-500 dark:text-amber-400", description: "PodDisruptionBudget was temporarily relaxed to allow evictions.", short: "PDB relax" },
-  PDB_RESTORED: { icon: LockKeyhole, color: "text-emerald-500 dark:text-emerald-400", description: "PodDisruptionBudget was restored to its original minAvailable/maxUnavailable.", short: "PDB restore" },
-  WEBHOOK_MUTATION: { icon: Code, color: "text-slate-600 dark:text-slate-400", description: "A webhook mutation was applied (e.g. resource patch).", short: "Webhook" },
-  POD_EVICTION: { icon: Trash2, color: "text-red-600 dark:text-red-400", description: "A pod was evicted (e.g. for consolidation or scaling).", short: "Eviction" },
-  OOM_EVENT: { icon: AlertTriangle, color: "text-red-600 dark:text-red-400", description: "Out-of-memory event detected for a pod.", short: "OOM" },
-  NODE_OVERLOAD_TAINT_ADDED: { icon: CloudOff, color: "text-orange-600 dark:text-orange-400", description: "Node was marked overloaded; taint added to discourage new pods.", short: "Taint +" },
-  NODE_OVERLOAD_TAINT_REMOVED: { icon: Cloud, color: "text-teal-600 dark:text-teal-400", description: "Overload taint was removed from the node.", short: "Taint −" },
+  CPU_RECOMMENDATION_APPLIED: { icon: Cpu, color: "text-blue-600 dark:text-blue-400", description: "CPU request/limit was updated by CruiseKube based on recommendations." },
+  MEMORY_RECOMMENDATION_APPLIED: { icon: HardDrive, color: "text-violet-600 dark:text-violet-400", description: "Memory request/limit was updated by CruiseKube based on recommendations." },
+  POD_DISRUPTION_BLOCK_REMOVED: { icon: ShieldOff, color: "text-amber-600 dark:text-amber-400", description: "A pod disruption block was removed so the workload can be optimized." },
+  POD_DISRUPTION_BLOCK_RESTORED: { icon: Shield, color: "text-emerald-600 dark:text-emerald-400", description: "A pod disruption block was restored after the optimization window." },
+  PDB_RELAXED: { icon: LockKeyholeOpen, color: "text-amber-500 dark:text-amber-400", description: "PodDisruptionBudget was temporarily relaxed to allow evictions." },
+  PDB_RESTORED: { icon: LockKeyhole, color: "text-emerald-500 dark:text-emerald-400", description: "PodDisruptionBudget was restored to its original minAvailable/maxUnavailable." },
+  WEBHOOK_MUTATION: { icon: Code, color: "text-slate-600 dark:text-slate-400", description: "A webhook mutation was applied (e.g. resource patch)." },
+  POD_EVICTION: { icon: Trash2, color: "text-red-600 dark:text-red-400", description: "A pod was evicted (e.g. for consolidation or scaling)." },
+  OOM_EVENT: { icon: AlertTriangle, color: "text-red-600 dark:text-red-400", description: "Out-of-memory event detected for a pod." },
+  NODE_OVERLOAD_TAINT_ADDED: { icon: CloudOff, color: "text-orange-600 dark:text-orange-400", description: "Node was marked overloaded; taint added to discourage new pods." },
+  NODE_OVERLOAD_TAINT_REMOVED: { icon: Cloud, color: "text-teal-600 dark:text-teal-400", description: "Overload taint was removed from the node." },
 };
 
-const DEFAULT_CATEGORY_META = { icon: Activity, color: "text-muted-foreground", description: "CruiseKube audit event.", short: "Event" };
+const DEFAULT_CATEGORY_META = { icon: Activity, color: "text-muted-foreground", description: "CruiseKube audit event." };
 
 const MINUTES_OPTIONS = [1, 5, 15, 30, 60];
 
@@ -81,12 +83,6 @@ const CATEGORY_OPTIONS = [
 function categoryLabel(category: string): string {
   if (category === "all") return "All categories";
   return category.replace(/_/g, " ");
-}
-
-function categoryShortLabel(category: string): string {
-  if (category === "all") return "All";
-  const meta = CATEGORY_META[category] ?? DEFAULT_CATEGORY_META;
-  return meta.short;
 }
 
 function categoryIcon(category: string): { Icon: LucideIcon; color: string } {
@@ -124,15 +120,17 @@ function formatTimeAgo(iso: string): string {
   }
 }
 
-function workloadDisplayName(event: AuditEvent): string {
-  const t = event.payload?.target;
-  if (!t) return "—";
-  return `${t.kind}/${t.namespace}/${t.name}`;
-}
-
 function workloadName(event: AuditEvent): string {
   const t = event.payload?.target;
-  return t?.name ?? "—";
+  return `${t?.kind}/${t?.name}` ?? "—";
+}
+
+/** Workload ID from event payload details (not derived from target). */
+function workloadIdFromEvent(event: AuditEvent): string {
+  const details = event.payload?.details;
+  if (details == null || typeof details !== "object") return "";
+  const id = details.workloadId;
+  return typeof id === "string" ? id : "";
 }
 
 /** Workload id format: TYPE:NAMESPACE:NAME (e.g. Deployment:my-namespace:my-app) */
@@ -140,11 +138,20 @@ const WORKLOAD_ID_PLACEHOLDER = "Deployment:namespace:workload-name";
 
 export default function Events() {
   const { selectedClusterId } = useCluster();
+  const { toast } = useToast();
   const [searchParams] = useSearchParams();
   const [minutes, setMinutes] = useState(5);
   const [workloadSearch, setWorkloadSearch] = useState(() => searchParams.get("workload") ?? "");
   const [categoryFilter, setCategoryFilter] = useState<string>("all");
   const [selectedEvent, setSelectedEvent] = useState<AuditEvent | null>(null);
+
+  const copyWorkloadId = (event: AuditEvent) => {
+    const id = workloadIdFromEvent(event);
+    if (!id) return;
+    void navigator.clipboard.writeText(id).then(() => {
+      toast({ title: "Copied", description: "Workload ID copied to clipboard." });
+    });
+  };
 
   useEffect(() => {
     const w = searchParams.get("workload");
@@ -222,7 +229,7 @@ export default function Events() {
                       <Icon className={`h-3.5 w-3.5 shrink-0 ${color}`} />
                       <span className="tabular-nums">{categoryCount(categoryFilter)}</span>
                       <span className="text-muted-foreground">·</span>
-                      {categoryShortLabel(categoryFilter)}
+                      {categoryLabel(categoryFilter)}
                     </span>
                   );
                 })()}
@@ -237,7 +244,7 @@ export default function Events() {
                       <Icon className={`h-3.5 w-3.5 shrink-0 ${color}`} />
                       <span className="tabular-nums">{categoryCount(cat)}</span>
                       <span className="text-muted-foreground">·</span>
-                      {categoryShortLabel(cat)}
+                      {categoryLabel(cat)}
                     </span>
                   </SelectItem>
                 );
@@ -284,7 +291,7 @@ export default function Events() {
           ) : events.length === 0 ? (
             <div className="p-6 text-sm text-muted-foreground text-center">
               {categoryFilter !== "all" && allEvents.length > 0
-                ? `No events match the selected category (${categoryShortLabel(categoryFilter)}).`
+                ? `No events match the selected category (${categoryLabel(categoryFilter)}).`
                 : workloadId
                   ? `No events for workload "${workloadId}" in the last ${minutes} minute${minutes !== 1 ? "s" : ""}`
                   : `No events in the last ${minutes} minute${minutes !== 1 ? "s" : ""}`}
@@ -294,9 +301,9 @@ export default function Events() {
               <TableHeader>
                 <TableRow className="border-b border-border bg-muted/30 hover:bg-muted/30">
                   <TableHead className="h-9 px-3 py-2 text-xs font-medium text-muted-foreground w-[8rem]">Time</TableHead>
-                  <TableHead className="h-9 px-3 py-2 text-xs font-medium text-muted-foreground w-[6rem]">Category</TableHead>
-                  <TableHead className="h-9 px-3 py-2 text-xs font-medium text-muted-foreground w-[16rem]">Workload</TableHead>
-                  <TableHead className="h-9 px-3 py-2 text-xs font-medium text-muted-foreground min-w-[12rem]">Message</TableHead>
+                  <TableHead className="h-9 px-3 py-2 text-xs font-medium text-muted-foreground min-w-[10rem]">Category</TableHead>
+                  <TableHead className="h-9 px-3 py-2 text-xs font-medium text-muted-foreground min-w-[10rem]">Workload ID</TableHead>
+                  <TableHead className="h-9 px-3 py-2 text-xs font-medium text-muted-foreground min-w-[16rem]">Object name</TableHead>
                   <TableHead className="h-9 px-3 py-2 text-xs font-medium text-muted-foreground w-20">Details</TableHead>
                 </TableRow>
               </TableHeader>
@@ -329,7 +336,7 @@ export default function Events() {
                             <TooltipTrigger asChild>
                               <span className={`inline-flex items-center gap-1 cursor-help text-xs ${meta.color}`}>
                                 <Icon className="h-3 w-3 shrink-0" />
-                                {meta.short}
+                                {event.category.replace(/_/g, " ")}
                               </span>
                             </TooltipTrigger>
                             <TooltipContent side="right" className="max-w-sm">
@@ -339,11 +346,37 @@ export default function Events() {
                           </Tooltip>
                         </TooltipProvider>
                       </TableCell>
+                      <TableCell className="py-2 px-3 font-mono text-xs align-top break-all min-w-0">
+                        <span className="inline-flex items-center gap-1.5">
+                          {workloadIdFromEvent(event) || "—"}
+                          {workloadIdFromEvent(event) && (
+                            <TooltipProvider>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-6 w-6 shrink-0"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      copyWorkloadId(event);
+                                    }}
+                                    aria-label="Copy workload ID"
+                                  >
+                                    <Copy className="h-3 w-3 text-muted-foreground" />
+                                  </Button>
+                                </TooltipTrigger>
+                                <TooltipContent side="right">
+                                  Copy workload ID
+                                </TooltipContent>
+                              </Tooltip>
+                            </TooltipProvider>
+                          )}
+                        </span>
+                      </TableCell>
                       <TableCell className="py-2 px-3 font-mono text-xs align-top min-w-0">
                         {workloadName(event)}
-                      </TableCell>
-                      <TableCell className="py-2 px-3 text-xs text-foreground align-top min-w-0">
-                        {event.payload?.message ?? "—"}
                       </TableCell>
                       <TableCell className="py-2 px-3 align-top">
                         <Button
@@ -387,8 +420,22 @@ export default function Events() {
               <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-xs">
                 <span className="text-muted-foreground">Time</span>
                 <span>{formatEventTime(selectedEvent.created_at)}</span>
-                <span className="text-muted-foreground">Workload</span>
-                <span className="font-mono">{workloadDisplayName(selectedEvent)}</span>
+                <span className="text-muted-foreground">Workload ID</span>
+                <span className="font-mono inline-flex items-center gap-1.5">
+                  {workloadIdFromEvent(selectedEvent) || "—"}
+                  {workloadIdFromEvent(selectedEvent) && (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="h-6 w-6 shrink-0"
+                      onClick={() => copyWorkloadId(selectedEvent)}
+                      aria-label="Copy workload ID"
+                    >
+                      <Copy className="h-3 w-3 text-muted-foreground" />
+                    </Button>
+                  )}
+                </span>
                 {selectedEvent.payload?.message != null && (
                   <>
                     <span className="text-muted-foreground">Message</span>
