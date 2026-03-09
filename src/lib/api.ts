@@ -261,6 +261,10 @@ export interface WorkloadDetailConfig {
   cruiseEnabled: boolean;
   disruptionSchedule: WorkloadDetailDisruptionWindow[];
   inDisruptionWindow: boolean;
+  /** True if the workload has HPA on CPU or memory. */
+  hpaEnabled?: boolean;
+  /** Exclusion reason codes (e.g. GPU_WORKLOAD, CPU_HPA, MEMORY_HPA). Omitted when empty. */
+  excludedCodes?: string[];
 }
 
 export interface WorkloadDetail {

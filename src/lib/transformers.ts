@@ -47,6 +47,10 @@ export interface FrontendWorkload {
   inDisruptionWindow?: boolean;
   /** True when the workload is identified as a GPU workload. */
   isGpuWorkload?: boolean;
+  /** True when the workload has HPA on CPU or memory. */
+  hpaEnabled?: boolean;
+  /** Exclusion reason codes from config (e.g. GPU_WORKLOAD, CPU_HPA, MEMORY_HPA). */
+  excludedCodes?: string[];
 }
 
 export interface FrontendContainer {
