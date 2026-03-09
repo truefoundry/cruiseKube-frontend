@@ -21,6 +21,7 @@ import {
   Zap,
   Activity,
   BarChart2,
+  Shrink,
   Ban,
   List,
   LockKeyhole,
@@ -64,6 +65,7 @@ import {
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Switch } from "@/components/ui/switch";
 import { asArray } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
@@ -132,6 +134,23 @@ function WorkloadStatusIcons({ workload }: { workload: FrontendWorkload }) {
               <p className="font-semibold">HPA enabled</p>
               <p className="mt-1 text-muted-foreground">
                 This workload has Horizontal Pod Autoscaler (HPA) on CPU or memory. Cruise is disabled for HPA workloads.
+              </p>
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+      )}
+      {workload.scaledDown && (
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span className="inline-flex cursor-help text-blue-600 dark:text-blue-400">
+                <Shrink className="h-4 w-4" aria-hidden />
+              </span>
+            </TooltipTrigger>
+            <TooltipContent side="right" className="max-w-sm">
+              <p className="font-semibold">Scaled down</p>
+              <p className="mt-1 text-muted-foreground">
+                This workload has been scaled down (e.g. fewer replicas).
               </p>
             </TooltipContent>
           </Tooltip>
@@ -297,6 +316,7 @@ function workloadDetailToFrontend(d: WorkloadDetail): FrontendWorkload {
     isGpuWorkload: c?.isGPUWorkload ?? false,
     hpaEnabled: d.config.hpaEnabled ?? false,
     excludedCodes: (d.config.excludedCodes?.length ?? 0) > 0 ? d.config.excludedCodes : undefined,
+    scaledDown: d.scaledDown ?? false,
   };
 }
 
@@ -310,7 +330,7 @@ export default function Workloads() {
   const [modeFilter, setModeFilter] = useState("all");
   const [priorityFilter, setPriorityFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState<
-    "all" | "excluded" | "has-pdb" | "blocking-consolidation" | "gpu" | "hpa-enabled"
+    "all" | "excluded" | "blocking-consolidation" | "gpu" | "hpa-enabled" | "scaled-down"
   >("all");
   const [typeFilter, setTypeFilter] = useState<string>("all");
   const [hasRecommendations, setHasRecommendations] = useState("all");
@@ -320,11 +340,10 @@ export default function Workloads() {
   const [editPriority, setEditPriority] = useState<'low' | 'medium' | 'high' | 'non-evictable'>('medium');
   const [editMode, setEditMode] = useState<'enabled' | 'recommend-only'>('recommend-only');
   const [editDisruptionWindows, setEditDisruptionWindows] = useState<{ startCron: string; endCron: string }[]>([]);
-  const [enableAllDialogOpen, setEnableAllDialogOpen] = useState(false);
-  const [isEnablingAll, setIsEnablingAll] = useState(false);
+  const [selectedWorkloadIds, setSelectedWorkloadIds] = useState<Set<string>>(new Set());
 
   const MIN_COLUMN_WIDTH = 40;
-  const DEFAULT_COLUMN_WIDTHS = [230, 120, 40, 72, 110, 72, 110, 100, 100, 100, 136];
+  const DEFAULT_COLUMN_WIDTHS = [44, 230, 120, 40, 72, 110, 72, 110, 100, 100, 100, 136];
   const [columnWidths, setColumnWidths] = useState<number[]>(() => DEFAULT_COLUMN_WIDTHS);
   const [resizingCol, setResizingCol] = useState<number | null>(null);
   const resizeStartXRef = useRef(0);
@@ -386,6 +405,28 @@ export default function Workloads() {
     },
   });
 
+  const batchOverridesMutation = useMutation({
+    mutationFn: async ({ workloadIds, enabled }: { workloadIds: string[]; enabled: boolean }) => {
+      if (!selectedClusterId) throw new Error('No cluster selected');
+      return apiClient.batchWorkloadOverrides(selectedClusterId, workloadIds, { enabled });
+    },
+    onSuccess: (_, { workloadIds, enabled }) => {
+      queryClient.invalidateQueries({ queryKey: ['workloads-summary', selectedClusterId] });
+      setSelectedWorkloadIds(new Set());
+      toast({
+        title: "Success",
+        description: `Cruise ${enabled ? "enabled" : "disabled"} for ${workloadIds.length} workload${workloadIds.length !== 1 ? "s" : ""}.`,
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to update workloads",
+        variant: "destructive",
+      });
+    },
+  });
+
   const openEditModal = (workload: FrontendWorkload) => {
     setEditWorkload(workload);
     setEditPriority(workload.priority);
@@ -430,48 +471,6 @@ export default function Workloads() {
       workloadId: id,
       overrides,
     });
-  };
-
-  const handleEnableAll = async () => {
-    if (!selectedClusterId) return;
-    const targets = asArray(workloads).filter((w) => !w.excluded && w.mode !== "enabled");
-    if (targets.length === 0) {
-      setEnableAllDialogOpen(false);
-      return;
-    }
-    setIsEnablingAll(true);
-    try {
-      await Promise.all(
-        targets.map((w) => {
-          const overrides: Overrides = {
-            eviction_ranking: mapPriorityToEvictionRanking(w.priority),
-            enabled: true,
-          };
-          const windows = asArray(w.disruptionWindows);
-          if (windows.length > 0) {
-            overrides.disruption_windows = windows.map((dw) => ({
-              start_cron: dw.startCron,
-              end_cron: dw.endCron,
-            }));
-          }
-          return apiClient.updateWorkloadOverrides(selectedClusterId, workloadIdForApi(w.id), overrides);
-        })
-      );
-      queryClient.invalidateQueries({ queryKey: ['workloads-summary', selectedClusterId] });
-      toast({
-        title: "CruiseKube enabled",
-        description: `Enabled Cruise mode for ${targets.length} workload${targets.length !== 1 ? "s" : ""}.`,
-      });
-    } catch (err) {
-      toast({
-        title: "Error",
-        description: err instanceof Error ? err.message : "Failed to enable all workloads",
-        variant: "destructive",
-      });
-    } finally {
-      setIsEnablingAll(false);
-      setEnableAllDialogOpen(false);
-    }
   };
 
   const { data: summaryData, isLoading: isLoadingSummary, error: summaryError } = useQuery({
@@ -622,10 +621,10 @@ export default function Workloads() {
     const matchesStatus =
       statusFilter === "all" ||
       (statusFilter === "excluded" && w.excluded === true) ||
-      (statusFilter === "has-pdb" && w.blockingConsolidationPdb === true) ||
       (statusFilter === "blocking-consolidation" && w.blockingConsolidation === true) ||
       (statusFilter === "gpu" && w.isGpuWorkload === true) ||
-      (statusFilter === "hpa-enabled" && w.hpaEnabled === true);
+      (statusFilter === "hpa-enabled" && w.hpaEnabled === true) ||
+      (statusFilter === "scaled-down" && w.scaledDown === true);
     const matchesType = typeFilter === "all" || w.type === typeFilter;
     const matchesRecommendations = hasRecommendations === "all" || 
       (hasRecommendations === "yes" && w.hasRecommendations) ||
@@ -634,6 +633,33 @@ export default function Workloads() {
   });
 
   const sortedWorkloads = sortWorkloads(filteredWorkloads);
+  const selectableWorkloads = asArray(sortedWorkloads).filter((w) => !isWorkloadDisabled(w));
+
+  const toggleSelection = (workloadId: string) => {
+    setSelectedWorkloadIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(workloadId)) next.delete(workloadId);
+      else next.add(workloadId);
+      return next;
+    });
+  };
+  const selectAllSelectable = () => {
+    setSelectedWorkloadIds(new Set(selectableWorkloads.map((w) => w.id)));
+  };
+  const clearSelection = () => setSelectedWorkloadIds(new Set());
+  const allSelectableSelected = selectableWorkloads.length > 0 && selectableWorkloads.every((w) => selectedWorkloadIds.has(w.id));
+  const someSelected = selectedWorkloadIds.size > 0;
+
+  const handleBatchEnable = () => {
+    const ids = [...selectedWorkloadIds].map((id) => workloadIdForApi(id));
+    if (ids.length === 0) return;
+    batchOverridesMutation.mutate({ workloadIds: ids, enabled: true });
+  };
+  const handleBatchDisable = () => {
+    const ids = [...selectedWorkloadIds].map((id) => workloadIdForApi(id));
+    if (ids.length === 0) return;
+    batchOverridesMutation.mutate({ workloadIds: ids, enabled: false });
+  };
 
   const namespaces = [...new Set(asArray(workloads).map((w) => w.namespace))];
   const workloadTypesInData = [...new Set(asArray(workloads).map((w) => w.type))].sort();
@@ -708,27 +734,6 @@ export default function Workloads() {
             <h2 id="workloads-heading" className="text-sm font-semibold uppercase tracking-wider text-muted-foreground shrink-0">
               Workload list
             </h2>
-            {!isLoadingSummary && asArray(workloads).some((w) => !w.excluded && w.mode !== "enabled") && (
-              <TooltipProvider>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      variant="default"
-                      size="sm"
-                      className="h-8 gap-1.5 rounded-md text-xs font-medium shadow-sm ring-1 ring-primary/20 shrink-0"
-                      onClick={() => setEnableAllDialogOpen(true)}
-                      disabled={isEnablingAll}
-                    >
-                      <Zap className="h-3 w-3" />
-                      Enable CruiseKube for All
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent side="bottom">
-                    <p>Switch all non-excluded workloads to Cruise mode (auto-apply recommendations).</p>
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
-            )}
             <div className="relative w-56 sm:w-64 shrink-0">
               <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
               <Input
@@ -778,10 +783,10 @@ export default function Workloads() {
               <SelectContent>
                 <SelectItem value="all">All workloads</SelectItem>
                 <SelectItem value="excluded">Excluded</SelectItem>
-                <SelectItem value="has-pdb">Has PDB</SelectItem>
                 <SelectItem value="blocking-consolidation">Blocking consolidation</SelectItem>
                 <SelectItem value="gpu">GPU workload</SelectItem>
                 <SelectItem value="hpa-enabled">HPA enabled</SelectItem>
+                <SelectItem value="scaled-down">Scaled down</SelectItem>
               </SelectContent>
             </Select>
             <Select value={typeFilter} onValueChange={setTypeFilter}>
@@ -809,29 +814,75 @@ export default function Workloads() {
                   <Skeleton className="h-4 w-32" />
                 </div>
               ) : (
-                <div className="flex flex-wrap items-baseline gap-x-8 gap-y-2 text-sm">
-                  <div className="flex items-baseline gap-1.5">
-                    <span className="text-muted-foreground">Workloads</span>
-                    <span className="font-mono font-semibold tabular-nums text-foreground">{sortedWorkloads.length}</span>
+                <div className="flex flex-wrap items-center justify-between gap-x-8 gap-y-2 text-sm">
+                  <div className="flex flex-wrap items-baseline gap-x-8 gap-y-2">
+                    <div className="flex items-baseline gap-1.5">
+                      <span className="text-muted-foreground">Workloads</span>
+                      <span className="font-mono font-semibold tabular-nums text-foreground">{sortedWorkloads.length}</span>
+                    </div>
+                    <div className="flex items-baseline gap-1.5">
+                      <span className="text-muted-foreground">Optimized/Cruise</span>
+                      <span className="font-mono font-semibold tabular-nums text-foreground">{overviewMetrics.costOptimizedWorkloads}</span>
+                    </div>
+                    <div className="flex items-baseline gap-1.5">
+                      <span className="text-muted-foreground">Recommended</span>
+                      <span className="font-mono font-semibold tabular-nums text-foreground">{overviewMetrics.costOptimizedWorkloadsRecommendOnly}</span>
+                    </div>
+                    <div className="flex items-baseline gap-1.5">
+                      <span className="text-muted-foreground">Reliability Improved</span>
+                      <span className="font-mono font-semibold tabular-nums text-foreground">{overviewMetrics.reliabilityIssues}</span>
+                    </div>
                   </div>
-                  <div className="flex items-baseline gap-1.5">
-                    <span className="text-muted-foreground">Optimized/Cruise</span>
-                    {/* <span className="font-mono tabular-nums text-foreground">${overviewMetrics.realizedDollars.toLocaleString()}/mo</span> */}
-                    {/* <span className="font-mono tabular-nums text-foreground text-muted-foreground">·</span> */}
-                    <span className="font-mono font-semibold tabular-nums text-foreground">{overviewMetrics.costOptimizedWorkloads}</span>
-                  </div>
-                  <div className="flex items-baseline gap-1.5">
-                    <span className="text-muted-foreground">Recommended</span>
-                    {/* <span className="font-mono tabular-nums text-foreground">${overviewMetrics.unrealizedDollars.toLocaleString()}/mo</span> */}
-                    {/* <span className="font-mono tabular-nums text-foreground text-muted-foreground">·</span> */}
-                    <span className="font-mono font-semibold tabular-nums text-foreground">{overviewMetrics.costOptimizedWorkloadsRecommendOnly}</span>
-                  </div>
-                  <div className="flex items-baseline gap-1.5">
-                    <span className="text-muted-foreground">Reliability Improved</span>
-                    {/* <span className="font-mono tabular-nums text-foreground">${overviewMetrics.reliabilityIncreaseCost.dollars.toLocaleString()}/mo</span> */}
-                    {/* <span className="font-mono tabular-nums text-foreground text-muted-foreground">·</span> */}
-                    <span className="font-mono font-semibold tabular-nums text-foreground">{overviewMetrics.reliabilityIssues}</span>
-                  </div>
+                  {someSelected && (
+                    <div className="flex flex-wrap items-center gap-2 shrink-0">
+                      <span className="text-xs text-muted-foreground tabular-nums">
+                        {selectedWorkloadIds.size} selected
+                      </span>
+                      {selectableWorkloads.length > 0 && !allSelectableSelected && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-8 text-xs"
+                          onClick={selectAllSelectable}
+                        >
+                          Select all
+                        </Button>
+                      )}
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-8 text-xs"
+                        onClick={clearSelection}
+                      >
+                        Clear selection
+                      </Button>
+                      <Button
+                        variant="default"
+                        size="sm"
+                        className="h-8 gap-1.5 text-xs"
+                        onClick={handleBatchEnable}
+                        disabled={batchOverridesMutation.isPending}
+                      >
+                        {batchOverridesMutation.isPending ? (
+                          <>Updating…</>
+                        ) : (
+                          <>
+                            <Zap className="h-3 w-3" />
+                            Enable Cruise
+                          </>
+                        )}
+                      </Button>
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        className="h-8 gap-1.5 text-xs"
+                        onClick={handleBatchDisable}
+                        disabled={batchOverridesMutation.isPending}
+                      >
+                        Disable Cruise
+                      </Button>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -858,6 +909,23 @@ export default function Workloads() {
             </colgroup>
             <thead className="sticky top-0 z-10 bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/80 border-b border-border">
               <tr>
+                <th rowSpan={2} className="w-11 px-2 pt-4 align-middle border-r border-border bg-muted/20 text-center">
+                  <div className="flex items-center justify-center min-h-[2.5rem]" onClick={(e) => e.stopPropagation()}>
+                    {selectableWorkloads.length > 0 ? (
+                      <Checkbox
+                        checked={allSelectableSelected ? true : someSelected ? "indeterminate" : false}
+                        onCheckedChange={(checked) => {
+                          if (checked === true) selectAllSelectable();
+                          else clearSelection();
+                        }}
+                        aria-label="Select all selectable workloads"
+                        className="h-4 w-4"
+                      />
+                    ) : (
+                      <span className="w-4 h-4" aria-hidden />
+                    )}
+                  </div>
+                </th>
                 <th rowSpan={2}
                   className="cursor-pointer select-none hover:bg-muted/50 transition-colors align-top pt-4 relative"
                   onClick={(e) => { e.stopPropagation(); handleSort("workload"); }}
@@ -1030,6 +1098,20 @@ export default function Workloads() {
                       : "hover:bg-muted/50 " + (index % 2 === 1 ? "bg-muted/10" : "")
                   }`}
                 >
+                  <td className="w-11 px-2 align-middle border-r border-border text-center" onClick={(e) => e.stopPropagation()}>
+                    <div className="flex items-center justify-center min-h-[2rem]">
+                      {!isWorkloadDisabled(workload) ? (
+                        <Checkbox
+                          checked={selectedWorkloadIds.has(workload.id)}
+                          onCheckedChange={() => toggleSelection(workload.id)}
+                          aria-label={`Select ${workload.workload}`}
+                          className="h-4 w-4"
+                        />
+                      ) : (
+                        <span className="inline-block w-4 h-4" aria-hidden />
+                      )}
+                    </div>
+                  </td>
                   <td className="min-w-0 break-words align-top">
                     <div className="flex flex-col gap-0.5 min-w-0">
                       <div className="flex items-start gap-2 min-w-0">
@@ -1228,49 +1310,6 @@ export default function Workloads() {
             No workloads match your filters
           </div>
         )}
-
-        {/* Enable CruiseKube for All confirmation dialog */}
-        <Dialog open={enableAllDialogOpen} onOpenChange={(open) => !open && !isEnablingAll && setEnableAllDialogOpen(false)}>
-          <DialogContent className="sm:max-w-md" onClick={(e) => e.stopPropagation()}>
-            <DialogHeader>
-              <DialogTitle className="flex items-center gap-2">
-                <Zap className="h-4 w-4 text-primary" />
-                Enable CruiseKube for All Workloads
-              </DialogTitle>
-              <DialogDescription>
-                This will switch all non-excluded workloads to{" "}
-                <span className="font-medium text-foreground">Cruise mode</span>, meaning recommendations will be
-                automatically applied to pods.{" "}
-                {(() => {
-                  const count = asArray(workloads).filter((w) => !w.excluded && w.mode !== "enabled").length;
-                  return count > 0 ? (
-                    <span>
-                      <span className="font-medium text-foreground">{count}</span> workload
-                      {count !== 1 ? "s" : ""} will be updated.
-                    </span>
-                  ) : null;
-                })()}
-              </DialogDescription>
-            </DialogHeader>
-            <Alert className="border-amber-500/50 bg-amber-500/10 [&>svg]:text-amber-600 dark:[&>svg]:text-amber-400">
-              <AlertTriangle className="h-4 w-4" />
-              <AlertTitle>Are you sure?</AlertTitle>
-              <AlertDescription>
-                Cruise mode will allow cruiseKube to automatically resize pod requests on all your workloads. Make sure
-                you have reviewed the recommendations before proceeding.
-              </AlertDescription>
-            </Alert>
-            <DialogFooter>
-              <Button variant="outline" onClick={() => setEnableAllDialogOpen(false)} disabled={isEnablingAll}>
-                Cancel
-              </Button>
-              <Button onClick={handleEnableAll} disabled={isEnablingAll} className="gap-1.5">
-                <Zap className="h-3.5 w-3.5" />
-                {isEnablingAll ? "Enabling…" : "Enable All"}
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
 
         {/* Edit CruiseConfig modal */}
         <Dialog open={!!editWorkload} onOpenChange={(open) => !open && setEditWorkload(null)}>

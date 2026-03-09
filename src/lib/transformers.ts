@@ -51,6 +51,8 @@ export interface FrontendWorkload {
   hpaEnabled?: boolean;
   /** Exclusion reason codes from config (e.g. GPU_WORKLOAD, CPU_HPA, MEMORY_HPA). */
   excludedCodes?: string[];
+  /** True when the workload has been scaled down (e.g. fewer replicas). */
+  scaledDown?: boolean;
 }
 
 export interface FrontendContainer {

@@ -2,8 +2,6 @@ import { useState, useEffect } from "react";
 import { useSearchParams } from "react-router-dom";
 import {
   Activity,
-  ChevronDown,
-  ChevronRight,
   Cpu,
   HardDrive,
   ShieldOff,
@@ -30,33 +28,48 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Card, CardContent } from "@/components/ui/card";
 import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from "@/components/ui/collapsible";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 
 const CATEGORY_META: Record<
   string,
-  { icon: LucideIcon; color: string }
+  { icon: LucideIcon; color: string; description: string; short: string }
 > = {
-  CPU_RECOMMENDATION_APPLIED: { icon: Cpu, color: "text-blue-600 dark:text-blue-400" },
-  MEMORY_RECOMMENDATION_APPLIED: { icon: HardDrive, color: "text-violet-600 dark:text-violet-400" },
-  POD_DISRUPTION_BLOCK_REMOVED: { icon: ShieldOff, color: "text-amber-600 dark:text-amber-400" },
-  POD_DISRUPTION_BLOCK_RESTORED: { icon: Shield, color: "text-emerald-600 dark:text-emerald-400" },
-  PDB_RELAXED: { icon: LockKeyholeOpen, color: "text-amber-500 dark:text-amber-400" },
-  PDB_RESTORED: { icon: LockKeyhole, color: "text-emerald-500 dark:text-emerald-400" },
-  WEBHOOK_MUTATION: { icon: Code, color: "text-slate-600 dark:text-slate-400" },
-  POD_EVICTION: { icon: Trash2, color: "text-red-600 dark:text-red-400" },
-  OOM_EVENT: { icon: AlertTriangle, color: "text-red-600 dark:text-red-400" },
-  NODE_OVERLOAD_TAINT_ADDED: { icon: CloudOff, color: "text-orange-600 dark:text-orange-400" },
-  NODE_OVERLOAD_TAINT_REMOVED: { icon: Cloud, color: "text-teal-600 dark:text-teal-400" },
+  CPU_RECOMMENDATION_APPLIED: { icon: Cpu, color: "text-blue-600 dark:text-blue-400", description: "CPU request/limit was updated by CruiseKube based on recommendations.", short: "CPU rec." },
+  MEMORY_RECOMMENDATION_APPLIED: { icon: HardDrive, color: "text-violet-600 dark:text-violet-400", description: "Memory request/limit was updated by CruiseKube based on recommendations.", short: "Mem rec." },
+  POD_DISRUPTION_BLOCK_REMOVED: { icon: ShieldOff, color: "text-amber-600 dark:text-amber-400", description: "A pod disruption block was removed so the workload can be optimized.", short: "PDB off" },
+  POD_DISRUPTION_BLOCK_RESTORED: { icon: Shield, color: "text-emerald-600 dark:text-emerald-400", description: "A pod disruption block was restored after the optimization window.", short: "PDB on" },
+  PDB_RELAXED: { icon: LockKeyholeOpen, color: "text-amber-500 dark:text-amber-400", description: "PodDisruptionBudget was temporarily relaxed to allow evictions.", short: "PDB relax" },
+  PDB_RESTORED: { icon: LockKeyhole, color: "text-emerald-500 dark:text-emerald-400", description: "PodDisruptionBudget was restored to its original minAvailable/maxUnavailable.", short: "PDB restore" },
+  WEBHOOK_MUTATION: { icon: Code, color: "text-slate-600 dark:text-slate-400", description: "A webhook mutation was applied (e.g. resource patch).", short: "Webhook" },
+  POD_EVICTION: { icon: Trash2, color: "text-red-600 dark:text-red-400", description: "A pod was evicted (e.g. for consolidation or scaling).", short: "Eviction" },
+  OOM_EVENT: { icon: AlertTriangle, color: "text-red-600 dark:text-red-400", description: "Out-of-memory event detected for a pod.", short: "OOM" },
+  NODE_OVERLOAD_TAINT_ADDED: { icon: CloudOff, color: "text-orange-600 dark:text-orange-400", description: "Node was marked overloaded; taint added to discourage new pods.", short: "Taint +" },
+  NODE_OVERLOAD_TAINT_REMOVED: { icon: Cloud, color: "text-teal-600 dark:text-teal-400", description: "Overload taint was removed from the node.", short: "Taint −" },
 };
 
-const DEFAULT_CATEGORY_META = { icon: Activity, color: "text-muted-foreground" };
+const DEFAULT_CATEGORY_META = { icon: Activity, color: "text-muted-foreground", description: "CruiseKube audit event.", short: "Event" };
 
 const MINUTES_OPTIONS = [1, 5, 15, 30, 60];
 
@@ -68,6 +81,12 @@ const CATEGORY_OPTIONS = [
 function categoryLabel(category: string): string {
   if (category === "all") return "All categories";
   return category.replace(/_/g, " ");
+}
+
+function categoryShortLabel(category: string): string {
+  if (category === "all") return "All";
+  const meta = CATEGORY_META[category] ?? DEFAULT_CATEGORY_META;
+  return meta.short;
 }
 
 function categoryIcon(category: string): { Icon: LucideIcon; color: string } {
@@ -87,72 +106,33 @@ function formatEventTime(iso: string): string {
   }
 }
 
-function EventRow({ event }: { event: AuditEvent }) {
-  const [open, setOpen] = useState(false);
-  const target = event.payload?.target;
-  const details = event.payload?.details;
-  const hasDetails = details != null && Object.keys(details).length > 0;
-  const meta = CATEGORY_META[event.category] ?? DEFAULT_CATEGORY_META;
-  const Icon = meta.icon;
+function formatTimeAgo(iso: string): string {
+  try {
+    const d = new Date(iso);
+    const now = Date.now();
+    const diffMs = now - d.getTime();
+    const diffSec = Math.floor(diffMs / 1000);
+    const diffMin = Math.floor(diffSec / 60);
+    const diffHr = Math.floor(diffMin / 60);
+    const diffDay = Math.floor(diffHr / 24);
+    if (diffSec < 60) return "just now";
+    if (diffMin < 60) return `${diffMin} minute${diffMin !== 1 ? "s" : ""} ago`;
+    if (diffHr < 24) return `${diffHr} hour${diffHr !== 1 ? "s" : ""} ago`;
+    return `${diffDay} day${diffDay !== 1 ? "s" : ""} ago`;
+  } catch {
+    return "";
+  }
+}
 
-  return (
-    <Collapsible open={open} onOpenChange={setOpen}>
-      <div className="border-b border-border last:border-b-0">
-        <CollapsibleTrigger asChild>
-          <button
-            type="button"
-            className="flex w-full items-start gap-2 px-3 py-2 text-left hover:bg-muted/50 transition-colors min-h-0"
-          >
-            <span className="shrink-0 w-5 flex justify-center pt-0.5">
-              {hasDetails ? (
-                open ? (
-                  <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
-                ) : (
-                  <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />
-                )
-              ) : (
-                <span className="w-5" />
-              )}
-            </span>
-            <span className={`shrink-0 pt-0.5 ${meta.color}`} aria-hidden>
-              <Icon className="h-3.5 w-3.5" />
-            </span>
-            <div className="min-w-0 flex-1">
-              <div className="flex items-start justify-between gap-3">
-                <p className="text-sm font-medium text-foreground leading-snug">
-                  {event.payload?.message ?? event.category.replace(/_/g, " ")}
-                </p>
-                <span className="shrink-0 text-xs text-muted-foreground">
-                  {formatEventTime(event.created_at)}
-                </span>
-              </div>
-              <div className="flex items-center gap-2 mt-1 text-xs text-muted-foreground">
-                <span className="font-medium">{event.category.replace(/_/g, " ")}</span>
-                {target && (
-                  <>
-                    <span className="text-muted-foreground/60" aria-hidden>·</span>
-                    <span>
-                      {target.kind} / {target.namespace} / <span className="font-mono">{target.name}</span>
-                    </span>
-                  </>
-                )}
-              </div>
-            </div>
-          </button>
-        </CollapsibleTrigger>
-        <CollapsibleContent>
-          {hasDetails && (
-            <div className="px-3 pb-2 pl-9">
-              <p className="text-xs font-medium text-muted-foreground mb-1">Details (raw JSON)</p>
-              <pre className="text-xs bg-muted/50 rounded-md p-2 overflow-auto max-h-48 font-mono whitespace-pre-wrap break-words">
-                {JSON.stringify(details, null, 2)}
-              </pre>
-            </div>
-          )}
-        </CollapsibleContent>
-      </div>
-    </Collapsible>
-  );
+function workloadDisplayName(event: AuditEvent): string {
+  const t = event.payload?.target;
+  if (!t) return "—";
+  return `${t.kind}/${t.namespace}/${t.name}`;
+}
+
+function workloadName(event: AuditEvent): string {
+  const t = event.payload?.target;
+  return t?.name ?? "—";
 }
 
 /** Workload id format: TYPE:NAMESPACE:NAME (e.g. Deployment:my-namespace:my-app) */
@@ -164,6 +144,7 @@ export default function Events() {
   const [minutes, setMinutes] = useState(5);
   const [workloadSearch, setWorkloadSearch] = useState(() => searchParams.get("workload") ?? "");
   const [categoryFilter, setCategoryFilter] = useState<string>("all");
+  const [selectedEvent, setSelectedEvent] = useState<AuditEvent | null>(null);
 
   useEffect(() => {
     const w = searchParams.get("workload");
@@ -200,16 +181,17 @@ export default function Events() {
 
   return (
     <div className="p-6 space-y-6 animate-fade-in">
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-semibold text-foreground flex items-center gap-2">
-            <Activity className="h-6 w-6 text-muted-foreground" />
-            Events
-          </h1>
-          <p className="text-sm text-muted-foreground">
-            Audit events performed by CruiseKube (recommendations applied, evictions, PDB changes, etc.)
-          </p>
-        </div>
+      <div>
+        <h1 className="text-2xl font-semibold text-foreground flex items-center gap-2">
+          <Activity className="h-6 w-6 text-muted-foreground" />
+          Events
+        </h1>
+        <p className="text-sm text-muted-foreground">
+          Audit events performed by CruiseKube (recommendations applied, evictions, PDB changes, etc.)
+        </p>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-4">
         <div className="flex items-center gap-2">
           <span className="text-sm text-muted-foreground whitespace-nowrap">Last</span>
           <Select
@@ -228,46 +210,56 @@ export default function Events() {
             </SelectContent>
           </Select>
         </div>
-      </div>
-
-      <div className="flex flex-wrap items-center gap-1.5 rounded-md border border-border bg-muted/30 p-1.5">
-        <span className="px-2 py-1 text-xs font-medium text-muted-foreground self-center">Category:</span>
-        {CATEGORY_OPTIONS.map((cat) => {
-          const { Icon, color } = categoryIcon(cat);
-          return (
-            <Button
-              key={cat}
-              type="button"
-              variant={categoryFilter === cat ? "default" : "ghost"}
-              size="sm"
-              className="h-8 text-xs shrink-0 gap-1.5"
-              onClick={() => setCategoryFilter(cat)}
-            >
-              <Icon className={`h-3.5 w-3.5 shrink-0 ${categoryFilter === cat ? "text-primary-foreground" : color}`} />
-              <span className="tabular-nums">{categoryCount(cat)}</span>
-              {" · "}
-              {categoryLabel(cat)}
-            </Button>
-          );
-        })}
-      </div>
-
-      <div className="flex flex-wrap items-center gap-2">
-        <div className="relative flex-1 min-w-[16rem] max-w-md">
-          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+        <div className="flex items-center gap-2">
+          <span className="text-sm text-muted-foreground whitespace-nowrap">Category</span>
+          <Select value={categoryFilter} onValueChange={setCategoryFilter}>
+            <SelectTrigger className="w-[18rem]">
+              <SelectValue>
+                {(() => {
+                  const { Icon, color } = categoryIcon(categoryFilter);
+                  return (
+                    <span className="flex items-center gap-2">
+                      <Icon className={`h-3.5 w-3.5 shrink-0 ${color}`} />
+                      <span className="tabular-nums">{categoryCount(categoryFilter)}</span>
+                      <span className="text-muted-foreground">·</span>
+                      {categoryShortLabel(categoryFilter)}
+                    </span>
+                  );
+                })()}
+              </SelectValue>
+            </SelectTrigger>
+            <SelectContent>
+              {CATEGORY_OPTIONS.map((cat) => {
+                const { Icon, color } = categoryIcon(cat);
+                return (
+                  <SelectItem key={cat} value={cat}>
+                    <span className="flex items-center gap-2">
+                      <Icon className={`h-3.5 w-3.5 shrink-0 ${color}`} />
+                      <span className="tabular-nums">{categoryCount(cat)}</span>
+                      <span className="text-muted-foreground">·</span>
+                      {categoryShortLabel(cat)}
+                    </span>
+                  </SelectItem>
+                );
+              })}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="relative flex-1 min-w-[16rem] max-w-md flex items-center gap-2">
+          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
           <Input
             type="text"
             placeholder={WORKLOAD_ID_PLACEHOLDER}
             value={workloadSearch}
             onChange={(e) => setWorkloadSearch(e.target.value)}
-            className="pl-8 pr-8 h-9 text-sm"
+            className="pl-8 pr-8 h-9 text-sm flex-1 min-w-0"
           />
           {workloadSearch && (
             <Button
               type="button"
               variant="ghost"
               size="icon"
-              className="absolute right-0 top-0 bottom-0 h-9 w-9"
+              className="absolute right-0 top-0 bottom-0 h-9 w-9 shrink-0"
               onClick={() => setWorkloadSearch("")}
               aria-label="Clear workload filter"
             >
@@ -275,15 +267,9 @@ export default function Events() {
             </Button>
           )}
         </div>
-        <span className="text-xs text-muted-foreground">
-          Filter by workload (Kind:Namespace:Name). Leave empty for all events.
-        </span>
       </div>
 
       <Card>
-        <CardHeader className="pb-2">
-          <CardTitle className="text-base">Audit events</CardTitle>
-        </CardHeader>
         <CardContent className="p-0">
           {isLoading ? (
             <div className="p-6 space-y-3">
@@ -298,20 +284,130 @@ export default function Events() {
           ) : events.length === 0 ? (
             <div className="p-6 text-sm text-muted-foreground text-center">
               {categoryFilter !== "all" && allEvents.length > 0
-                ? `No events match the selected category (${categoryLabel(categoryFilter)}).`
+                ? `No events match the selected category (${categoryShortLabel(categoryFilter)}).`
                 : workloadId
                   ? `No events for workload "${workloadId}" in the last ${minutes} minute${minutes !== 1 ? "s" : ""}`
                   : `No events in the last ${minutes} minute${minutes !== 1 ? "s" : ""}`}
             </div>
           ) : (
-            <div className="divide-y-0">
-              {events.map((event, index) => (
-                <EventRow key={`${event.created_at}-${index}`} event={event} />
-              ))}
-            </div>
+            <Table>
+              <TableHeader>
+                <TableRow className="border-b border-border bg-muted/30 hover:bg-muted/30">
+                  <TableHead className="h-9 px-3 py-2 text-xs font-medium text-muted-foreground w-[8rem]">Time</TableHead>
+                  <TableHead className="h-9 px-3 py-2 text-xs font-medium text-muted-foreground w-[6rem]">Category</TableHead>
+                  <TableHead className="h-9 px-3 py-2 text-xs font-medium text-muted-foreground w-[16rem]">Workload</TableHead>
+                  <TableHead className="h-9 px-3 py-2 text-xs font-medium text-muted-foreground min-w-[12rem]">Message</TableHead>
+                  <TableHead className="h-9 px-3 py-2 text-xs font-medium text-muted-foreground w-20">Details</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {events.map((event, index) => {
+                  const meta = CATEGORY_META[event.category] ?? DEFAULT_CATEGORY_META;
+                  const Icon = meta.icon;
+                  return (
+                    <TableRow
+                      key={`${event.created_at}-${index}`}
+                      className={index % 2 === 1 ? "bg-muted/10" : ""}
+                    >
+                      <TableCell className="py-2 px-3 text-xs text-muted-foreground whitespace-nowrap align-top">
+                        <TooltipProvider>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <span className="cursor-default">
+                                {formatTimeAgo(event.created_at)}
+                              </span>
+                            </TooltipTrigger>
+                            <TooltipContent side="right">
+                              {formatEventTime(event.created_at)}
+                            </TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
+                      </TableCell>
+                      <TableCell className="py-2 px-3 align-top">
+                        <TooltipProvider>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <span className={`inline-flex items-center gap-1 cursor-help text-xs ${meta.color}`}>
+                                <Icon className="h-3 w-3 shrink-0" />
+                                {meta.short}
+                              </span>
+                            </TooltipTrigger>
+                            <TooltipContent side="right" className="max-w-sm">
+                              <p className="font-semibold">{event.category.replace(/_/g, " ")}</p>
+                              <p className="mt-1 text-muted-foreground text-xs">{meta.description}</p>
+                            </TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
+                      </TableCell>
+                      <TableCell className="py-2 px-3 font-mono text-xs align-top min-w-0">
+                        {workloadName(event)}
+                      </TableCell>
+                      <TableCell className="py-2 px-3 text-xs text-foreground align-top min-w-0">
+                        {event.payload?.message ?? "—"}
+                      </TableCell>
+                      <TableCell className="py-2 px-3 align-top">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 text-xs"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setSelectedEvent(event);
+                          }}
+                        >
+                          Details
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
           )}
         </CardContent>
       </Card>
+
+      <Dialog open={!!selectedEvent} onOpenChange={(open) => !open && setSelectedEvent(null)}>
+        <DialogContent className="max-w-2xl max-h-[85vh] flex flex-col">
+          <DialogHeader>
+            <DialogTitle className="text-base">
+              {selectedEvent && (() => {
+                const { icon: EventIcon } = CATEGORY_META[selectedEvent.category] ?? DEFAULT_CATEGORY_META;
+                return (
+                  <span className="flex items-center gap-2">
+                    <EventIcon className="h-4 w-4 shrink-0" />
+                    {selectedEvent.category.replace(/_/g, " ")}
+                  </span>
+                );
+              })()}
+            </DialogTitle>
+          </DialogHeader>
+          {selectedEvent && (
+            <div className="flex flex-col gap-3 overflow-auto min-h-0">
+              <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-xs">
+                <span className="text-muted-foreground">Time</span>
+                <span>{formatEventTime(selectedEvent.created_at)}</span>
+                <span className="text-muted-foreground">Workload</span>
+                <span className="font-mono">{workloadDisplayName(selectedEvent)}</span>
+                {selectedEvent.payload?.message != null && (
+                  <>
+                    <span className="text-muted-foreground">Message</span>
+                    <span>{selectedEvent.payload.message}</span>
+                  </>
+                )}
+              </div>
+              <div>
+                <p className="text-xs font-medium text-muted-foreground mb-1">Details</p>
+                <pre className="text-xs bg-muted/50 rounded-md p-3 overflow-auto max-h-[50vh] font-mono whitespace-pre-wrap break-words border border-border">
+                  {selectedEvent.payload?.details != null && Object.keys(selectedEvent.payload.details).length > 0
+                    ? JSON.stringify(selectedEvent.payload.details, null, 2)
+                    : "No details"}
+                </pre>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
