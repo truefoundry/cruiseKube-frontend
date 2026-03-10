@@ -56,22 +56,82 @@ import { useToast } from "@/hooks/use-toast";
 
 const CATEGORY_META: Record<
   string,
-  { icon: LucideIcon; color: string; description: string }
+  { icon: LucideIcon; color: string; description: string; explanation: string }
 > = {
-  CPU_RECOMMENDATION_APPLIED: { icon: Cpu, color: "text-blue-600 dark:text-blue-400", description: "CPU request/limit was updated by CruiseKube based on recommendations." },
-  MEMORY_RECOMMENDATION_APPLIED: { icon: HardDrive, color: "text-violet-600 dark:text-violet-400", description: "Memory request/limit was updated by CruiseKube based on recommendations." },
-  POD_DISRUPTION_BLOCK_REMOVED: { icon: ShieldOff, color: "text-amber-600 dark:text-amber-400", description: "A pod disruption block was removed so the workload can be optimized." },
-  POD_DISRUPTION_BLOCK_RESTORED: { icon: Shield, color: "text-emerald-600 dark:text-emerald-400", description: "A pod disruption block was restored after the optimization window." },
-  PDB_RELAXED: { icon: LockKeyholeOpen, color: "text-amber-500 dark:text-amber-400", description: "PodDisruptionBudget was temporarily relaxed to allow evictions." },
-  PDB_RESTORED: { icon: LockKeyhole, color: "text-emerald-500 dark:text-emerald-400", description: "PodDisruptionBudget was restored to its original minAvailable/maxUnavailable." },
-  WEBHOOK_MUTATION: { icon: Code, color: "text-slate-600 dark:text-slate-400", description: "A webhook mutation was applied (e.g. resource patch)." },
-  POD_EVICTION: { icon: Trash2, color: "text-red-600 dark:text-red-400", description: "A pod was evicted (e.g. for consolidation or scaling)." },
-  OOM_EVENT: { icon: AlertTriangle, color: "text-red-600 dark:text-red-400", description: "Out-of-memory event detected for a pod." },
-  NODE_OVERLOAD_TAINT_ADDED: { icon: CloudOff, color: "text-orange-600 dark:text-orange-400", description: "Node was marked overloaded; taint added to discourage new pods." },
-  NODE_OVERLOAD_TAINT_REMOVED: { icon: Cloud, color: "text-teal-600 dark:text-teal-400", description: "Overload taint was removed from the node." },
+  CPU_RECOMMENDATION_APPLIED: {
+    icon: Cpu,
+    color: "text-blue-600 dark:text-blue-400",
+    description: "CPU request/limit was updated by CruiseKube based on recommendations.",
+    explanation: "CruiseKube analyzed actual usage and applied a new CPU request and/or limit to the workload. This helps right-size resources so the cluster can run more efficiently. The change is reflected in the pod spec.",
+  },
+  MEMORY_RECOMMENDATION_APPLIED: {
+    icon: HardDrive,
+    color: "text-violet-600 dark:text-violet-400",
+    description: "Memory request/limit was updated by CruiseKube based on recommendations.",
+    explanation: "CruiseKube analyzed actual memory usage and applied a new memory request and/or limit to the workload. This reduces over-provisioning and can free capacity for other workloads. The change is reflected in the pod spec.",
+  },
+  POD_DISRUPTION_BLOCK_REMOVED: {
+    icon: ShieldOff,
+    color: "text-amber-600 dark:text-amber-400",
+    description: "A pod disruption block was removed so the workload can be optimized.",
+    explanation: "A temporary block that prevented evictions or changes was removed so CruiseKube can apply recommendations or consolidate pods. This is done during the configured disruption window when it is safe to touch the workload.",
+  },
+  POD_DISRUPTION_BLOCK_RESTORED: {
+    icon: Shield,
+    color: "text-emerald-600 dark:text-emerald-400",
+    description: "A pod disruption block was restored after the optimization window.",
+    explanation: "After the disruption window ended, CruiseKube restored the block that protects the workload from evictions or changes. The workload returns to its protected state until the next window.",
+  },
+  PDB_RELAXED: {
+    icon: LockKeyholeOpen,
+    color: "text-amber-500 dark:text-amber-400",
+    description: "PodDisruptionBudget was temporarily relaxed to allow evictions.",
+    explanation: "The PodDisruptionBudget (PDB) minAvailable or maxUnavailable was temporarily relaxed so that evictions or scaling could proceed. This allows consolidation or right-sizing without violating the PDB during the change.",
+  },
+  PDB_RESTORED: {
+    icon: LockKeyhole,
+    color: "text-emerald-500 dark:text-emerald-400",
+    description: "PodDisruptionBudget was restored to its original minAvailable/maxUnavailable.",
+    explanation: "After the planned evictions or changes, the PDB was restored to its original values. The workload is again protected by its normal disruption budget.",
+  },
+  WEBHOOK_MUTATION: {
+    icon: Code,
+    color: "text-slate-600 dark:text-slate-400",
+    description: "A webhook mutation was applied (e.g. resource patch).",
+    explanation: "A Kubernetes admission webhook (e.g. from CruiseKube) mutated the resource—for example, patching CPU or memory requests/limits. The event records that the mutation was applied to the object.",
+  },
+  POD_EVICTION: {
+    icon: Trash2,
+    color: "text-red-600 dark:text-red-400",
+    description: "A pod was evicted (e.g. for consolidation or scaling).",
+    explanation: "A pod was evicted from its node, typically to consolidate workloads onto fewer nodes (bin packing) or to allow resource changes. The workload controller will recreate the pod elsewhere if needed.",
+  },
+  OOM_EVENT: {
+    icon: AlertTriangle,
+    color: "text-red-600 dark:text-red-400",
+    description: "Out-of-memory event detected for a pod.",
+    explanation: "The pod was killed or reported an out-of-memory (OOM) condition. This may indicate the workload needs more memory or that usage spiked. Check the workload’s memory requests and limits and any OOM details in the payload.",
+  },
+  NODE_OVERLOAD_TAINT_ADDED: {
+    icon: CloudOff,
+    color: "text-orange-600 dark:text-orange-400",
+    description: "Node was marked overloaded; taint added to discourage new pods.",
+    explanation: "The node was identified as overloaded (e.g. high usage or pressure). A taint was added so the scheduler avoids placing new pods on it, helping to stabilize the node or allow evictions.",
+  },
+  NODE_OVERLOAD_TAINT_REMOVED: {
+    icon: Cloud,
+    color: "text-teal-600 dark:text-teal-400",
+    description: "Overload taint was removed from the node.",
+    explanation: "The overload condition on the node was cleared and the taint was removed. The node is again eligible for normal scheduling.",
+  },
 };
 
-const DEFAULT_CATEGORY_META = { icon: Activity, color: "text-muted-foreground", description: "CruiseKube audit event." };
+const DEFAULT_CATEGORY_META = {
+  icon: Activity,
+  color: "text-muted-foreground",
+  description: "CruiseKube audit event.",
+  explanation: "This event was recorded by CruiseKube. Check the Details section for more information.",
+};
 
 const MINUTES_OPTIONS = [1, 5, 15, 30, 60];
 
@@ -346,9 +406,10 @@ export default function Events() {
                                 {event.category.replace(/_/g, " ")}
                               </span>
                             </TooltipTrigger>
-                            <TooltipContent side="right" className="max-w-sm">
+                            <TooltipContent side="right" className="max-w-md">
                               <p className="font-semibold">{event.category.replace(/_/g, " ")}</p>
                               <p className="mt-1 text-muted-foreground text-xs">{meta.description}</p>
+                              <p className="mt-2 text-muted-foreground text-xs border-t border-border pt-2">{meta.explanation}</p>
                             </TooltipContent>
                           </Tooltip>
                         </TooltipProvider>
