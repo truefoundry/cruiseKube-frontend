@@ -29,6 +29,8 @@ export interface FrontendWorkload {
   /** Monthly cost of increasing resources when recommended > current (reliability). */
   reliabilityCostDollars: number;
   lastUpdated: string;
+  /** Unix timestamp (seconds) for tooltip / full date display. */
+  updatedAt?: number;
   mode: 'enabled' | 'recommend-only';
   priority: 'low' | 'medium' | 'high' | 'non-evictable';
   hasRecommendations: boolean;

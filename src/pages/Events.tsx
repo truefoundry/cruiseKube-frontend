@@ -122,7 +122,14 @@ function formatTimeAgo(iso: string): string {
 
 function workloadName(event: AuditEvent): string {
   const t = event.payload?.target;
-  return `${t?.kind}/${t?.name}` ?? "—";
+  return t?.kind && t?.name ? `${t.kind}/${t.name}` : "—";
+}
+
+/** Target as "Kind / Namespace / Name" for display in event details. */
+function targetDisplay(event: AuditEvent): string {
+  const t = event.payload?.target;
+  if (!t) return "—";
+  return `${t.kind} / ${t.namespace} / ${t.name}`;
 }
 
 /** Workload ID from event payload details (not derived from target). */
@@ -436,6 +443,8 @@ export default function Events() {
                     </Button>
                   )}
                 </span>
+                <span className="text-muted-foreground">Target</span>
+                <span className="font-mono">{targetDisplay(selectedEvent)}</span>
                 {selectedEvent.payload?.message != null && (
                   <>
                     <span className="text-muted-foreground">Message</span>

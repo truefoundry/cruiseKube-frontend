@@ -266,15 +266,26 @@ function workloadIdForApi(id: string): string {
   return id.includes("/") ? id.replace(/\//g, ":") : id;
 }
 
-function formatUpdatedAtUnix(utcSeconds: number): string {
+/** Short relative time for table display (e.g. "now", "5m", "2h", "3d"). */
+function formatUpdatedAtShort(utcSeconds: number): string {
   const diffMs = Date.now() - utcSeconds * 1000;
   const diffMins = Math.floor(diffMs / 60000);
   const diffHours = Math.floor(diffMs / 3600000);
   const diffDays = Math.floor(diffMs / 86400000);
-  if (diffMins < 1) return "just now";
-  if (diffMins < 60) return `${diffMins} min ago`;
-  if (diffHours < 24) return `${diffHours} hr ago`;
-  return `${diffDays} days ago`;
+  if (diffMins < 1) return "now";
+  if (diffMins < 60) return `${diffMins}m`;
+  if (diffHours < 24) return `${diffHours}h`;
+  return `${diffDays}d`;
+}
+
+/** Full date/time for tooltip. */
+function formatUpdatedAtFull(utcSeconds: number): string {
+  try {
+    const d = new Date(utcSeconds * 1000);
+    return d.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
+  } catch {
+    return "";
+  }
 }
 
 function normalizePriority(p: string): "low" | "medium" | "high" | "non-evictable" {
@@ -300,7 +311,8 @@ function workloadDetailToFrontend(d: WorkloadDetail): FrontendWorkload {
     recommendedMem: formatMemory(d.memory.recommended.max),
     potentialDollars: d.dollarSavingsPerMonth,
     reliabilityCostDollars: d.dollarExpenditurePerMonth,
-    lastUpdated: formatUpdatedAtUnix(d.updatedAt),
+    lastUpdated: formatUpdatedAtShort(d.updatedAt),
+    updatedAt: d.updatedAt,
     mode,
     priority,
     hasRecommendations: d.dollarSavingsPerMonth !== 0 || d.dollarExpenditurePerMonth !== 0,
@@ -344,7 +356,7 @@ export default function Workloads() {
   const [selectedWorkloadIds, setSelectedWorkloadIds] = useState<Set<string>>(new Set());
 
   const MIN_COLUMN_WIDTH = 40;
-  const DEFAULT_COLUMN_WIDTHS = [44, 230, 120, 40, 72, 110, 72, 110, 100, 100, 100, 136];
+  const DEFAULT_COLUMN_WIDTHS = [40, 320, 150, 50, 80, 80, 80, 80, 100, 100, 100, 60, 115];
   const [columnWidths, setColumnWidths] = useState<number[]>(() => DEFAULT_COLUMN_WIDTHS);
   const [resizingCol, setResizingCol] = useState<number | null>(null);
   const resizeStartXRef = useRef(0);
@@ -508,28 +520,20 @@ export default function Workloads() {
     return parseFloat(valueToParse) || 0;
   };
 
-  /** CPU for table cell: number only (cores), unit is in column header. */
+  /** CPU for table cell: number only (cores), unit is in column header. Shows — when 0. */
   const tableCpuDisplay = (cpuString: string): string => {
     const cores = parseCpuValue(cpuString);
-    return cores < 1 ? cores.toFixed(2) : cores.toFixed(1);
+    if (cores === 0) return "—";
+    return cores < 1 ? cores.toFixed(4) : cores.toFixed(2);
   };
-  /** Memory for table cell: number only (GB), unit is in column header. */
+  /** Memory for table cell: number only (GB), unit is in column header. Shows — when 0. */
   const tableMemDisplay = (memString: string): string => {
     const mb = parseMemoryValue(memString);
-    return (mb / 1024).toFixed(2);
+    if (mb === 0) return "—";
+    return (mb / 1024).toFixed(4);
   };
 
-  const parseTimeValue = (timeString: string): number => {
-    if (!timeString) return 0;
-    if (timeString === "just now") return 0;
-    const minsMatch = timeString.match(/(\d+) min ago/);
-    if (minsMatch) return parseInt(minsMatch[1]) || 0;
-    const hoursMatch = timeString.match(/(\d+) hr ago/);
-    if (hoursMatch) return (parseInt(hoursMatch[1]) || 0) * 60;
-    const daysMatch = timeString.match(/(\d+) days ago/);
-    if (daysMatch) return (parseInt(daysMatch[1]) || 0) * 1440;
-    return 0;
-  };
+  const updatedAtSeconds = (w: FrontendWorkload): number => w.updatedAt ?? 0;
 
   const sortWorkloads = (workloads: FrontendWorkload[]): FrontendWorkload[] => {
     const list = workloads ?? [];
@@ -600,8 +604,8 @@ export default function Workloads() {
           return sortDirection === "asc" ? aValue - bValue : bValue - aValue;
 
         case "lastUpdated":
-          aValue = parseTimeValue(a.lastUpdated);
-          bValue = parseTimeValue(b.lastUpdated);
+          aValue = updatedAtSeconds(a);
+          bValue = updatedAtSeconds(b);
           return sortDirection === "asc" ? aValue - bValue : bValue - aValue;
 
         default:
@@ -910,8 +914,8 @@ export default function Workloads() {
             </colgroup>
             <thead className="sticky top-0 z-10 bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/80 border-b border-border">
               <tr>
-                <th rowSpan={2} className="w-11 px-2 pt-4 align-middle border-r border-border bg-muted/20 text-center">
-                  <div className="flex items-center justify-center min-h-[2.5rem]" onClick={(e) => e.stopPropagation()}>
+                <th rowSpan={2} className="w-11 px-2 py-2 align-middle border-r border-border text-center leading-none">
+                  <div className="flex items-center justify-center" onClick={(e) => e.stopPropagation()}>
                     {selectableWorkloads.length > 0 ? (
                       <Checkbox
                         checked={allSelectableSelected ? true : someSelected ? "indeterminate" : false}
@@ -920,7 +924,7 @@ export default function Workloads() {
                           else clearSelection();
                         }}
                         aria-label="Select all selectable workloads"
-                        className="h-4 w-4"
+                        className="h-4 w-4 data-[state=checked]:bg-muted data-[state=checked]:text-muted-foreground data-[state=indeterminate]:bg-muted data-[state=indeterminate]:text-muted-foreground border-muted-foreground/40"
                       />
                     ) : (
                       <span className="w-4 h-4" aria-hidden />
@@ -928,45 +932,45 @@ export default function Workloads() {
                   </div>
                 </th>
                 <th rowSpan={2}
-                  className="cursor-pointer select-none hover:bg-muted/50 transition-colors align-top pt-4 relative"
+                  className="cursor-pointer select-none hover:bg-muted/50 transition-colors align-middle text-left leading-none py-2 relative"
                   onClick={(e) => { e.stopPropagation(); handleSort("workload"); }}
                 >
-                  <div className="flex items-center gap-1 pr-2">
+                  <div className="flex items-center justify-start gap-1 pr-2">
                     Workload
                     {sortColumn === "workload" && (sortDirection === "asc" ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />)}
-                  </div>
-                  <div className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-primary/30 active:bg-primary/50" onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); startResize(0, e.clientX); }} aria-hidden />
-                </th>
-                <th rowSpan={2}
-                  className="cursor-pointer select-none hover:bg-muted/50 transition-colors align-top pt-4 relative"
-                  onClick={(e) => { e.stopPropagation(); handleSort("namespace"); }}
-                >
-                  <div className="flex items-center gap-1 pr-2">
-                    Namespace
-                    {sortColumn === "namespace" && (sortDirection === "asc" ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />)}
                   </div>
                   <div className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-primary/30 active:bg-primary/50" onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); startResize(1, e.clientX); }} aria-hidden />
                 </th>
                 <th rowSpan={2}
-                  className="cursor-pointer select-none hover:bg-muted/50 transition-colors align-top pt-4 relative w-20 text-right"
-                  onClick={(e) => { e.stopPropagation(); handleSort("replicas"); }}
+                  className="cursor-pointer select-none hover:bg-muted/50 transition-colors align-middle text-left leading-none py-2 relative"
+                  onClick={(e) => { e.stopPropagation(); handleSort("namespace"); }}
                 >
-                  <div className="flex items-center justify-end gap-1 pr-2">
-                    Pods
-                    {sortColumn === "replicas" && (sortDirection === "asc" ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />)}
+                  <div className="flex items-center justify-start gap-1 pr-2">
+                    Namespace
+                    {sortColumn === "namespace" && (sortDirection === "asc" ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />)}
                   </div>
                   <div className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-primary/30 active:bg-primary/50" onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); startResize(2, e.clientX); }} aria-hidden />
                 </th>
-                <th colSpan={2} className="border-t border-l border-r border-b-0 border-border bg-muted/40 font-medium align-top pt-3 pb-0 px-0">
-                  <div className="flex justify-center">
+                <th rowSpan={2}
+                  className="cursor-pointer select-none hover:bg-muted/50 transition-colors align-middle text-center leading-none py-2 relative w-20"
+                  onClick={(e) => { e.stopPropagation(); handleSort("replicas"); }}
+                >
+                  <div className="flex items-center justify-center gap-1 pr-2">
+                    Pods
+                    {sortColumn === "replicas" && (sortDirection === "asc" ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />)}
+                  </div>
+                  <div className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-primary/30 active:bg-primary/50" onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); startResize(3, e.clientX); }} aria-hidden />
+                </th>
+                <th colSpan={2} className="border-t border-l border-r border-b-0 border-border bg-muted/40 font-medium align-middle text-center leading-none py-2 px-0">
+                  <div className="flex items-center justify-center">
                     <span className="inline-flex items-center gap-1.5">
                       <Cpu className="h-4 w-4" />
                       CPU (cores)
                     </span>
                   </div>
                 </th>
-                <th colSpan={2} className="border-t border-l border-r border-b-0 border-border bg-muted/40 font-medium align-top pt-3 pb-0 px-0">
-                  <div className="flex justify-center">
+                <th colSpan={2} className="border-t border-l border-r border-b-0 border-border bg-muted/40 font-medium align-middle text-center leading-none py-2 px-0">
+                  <div className="flex items-center justify-center">
                     <span className="inline-flex items-center gap-1.5">
                       <HardDrive className="h-4 w-4" />
                       Memory (GB)
@@ -974,11 +978,11 @@ export default function Workloads() {
                   </div>
                 </th>
                 <th rowSpan={2}
-                  className="cursor-pointer select-none hover:bg-muted/50 transition-colors align-top pt-4 relative text-right"
+                  className="cursor-pointer select-none hover:bg-muted/50 transition-colors align-middle text-center leading-none py-2 relative"
                   onClick={(e) => { e.stopPropagation(); handleSort("netSavings"); }}
                 >
-                  <div className="flex items-center justify-end gap-1 pr-2">
-                    Net Savings/M
+                  <div className="flex items-center justify-center gap-1 pr-2">
+                    Net<br />Savings/M <br />
                     {sortColumn === "netSavings" && (sortDirection === "asc" ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />)}
                     <TooltipProvider>
                       <Tooltip>
@@ -991,101 +995,139 @@ export default function Workloads() {
                       </Tooltip>
                     </TooltipProvider>
                   </div>
-                  <div className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-primary/30 active:bg-primary/50" onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); startResize(7, e.clientX); }} aria-hidden />
+                  <div className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-primary/30 active:bg-primary/50" onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); startResize(4, e.clientX); }} aria-hidden />
                 </th>
-                <th colSpan={2} className="border-t border-l border-r border-b-0 border-border bg-muted/40 font-medium align-top pt-3 pb-0 px-0">
-                  <div className="flex justify-center">
+                <th colSpan={2} className="border-t border-l border-r border-b-0 border-border font-medium align-middle text-center leading-none py-2 px-0">
+                  <div className="flex items-center justify-center">
                     <span className="inline-flex items-center gap-1.5">
-                      CruiseConfig
+                      Config
                       {sortColumn === "cruiseConfig" && (sortDirection === "asc" ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />)}
                     </span>
                   </div>
                 </th>
-                <th rowSpan={2} className="relative text-center align-top pt-4">
-                  <div className="flex justify-center">
+                <th rowSpan={2}
+                  className="cursor-pointer select-none hover:bg-muted/50 transition-colors align-middle text-center leading-none py-2 relative"
+                  onClick={(e) => { e.stopPropagation(); handleSort("lastUpdated"); }}
+                >
+                  <div className="flex items-center justify-center gap-1 pr-2">
+                    Updated
+                    {sortColumn === "lastUpdated" && (sortDirection === "asc" ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />)}
+                  </div>
+                  <div className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-primary/30 active:bg-primary/50" onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); startResize(11, e.clientX); }} aria-hidden />
+                </th>
+                <th rowSpan={2} className="relative text-center align-middle leading-none py-2">
+                  <div className="flex items-center justify-center">
                     Actions
                   </div>
-                  <div className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-primary/30 active:bg-primary/50" onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); startResize(10, e.clientX); }} aria-hidden />
+                  <div className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-primary/30 active:bg-primary/50" onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); startResize(12, e.clientX); }} aria-hidden />
                 </th>
               </tr>
               <tr>
                 <th
-                  className="cursor-pointer select-none hover:bg-muted/30 transition-colors border-b border-l border-border bg-muted/30 relative text-right"
+                  className="cursor-pointer select-none hover:bg-muted/30 transition-colors border-b border-l border-border bg-muted/30 relative text-right align-middle leading-none py-1.5"
                   onClick={(e) => { e.stopPropagation(); handleSort("currentCpu"); }}
                 >
                   <div className="flex items-center justify-end gap-1 pr-2">
-                    Current
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger asChild onClick={(e) => e.stopPropagation()}>
+                          <span className="cursor-help">Curr.</span>
+                        </TooltipTrigger>
+                        <TooltipContent side="top">Current</TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
                     {sortColumn === "currentCpu" && (sortDirection === "asc" ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />)}
-                  </div>
-                  <div className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-primary/30 active:bg-primary/50" onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); startResize(3, e.clientX); }} aria-hidden />
-                </th>
-                <th
-                  className="cursor-pointer select-none hover:bg-muted/30 transition-colors border-b border-r border-border bg-muted/30 relative text-right"
-                  onClick={(e) => { e.stopPropagation(); handleSort("recommendedCpu"); }}
-                >
-                  <div className="flex items-center justify-end gap-1 pr-2">
-                    Recommended
-                    {sortColumn === "recommendedCpu" && (sortDirection === "asc" ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />)}
-                  </div>
-                  <div className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-primary/30 active:bg-primary/50" onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); startResize(4, e.clientX); }} aria-hidden />
-                </th>
-                <th
-                  className="cursor-pointer select-none hover:bg-muted/30 transition-colors border-b border-l border-border bg-muted/30 relative text-right"
-                  onClick={(e) => { e.stopPropagation(); handleSort("currentMem"); }}
-                >
-                  <div className="flex items-center justify-end gap-1 pr-2">
-                    Current
-                    {sortColumn === "currentMem" && (sortDirection === "asc" ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />)}
                   </div>
                   <div className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-primary/30 active:bg-primary/50" onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); startResize(5, e.clientX); }} aria-hidden />
                 </th>
                 <th
-                  className="cursor-pointer select-none hover:bg-muted/30 transition-colors border-b border-r border-border bg-muted/30 relative text-right"
-                  onClick={(e) => { e.stopPropagation(); handleSort("recommendedMem"); }}
+                  className="cursor-pointer select-none hover:bg-muted/30 transition-colors border-b border-r border-border bg-muted/30 relative text-right align-middle leading-none py-1.5"
+                  onClick={(e) => { e.stopPropagation(); handleSort("recommendedCpu"); }}
                 >
                   <div className="flex items-center justify-end gap-1 pr-2">
-                    Recommended
-                    {sortColumn === "recommendedMem" && (sortDirection === "asc" ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />)}
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger asChild onClick={(e) => e.stopPropagation()}>
+                          <span className="cursor-help">Rec.</span>
+                        </TooltipTrigger>
+                        <TooltipContent side="top">Recommended</TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                    {sortColumn === "recommendedCpu" && (sortDirection === "asc" ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />)}
                   </div>
                   <div className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-primary/30 active:bg-primary/50" onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); startResize(6, e.clientX); }} aria-hidden />
                 </th>
                 <th
-                  className="cursor-pointer select-none hover:bg-muted/30 transition-colors border-b border-l border-border bg-muted/30 relative"
+                  className="cursor-pointer select-none hover:bg-muted/30 transition-colors border-b border-l border-border bg-muted/30 relative text-right align-middle leading-none py-1.5"
+                  onClick={(e) => { e.stopPropagation(); handleSort("currentMem"); }}
+                >
+                  <div className="flex items-center justify-end gap-1 pr-2">
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger asChild onClick={(e) => e.stopPropagation()}>
+                          <span className="cursor-help">Curr.</span>
+                        </TooltipTrigger>
+                        <TooltipContent side="top">Current</TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                    {sortColumn === "currentMem" && (sortDirection === "asc" ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />)}
+                  </div>
+                  <div className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-primary/30 active:bg-primary/50" onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); startResize(7, e.clientX); }} aria-hidden />
+                </th>
+                <th
+                  className="cursor-pointer select-none hover:bg-muted/30 transition-colors border-b border-r border-border bg-muted/30 relative text-right align-middle leading-none py-1.5"
+                  onClick={(e) => { e.stopPropagation(); handleSort("recommendedMem"); }}
+                >
+                  <div className="flex items-center justify-end gap-1 pr-2">
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger asChild onClick={(e) => e.stopPropagation()}>
+                          <span className="cursor-help">Rec.</span>
+                        </TooltipTrigger>
+                        <TooltipContent side="top">Recommended</TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                    {sortColumn === "recommendedMem" && (sortDirection === "asc" ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />)}
+                  </div>
+                  <div className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-primary/30 active:bg-primary/50" onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); startResize(8, e.clientX); }} aria-hidden />
+                </th>
+                <th
+                  className="cursor-pointer select-none hover:bg-muted/30 transition-colors border-b border-l border-border relative text-center align-middle leading-none py-1.5"
                   onClick={(e) => { e.stopPropagation(); handleSort("cruiseConfig"); }}
                 >
-                  <div className="flex items-center gap-1 pr-2 justify-center">
-                    CruiseOn
+                  <div className="flex items-center justify-center gap-1 pr-2">
+                    Mode 
                     <TooltipProvider>
                       <Tooltip>
                         <TooltipTrigger asChild onClick={(e) => e.stopPropagation()}>
                           <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
                         </TooltipTrigger>
-                        <TooltipContent className="max-w-xs">
+                        <TooltipContent side="bottom" className="max-w-xs">
                           <p>When on, recommendations are auto-applied (Cruise mode). When off, only recommendations are shown (Recommend only). Toggle inline to change.</p>
                         </TooltipContent>
                       </Tooltip>
                     </TooltipProvider>
                   </div>
-                  <div className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-primary/30 active:bg-primary/50" onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); startResize(8, e.clientX); }} aria-hidden />
+                  <div className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-primary/30 active:bg-primary/50" onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); startResize(9, e.clientX); }} aria-hidden />
                 </th>
                 <th
-                  className="cursor-pointer select-none hover:bg-muted/30 transition-colors border-b border-r border-border bg-muted/30 relative text-left"
+                  className="cursor-pointer select-none hover:bg-muted/30 transition-colors border-b border-r border-border relative text-center align-middle leading-none py-1.5"
                   onClick={(e) => { e.stopPropagation(); handleSort("cruiseConfig"); }}
                 >
-                  <div className="flex items-center gap-1 pr-2">
+                  <div className="flex items-center justify-center gap-1 pr-2">
                     Priority
                     <TooltipProvider>
                       <Tooltip>
                         <TooltipTrigger asChild onClick={(e) => e.stopPropagation()}>
                           <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
                         </TooltipTrigger>
-                        <TooltipContent className="max-w-xs">
+                        <TooltipContent side="bottom" className="max-w-xs">
                           <p>Eviction order during optimization: higher priority workloads are less likely to be evicted. Edit CruiseConfig to change.</p>
                         </TooltipContent>
                       </Tooltip>
                     </TooltipProvider>
                   </div>
-                  <div className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-primary/30 active:bg-primary/50" onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); startResize(9, e.clientX); }} aria-hidden />
+                  <div className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-primary/30 active:bg-primary/50" onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); startResize(10, e.clientX); }} aria-hidden />
                 </th>
               </tr>
             </thead>
@@ -1106,52 +1148,92 @@ export default function Workloads() {
                         onCheckedChange={() => !isWorkloadDisabled(workload) && toggleSelection(workload.id)}
                         disabled={isWorkloadDisabled(workload)}
                         aria-label={`Select ${workload.workload}`}
-                        className="h-4 w-4"
+                        className="h-4 w-4 data-[state=checked]:bg-muted data-[state=checked]:text-muted-foreground border-muted-foreground/40"
                       />
                     </div>
                   </td>
-                  <td className="min-w-0 break-words align-top">
-                    <div className="flex flex-col gap-0.5 min-w-0">
-                      <div className="flex items-start gap-2 min-w-0">
-                        <span className="shrink-0 inline-flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
-                          <WorkloadTypeIcon type={workload.type} />
-                          <WorkloadStatusIcons workload={workload} />
-                        </span>
+                  <td className="min-w-0 break-words align-middle text-left">
+                    <div className="grid grid-cols-[auto_1fr] gap-x-2 gap-y-1 items-start min-w-0">
+                      <span className="shrink-0 inline-flex items-center gap-1 self-start mt-0.5" onClick={(e) => e.stopPropagation()}>
+                        <WorkloadTypeIcon type={workload.type} />
+                        <WorkloadStatusIcons workload={workload} />
+                      </span>
+                      <div className="flex flex-col gap-1 min-w-0">
                         <span className={`font-medium break-words min-w-0 ${isWorkloadDisabled(workload) ? "text-muted-foreground" : ""}`}>{workload.workload}</span>
+                        {(workload.excluded || (workload.excludedCodes && workload.excludedCodes.length > 0)) && (
+                          <div className="flex flex-wrap gap-1">
+                            {workload.excluded && (
+                              <Badge variant="secondary" className="text-xs font-normal py-0">
+                                {workload.excludedReason || "Excluded from optimization"}
+                              </Badge>
+                            )}
+                            {workload.excludedCodes?.map((code) => (
+                              <Badge key={code} variant="outline" className="text-xs font-normal py-0 text-muted-foreground border-muted-foreground/30">
+                                {EXCLUDED_CODE_LABELS[code] ?? code}
+                              </Badge>
+                            ))}
+                          </div>
+                        )}
                       </div>
-                      {workload.excluded && (
-                        <p className="text-xs text-muted-foreground mt-0.5">
-                          {workload.excludedReason || "Excluded from optimization"}
-                        </p>
-                      )}
-                      {workload.excludedCodes && workload.excludedCodes.length > 0 && (
-                        <p className="text-xs text-muted-foreground mt-0.5">
-                          {workload.excludedCodes.map((code) => EXCLUDED_CODE_LABELS[code] ?? code).join(", ")}
-                        </p>
-                      )}
                     </div>
                   </td>
-                  <td className="font-mono text-xs min-w-0 break-words align-top">{workload.namespace}</td>
-                  <td className="font-mono text-sm tabular-nums text-right min-w-0">{workload.replicas}</td>
-                  <td className={`font-mono text-sm tabular-nums text-right bg-muted/20 border-l border-b border-border min-w-0 overflow-hidden ${index === 0 ? "border-t" : ""}`}>{tableCpuDisplay(workload.currentCpu)}</td>
-                  <td className={`font-mono text-sm tabular-nums text-right bg-muted/20 border-r border-b border-border min-w-0 overflow-hidden ${index === 0 ? "border-t" : ""}`}>
-                    {tableCpuDisplay(workload.recommendedCpu)}
-                    {workload.potentialCpu !== 0 && (
-                      <span className={workload.potentialCpu > 0 ? "text-amber-600 dark:text-amber-400" : ""}>
-                        {" "}({workload.potentialCpu >= 0 ? "+" : ""}{workload.potentialCpu.toFixed(2)})
-                      </span>
-                    )}
+                  <td className="font-mono text-xs min-w-0 break-words align-middle text-left">{workload.namespace}</td>
+                  <td className="font-mono text-sm tabular-nums text-right min-w-0 align-middle">{workload.replicas}</td>
+                  <td className={`font-mono text-sm tabular-nums text-right bg-muted/20 border-l border-b border-border min-w-0 overflow-hidden align-middle ${index === 0 ? "border-t" : ""}`}>
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <span className="cursor-default">{tableCpuDisplay(workload.currentCpu)}</span>
+                        </TooltipTrigger>
+                        <TooltipContent side="top">{workload.currentCpu}</TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
                   </td>
-                  <td className={`font-mono text-sm tabular-nums text-right bg-muted/20 border-l border-b border-border min-w-0 overflow-hidden ${index === 0 ? "border-t" : ""}`}>{tableMemDisplay(workload.currentMem)}</td>
-                  <td className={`font-mono text-sm tabular-nums text-right bg-muted/20 border-r border-b border-border min-w-0 overflow-hidden ${index === 0 ? "border-t" : ""}`}>
-                    {tableMemDisplay(workload.recommendedMem)}
-                    {workload.potentialMem !== 0 && (
-                      <span className={workload.potentialMem > 0 ? "text-amber-600 dark:text-amber-400" : ""}>
-                        {" "}({workload.potentialMem >= 0 ? "+" : ""}{(workload.potentialMem / 1024).toFixed(2)})
-                      </span>
-                    )}
+                  <td className={`font-mono text-sm tabular-nums text-right bg-muted/20 border-r border-b border-border min-w-0 overflow-hidden align-middle ${index === 0 ? "border-t" : ""}`}>
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <span className="cursor-default">
+                            {tableCpuDisplay(workload.recommendedCpu)}
+                            {workload.potentialCpu !== 0 && (
+                              <span className={workload.potentialCpu > 0 ? "text-amber-600 dark:text-amber-400" : ""}>
+                                {" "}({workload.potentialCpu >= 0 ? "+" : ""}{workload.potentialCpu.toFixed(2)})
+                              </span>
+                            )}
+                          </span>
+                        </TooltipTrigger>
+                        <TooltipContent side="top">{workload.recommendedCpu}</TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
                   </td>
-                  <td className="font-mono text-sm text-right min-w-0 align-top overflow-hidden">
+                  <td className={`font-mono text-sm tabular-nums text-right bg-muted/20 border-l border-b border-border min-w-0 overflow-hidden align-middle ${index === 0 ? "border-t" : ""}`}>
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <span className="cursor-default">{tableMemDisplay(workload.currentMem)}</span>
+                        </TooltipTrigger>
+                        <TooltipContent side="top">{workload.currentMem}</TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                  </td>
+                  <td className={`font-mono text-sm tabular-nums text-right bg-muted/20 border-r border-b border-border min-w-0 overflow-hidden align-middle ${index === 0 ? "border-t" : ""}`}>
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <span className="cursor-default">
+                            {tableMemDisplay(workload.recommendedMem)}
+                            {workload.potentialMem !== 0 && (
+                              <span className={workload.potentialMem > 0 ? "text-amber-600 dark:text-amber-400" : ""}>
+                                {" "}({workload.potentialMem >= 0 ? "+" : ""}{(workload.potentialMem / 1024).toFixed(2)})
+                              </span>
+                            )}
+                          </span>
+                        </TooltipTrigger>
+                        <TooltipContent side="top">{workload.recommendedMem}</TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                  </td>
+                  <td className="font-mono text-sm text-right min-w-0 align-middle overflow-hidden">
                     <TooltipProvider>
                       <Tooltip>
                         <TooltipTrigger asChild>
@@ -1159,7 +1241,7 @@ export default function Workloads() {
                             {(() => {
                               const net = workload.potentialDollars - workload.reliabilityCostDollars;
                               const hasReliability = workload.reliabilityCostDollars > 0;
-                              const display = net === 0 && !hasReliability ? "—" : (net >= 0 ? `$${net.toFixed(2)}` : `-$${Math.abs(net).toFixed(2)}`);
+                              const display = net === 0 ? "—" : (net >= 0 ? `$${net.toFixed(2)}` : `-$${Math.abs(net).toFixed(2)}`);
                               return (
                                 <>
                                   <span className={net > 0 ? "text-primary" : net < 0 ? "text-destructive" : "text-muted-foreground"}>{display}</span>
@@ -1180,7 +1262,7 @@ export default function Workloads() {
                       </Tooltip>
                     </TooltipProvider>
                   </td>
-                  <td className={`bg-muted/20 min-w-0 overflow-hidden ${index === 0 ? "border-t" : ""} border-l border-b border-border align-middle`}>
+                  <td className={`min-w-0 overflow-hidden ${index === 0 ? "border-t" : ""} border-l border-b border-border align-middle`}>
                     <div className="flex justify-center min-w-0" onClick={(e) => e.stopPropagation()}>
                       {isWorkloadDisabled(workload) ? (
                         <span className="text-xs font-medium text-muted-foreground">Excluded</span>
@@ -1209,7 +1291,7 @@ export default function Workloads() {
                       )}
                     </div>
                   </td>
-                  <td className={`bg-muted/20 border-r border-b border-border min-w-0 overflow-hidden ${index === 0 ? "border-t" : ""} align-middle`}>
+                  <td className={`border-r border-b border-border min-w-0 overflow-hidden ${index === 0 ? "border-t" : ""} align-middle`}>
                     <div className="flex flex-col gap-0.5 justify-center min-w-0">
                       <div className="flex items-center gap-1 flex-wrap min-w-0">
                         <span className={`text-xs font-medium capitalize ${getPriorityColor(isWorkloadDisabled(workload) ? "excluded" : workload.priority)}`}>
@@ -1237,6 +1319,22 @@ export default function Workloads() {
                         )}
                       </div>
                     </div>
+                  </td>
+                  <td className="border-l border-b border-border min-w-0 overflow-hidden align-middle text-center text-xs text-muted-foreground whitespace-nowrap">
+                    {workload.updatedAt != null ? (
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <span className="cursor-default">{workload.lastUpdated}</span>
+                          </TooltipTrigger>
+                          <TooltipContent side="top">
+                            {formatUpdatedAtFull(workload.updatedAt)}
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                    ) : (
+                      workload.lastUpdated
+                    )}
                   </td>
                   <td className="min-w-0 overflow-hidden align-middle whitespace-nowrap text-center" onClick={(e) => e.stopPropagation()}>
                     <div className="flex items-center justify-center gap-1 min-w-0">
