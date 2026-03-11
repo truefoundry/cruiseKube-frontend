@@ -29,6 +29,8 @@ export interface FrontendWorkload {
   /** Monthly cost of increasing resources when recommended > current (reliability). */
   reliabilityCostDollars: number;
   lastUpdated: string;
+  /** Unix timestamp (seconds) for tooltip / full date display. */
+  updatedAt?: number;
   mode: 'enabled' | 'recommend-only';
   priority: 'low' | 'medium' | 'high' | 'non-evictable';
   hasRecommendations: boolean;
@@ -47,6 +49,12 @@ export interface FrontendWorkload {
   inDisruptionWindow?: boolean;
   /** True when the workload is identified as a GPU workload. */
   isGpuWorkload?: boolean;
+  /** True when the workload has HPA on CPU or memory. */
+  hpaEnabled?: boolean;
+  /** Exclusion reason codes from config (e.g. GPU_WORKLOAD, CPU_HPA, MEMORY_HPA). */
+  excludedCodes?: string[];
+  /** True when the workload has been scaled down (e.g. fewer replicas). */
+  scaledDown?: boolean;
 }
 
 export interface FrontendContainer {

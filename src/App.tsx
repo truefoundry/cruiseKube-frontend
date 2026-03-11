@@ -7,7 +7,6 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { ClusterProvider } from "@/contexts/ClusterContext";
 import { ConfigProvider } from "@/contexts/ConfigContext";
-import { DevModeProvider } from "@/contexts/DevModeContext";
 import Overview from "./pages/Overview";
 import Workloads from "./pages/Workloads";
 import WorkloadDetail from "./pages/WorkloadDetail";
@@ -20,32 +19,30 @@ const queryClient = new QueryClient();
 const SentryRoutes = Sentry.withSentryReactRouterV6Routing(Routes);
 
 const App = () => (
-  <Sentry.ErrorBoundary fallback={<p>An unexpected error has occurred.</p>} showDialog>
-    <QueryClientProvider client={queryClient}>
-      <TooltipProvider>
-        <ClusterProvider>
-          <ConfigProvider>
-            <DevModeProvider>
-              <Toaster />
-              <Sonner />
-              <BrowserRouter>
-                <SentryRoutes>
-                  <Route element={<AppLayout />}>
-                    <Route path="/" element={<Overview />} />
-                    <Route path="/workloads" element={<Workloads />} />
-                    <Route path="/workloads/:namespace/:workloadName" element={<WorkloadDetail />} />
-                    <Route path="/policies" element={<Policies />} />
-                    <Route path="/events" element={<Events />} />
-                  </Route>
-                  <Route path="*" element={<NotFound />} />
-                </SentryRoutes>
-              </BrowserRouter>
-            </DevModeProvider>
-          </ConfigProvider>
-        </ClusterProvider>
-      </TooltipProvider>
-    </QueryClientProvider>
-  </Sentry.ErrorBoundary>
+ <Sentry.ErrorBoundary fallback={<p>An unexpected error has occurred.</p>} showDialog>
+  <QueryClientProvider client={queryClient}>
+    <TooltipProvider>
+      <ClusterProvider>
+        <ConfigProvider>
+          <Toaster />
+          <Sonner />
+          <BrowserRouter>
+            <Routes>
+              <Route element={<AppLayout />}>
+                <Route path="/" element={<Overview />} />
+                <Route path="/workloads" element={<Workloads />} />
+                <Route path="/workloads/:namespace/:workloadName" element={<WorkloadDetail />} />
+                <Route path="/policies" element={<Policies />} />
+                <Route path="/events" element={<Events />} />
+              </Route>
+              <Route path="*" element={<NotFound />} />
+            </Routes>
+          </BrowserRouter>
+        </ConfigProvider>
+      </ClusterProvider>
+    </TooltipProvider>
+  </QueryClientProvider>
+ </Sentry.ErrorBoundary>
 );
 
 export default App;

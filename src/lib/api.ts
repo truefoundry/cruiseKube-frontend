@@ -261,6 +261,10 @@ export interface WorkloadDetailConfig {
   cruiseEnabled: boolean;
   disruptionSchedule: WorkloadDetailDisruptionWindow[];
   inDisruptionWindow: boolean;
+  /** True if the workload has HPA on CPU or memory. */
+  hpaEnabled?: boolean;
+  /** Exclusion reason codes (e.g. GPU_WORKLOAD, CPU_HPA, MEMORY_HPA). Omitted when empty. */
+  excludedCodes?: string[];
 }
 
 export interface WorkloadDetail {
@@ -270,6 +274,8 @@ export interface WorkloadDetail {
   name: string;
   updatedAt: number;
   podsCount: number;
+  /** True when the workload has been scaled down (e.g. fewer replicas). */
+  scaledDown?: boolean;
   constraints: WorkloadDetailConstraints;
   cpu: WorkloadDetailResource;
   memory: WorkloadDetailResource;
@@ -482,6 +488,19 @@ class ApiClient {
     return this.request<Overrides>(`/clusters/${clusterID}/workloads/${workloadID}/overrides`, {
       method: 'POST',
       body: JSON.stringify(overrides),
+    });
+  }
+
+  /** Batch update overrides for multiple workloads. POST .../workloads/batch-overrides */
+  async batchWorkloadOverrides(
+    clusterID: string,
+    workloadIds: string[],
+    overrides: Overrides
+  ): Promise<void> {
+    if (workloadIds.length === 0) throw new Error('workload_ids must not be empty');
+    return this.request<void>(`/clusters/${clusterID}/workloads/batch-overrides`, {
+      method: 'POST',
+      body: JSON.stringify({ workload_ids: workloadIds, overrides }),
     });
   }
 
