@@ -32,7 +32,7 @@ export interface FrontendWorkload {
   /** Unix timestamp (seconds) for tooltip / full date display. */
   updatedAt?: number;
   mode: 'enabled' | 'recommend-only';
-  priority: 'low' | 'medium' | 'high' | 'non-evictable';
+  critical: 'low' | 'medium' | 'high' | 'non-evictable';
   hasRecommendations: boolean;
   /** Disruption windows (cron in UTC) from overrides. */
   disruptionWindows: { startCron: string; endCron: string }[];
@@ -209,7 +209,7 @@ function calculateRecommendedMemory(
   return [currentMemory];
 }
 
-export function mapEvictionRankingToPriority(ranking: number): 'high' | 'medium' | 'low' | 'non-evictable' {
+export function mapEvictionRankingToCritical(ranking: number): 'high' | 'medium' | 'low' | 'non-evictable' {
   switch (Number(ranking)) {
     case EvictionRanking.EvictionRankingDisabled:
       return 'non-evictable';
@@ -224,8 +224,8 @@ export function mapEvictionRankingToPriority(ranking: number): 'high' | 'medium'
   }
 }
 
-export function mapPriorityToEvictionRanking(priority: 'low' | 'medium' | 'high' | 'non-evictable'): number {
-  switch (priority) {
+export function mapCriticalToEvictionRanking(critical: 'low' | 'medium' | 'high' | 'non-evictable'): number {
+  switch (critical) {
     case 'low':
       return EvictionRanking.EvictionRankingLow;
     case 'medium':
@@ -422,7 +422,7 @@ export function transformWorkloadStatToFrontend(
     reliabilityCostDollars,
     lastUpdated: formatTimeAgo(stat.updated_at),
     mode: enabled ? 'enabled' : 'recommend-only',
-    priority: mapEvictionRankingToPriority(evictionRanking),
+    critical: mapEvictionRankingToCritical(evictionRanking),
     hasRecommendations,
     disruptionWindows,
     excluded: stat.metadata?.excluded ?? false,

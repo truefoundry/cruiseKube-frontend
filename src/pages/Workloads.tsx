@@ -40,7 +40,7 @@ import {
   formatCpuSigned,
   formatMemory,
   formatMemorySigned,
-  mapPriorityToEvictionRanking,
+  mapCriticalToEvictionRanking,
 } from "@/lib/transformers";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
@@ -253,8 +253,8 @@ function isWorkloadDisabled(workload: FrontendWorkload): boolean {
   return !!(workload.excluded || workload.isGpuWorkload || workload.hpaEnabled);
 }
 
-function getPriorityColor(priority: string): string {
-  switch (priority) {
+function getCriticalColor(critical: string): string {
+  switch (critical) {
     case "low": return "text-destructive";
     case "medium": return "text-warning";
     case "high": return "text-success";
@@ -291,14 +291,14 @@ function formatUpdatedAtFull(utcSeconds: number): string {
   }
 }
 
-function normalizePriority(p: string): "low" | "medium" | "high" | "non-evictable" {
+function normalizeCritical(p: string): "low" | "medium" | "high" | "non-evictable" {
   if (p === "low" || p === "medium" || p === "high" || p === "non-evictable") return p;
   return "medium";
 }
 
 function workloadDetailToFrontend(d: WorkloadDetail): FrontendWorkload {
   const mode = d.config.cruiseEnabled ? "enabled" : "recommend-only";
-  const priority = normalizePriority(d.config.priority);
+  const critical = normalizeCritical(d.config.criticalityLevel);
   const c = d.constraints;
   return {
     id: d.workloadID,
@@ -317,7 +317,7 @@ function workloadDetailToFrontend(d: WorkloadDetail): FrontendWorkload {
     lastUpdated: formatUpdatedAtShort(d.updatedAt),
     updatedAt: d.updatedAt,
     mode,
-    priority,
+    critical,
     hasRecommendations: d.dollarSavingsPerMonth !== 0 || d.dollarExpenditurePerMonth !== 0,
     excluded: c?.excludedAnnotation ?? false,
     excludedReason: c?.excludedAnnotation ? "Excluded annotation" : undefined,
@@ -344,7 +344,7 @@ export default function Workloads() {
   const [search, setSearch] = useState("");
   const [namespaceFilter, setNamespaceFilter] = useState("all");
   const [modeFilter, setModeFilter] = useState("all");
-  const [priorityFilter, setPriorityFilter] = useState("all");
+  const [criticalFilter, setCriticalFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState<
     "all" | "excluded" | "blocking-consolidation" | "gpu" | "hpa-enabled" | "scaled-down"
   >("all");
@@ -353,7 +353,7 @@ export default function Workloads() {
   const [sortColumn, setSortColumn] = useState<string | null>("potentialDollars");
   const [sortDirection, setSortDirection] = useState<"asc" | "desc" | null>("desc");
   const [editWorkload, setEditWorkload] = useState<FrontendWorkload | null>(null);
-  const [editPriority, setEditPriority] = useState<'low' | 'medium' | 'high' | 'non-evictable'>('medium');
+  const [editCritical, setEditCritical] = useState<'low' | 'medium' | 'high' | 'non-evictable'>('medium');
   const [editMode, setEditMode] = useState<'enabled' | 'recommend-only'>('recommend-only');
   const [editDisruptionWindows, setEditDisruptionWindows] = useState<{ startCron: string; endCron: string }[]>([]);
   const [selectedWorkloadIds, setSelectedWorkloadIds] = useState<Set<string>>(new Set());
@@ -445,7 +445,7 @@ export default function Workloads() {
 
   const openEditModal = (workload: FrontendWorkload) => {
     setEditWorkload(workload);
-    setEditPriority(workload.priority);
+    setEditCritical(workload.critical);
     setEditMode(workload.mode);
     setEditDisruptionWindows(workload.disruptionWindows ?? []);
   };
@@ -454,7 +454,7 @@ export default function Workloads() {
     if (isWorkloadDisabled(workload)) return;
     const newMode = workload.mode === "enabled" ? "recommend-only" : "enabled";
     const overrides: Overrides = {
-      eviction_ranking: mapPriorityToEvictionRanking(workload.priority),
+      eviction_ranking: mapCriticalToEvictionRanking(workload.critical),
       enabled: newMode === "enabled",
     };
     const windows = asArray(workload.disruptionWindows);
@@ -474,7 +474,7 @@ export default function Workloads() {
     if (!editWorkload) return;
     const id = workloadIdForApi(editWorkload.id);
     const overrides: Overrides = {
-      eviction_ranking: mapPriorityToEvictionRanking(editPriority),
+      eviction_ranking: mapCriticalToEvictionRanking(editCritical),
       enabled: editMode === 'enabled',
     };
     if (editDisruptionWindows.length > 0) {
@@ -553,7 +553,7 @@ export default function Workloads() {
         case "workload":
         case "type":
         case "mode":
-        case "priority":
+        case "critical":
           aValue = a[sortColumn as keyof FrontendWorkload] as string;
           bValue = b[sortColumn as keyof FrontendWorkload] as string;
           if (aValue < bValue) return sortDirection === "asc" ? -1 : 1;
@@ -575,12 +575,12 @@ export default function Workloads() {
 
         case "cruiseConfig": {
           const modeOrder = (m: string) => (m === "enabled" ? 1 : 0);
-          const priorityOrder = (p: string) => ({ "non-evictable": 3, high: 2, medium: 1, low: 0 }[p] ?? -1);
+          const criticalOrder = (p: string) => ({ "non-evictable": 3, high: 2, medium: 1, low: 0 }[p] ?? -1);
           const aMode = modeOrder(a.mode);
           const bMode = modeOrder(b.mode);
           if (aMode !== bMode) return sortDirection === "asc" ? aMode - bMode : bMode - aMode;
-          const aPri = priorityOrder(a.priority);
-          const bPri = priorityOrder(b.priority);
+          const aPri = criticalOrder(a.critical);
+          const bPri = criticalOrder(b.critical);
           return sortDirection === "asc" ? aPri - bPri : bPri - aPri;
         }
 
@@ -625,7 +625,7 @@ export default function Workloads() {
       w.namespace.toLowerCase().includes(search.toLowerCase());
     const matchesNamespace = namespaceFilter === "all" || w.namespace === namespaceFilter;
     const matchesMode = modeFilter === "all" || w.mode === modeFilter;
-    const matchesPriority = priorityFilter === "all" || w.priority === priorityFilter;
+    const matchesCritical = criticalFilter === "all" || w.critical === criticalFilter;
     const matchesStatus =
       statusFilter === "all" ||
       (statusFilter === "excluded" && w.excluded === true) ||
@@ -637,7 +637,7 @@ export default function Workloads() {
     const matchesRecommendations = hasRecommendations === "all" || 
       (hasRecommendations === "yes" && w.hasRecommendations) ||
       (hasRecommendations === "no" && !w.hasRecommendations);
-    return matchesSearch && matchesNamespace && matchesMode && matchesPriority && matchesStatus && matchesType && matchesRecommendations;
+    return matchesSearch && matchesNamespace && matchesMode && matchesCritical && matchesStatus && matchesType && matchesRecommendations;
   });
 
   const sortedWorkloads = sortWorkloads(filteredWorkloads);
@@ -772,9 +772,9 @@ export default function Workloads() {
                 <SelectItem value="recommend-only">Recommend</SelectItem>
               </SelectContent>
             </Select>
-            <Select value={priorityFilter} onValueChange={setPriorityFilter}>
+            <Select value={criticalFilter} onValueChange={setCriticalFilter}>
               <SelectTrigger className="h-9 w-[130px] bg-muted/30 border-border rounded-md text-sm">
-                <SelectValue placeholder="Priority" />
+                <SelectValue placeholder="Critical" />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All priorities</SelectItem>
@@ -1127,14 +1127,14 @@ export default function Workloads() {
                   onClick={(e) => { e.stopPropagation(); handleSort("cruiseConfig"); }}
                 >
                   <div className="flex items-center justify-center gap-1 pr-2">
-                    Priority
+                    Critical
                     <TooltipProvider>
                       <Tooltip>
                         <TooltipTrigger asChild onClick={(e) => e.stopPropagation()}>
                           <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
                         </TooltipTrigger>
                         <TooltipContent side="bottom" className="max-w-xs">
-                          <p>Eviction order during optimization: higher priority workloads are less likely to be evicted. Edit CruiseConfig to change.</p>
+                          <p>Eviction order during optimization: higher critical workloads are less likely to be evicted. Edit CruiseConfig to change.</p>
                         </TooltipContent>
                       </Tooltip>
                     </TooltipProvider>
@@ -1290,8 +1290,8 @@ export default function Workloads() {
                   <td className={`border-r border-b border-border min-w-0 overflow-hidden ${index === 0 ? "border-t" : ""} align-middle`}>
                     <div className="flex flex-col gap-0.5 justify-center min-w-0">
                       <div className="flex items-center gap-1 flex-wrap min-w-0">
-                        <span className={`text-xs font-medium capitalize ${getPriorityColor(isWorkloadDisabled(workload) ? "excluded" : workload.priority)}`}>
-                          {isWorkloadDisabled(workload) ? "Excluded" : workload.priority}
+                        <span className={`text-xs font-medium capitalize ${getCriticalColor(isWorkloadDisabled(workload) ? "excluded" : workload.critical)}`}>
+                          {isWorkloadDisabled(workload) ? "Excluded" : workload.critical}
                         </span>
                         {!isWorkloadDisabled(workload) && asArray(workload.disruptionWindows).length > 0 && (
                           <TooltipProvider>
@@ -1398,7 +1398,7 @@ export default function Workloads() {
               <DialogTitle>Edit CruiseConfig</DialogTitle>
               <DialogDescription>
                 {editWorkload && (
-                  <>Update priority, mode, and disruption windows for <span className="font-medium text-foreground">{editWorkload.workload}</span> in <span className="font-mono text-foreground">{editWorkload.namespace}</span>.</>
+                  <>Update critical, mode, and disruption windows for <span className="font-medium text-foreground">{editWorkload.workload}</span> in <span className="font-mono text-foreground">{editWorkload.namespace}</span>.</>
                 )}
               </DialogDescription>
             </DialogHeader>
@@ -1421,8 +1421,8 @@ export default function Workloads() {
                   </div>
                 </div>
                 <div className="grid gap-2">
-                  <label className="text-sm font-medium">Priority</label>
-                  <Select value={editPriority} onValueChange={(v) => setEditPriority(v as typeof editPriority)}>
+                  <label className="text-sm font-medium">Critical</label>
+                  <Select value={editCritical} onValueChange={(v) => setEditCritical(v as typeof editCritical)}>
                     <SelectTrigger className="w-full">
                       <SelectValue />
                     </SelectTrigger>
@@ -1434,7 +1434,7 @@ export default function Workloads() {
                     </SelectContent>
                   </Select>
                   <p className="text-xs text-muted-foreground">
-                    During node consolidation, the controller may need to evict pods to free capacity. Higher priority workloads are evicted last; low priority first. Use <strong>Non-evictable</strong> for workloads that must never be evicted (e.g. critical system pods). Use <strong>High</strong> for important apps and <strong>Low</strong> for best-effort or batch workloads.
+                    During node consolidation, the controller may need to evict pods to free capacity. Higher critical workloads are evicted last; low critical first. Use <strong>Non-evictable</strong> for workloads that must never be evicted (e.g. critical system pods). Use <strong>High</strong> for important apps and <strong>Low</strong> for best-effort or batch workloads.
                   </p>
                 </div>
                 {editWorkload.blockingConsolidation && (
