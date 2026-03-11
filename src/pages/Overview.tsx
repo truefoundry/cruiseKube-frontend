@@ -339,6 +339,15 @@ export default function Overview() {
   return (
     <div className="min-w-0 w-full max-w-full animate-fade-in">
       <div className="mx-auto max-w-[1600px] px-4 py-6 sm:px-6 lg:px-8 space-y-8">
+        {!isLoading && !error && d.possibleSavings === 0 && (
+          <Alert className="border-primary/30 bg-primary/5">
+            <Activity className="h-4 w-4" />
+            <AlertTitle>Recommendations are being generated</AlertTitle>
+            <AlertDescription>
+              Savings and untapped savings will appear here once recommendations are ready. This may take a few minutes after the cluster is connected.
+            </AlertDescription>
+          </Alert>
+        )}
         {hasNoWorkloads && (
           <Alert className="border-muted-foreground/30 bg-muted/30">
             <Activity className="h-4 w-4" />
@@ -435,10 +444,10 @@ export default function Overview() {
                       </TooltipProvider>
                     </div>
                     <p className="font-mono text-2xl font-semibold tracking-tight text-foreground">
-                      ${d.currentSavings.toLocaleString()}
+                      ${d.possibleSavings > 0 ? d.currentSavings.toLocaleString() : "0"}
                     </p>
                     <p className="text-sm text-muted-foreground">
-                      {savingsPercent}% reduction
+                      {d.possibleSavings > 0 ? `${savingsPercent}% reduction` : "0% reduction"}
                     </p>
                   </div>
                   <div className="rounded-lg bg-muted/50 p-2 text-muted-foreground">
@@ -652,7 +661,7 @@ export default function Overview() {
                   </p>
                 </div>
                 <p className="font-mono text-2xl font-semibold tracking-tight text-foreground mt-1">
-                  ${Math.round(d.possibleSavings - d.currentSavings).toLocaleString()}/mo
+                  ${d.possibleSavings > 0 ? Math.round(d.possibleSavings - d.currentSavings).toLocaleString() : "0"}/mo
                 </p>
                 <p className="text-sm text-muted-foreground mt-2">
                   Enable CruiseKube on the remaining{" "}
