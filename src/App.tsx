@@ -1,3 +1,4 @@
+import * as Sentry from "@sentry/react";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -15,7 +16,10 @@ import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
 
+const SentryRoutes = Sentry.withSentryReactRouterV6Routing(Routes);
+
 const App = () => (
+ <Sentry.ErrorBoundary fallback={<p>An unexpected error has occurred.</p>} showDialog>
   <QueryClientProvider client={queryClient}>
     <TooltipProvider>
       <ClusterProvider>
@@ -38,6 +42,7 @@ const App = () => (
       </ClusterProvider>
     </TooltipProvider>
   </QueryClientProvider>
+ </Sentry.ErrorBoundary>
 );
 
 export default App;
