@@ -61,7 +61,7 @@ export const workloads = [
     potentialDollars: 450,
     lastUpdated: "2 min ago",
     mode: "enabled",
-    priority: "high",
+    critical: "high",
     hasRecommendations: true,
   },
   { 
@@ -75,7 +75,7 @@ export const workloads = [
     potentialDollars: 380,
     lastUpdated: "5 min ago",
     mode: "enabled",
-    priority: "high",
+    critical: "high",
     hasRecommendations: true,
   },
   { 
@@ -89,7 +89,7 @@ export const workloads = [
     potentialDollars: 320,
     lastUpdated: "12 min ago",
     mode: "recommend-only",
-    priority: "medium",
+    critical: "medium",
     hasRecommendations: true,
   },
   { 
@@ -103,7 +103,7 @@ export const workloads = [
     potentialDollars: 280,
     lastUpdated: "1 hr ago",
     mode: "recommend-only",
-    priority: "low",
+    critical: "low",
     hasRecommendations: true,
   },
   { 
@@ -117,7 +117,7 @@ export const workloads = [
     potentialDollars: 250,
     lastUpdated: "3 min ago",
     mode: "enabled",
-    priority: "high",
+    critical: "high",
     hasRecommendations: true,
   },
   { 
@@ -131,7 +131,7 @@ export const workloads = [
     potentialDollars: 220,
     lastUpdated: "8 min ago",
     mode: "enabled",
-    priority: "non-evictable",
+    critical: "very-high",
     hasRecommendations: false,
   },
   { 
@@ -145,7 +145,7 @@ export const workloads = [
     potentialDollars: 190,
     lastUpdated: "15 min ago",
     mode: "enabled",
-    priority: "high",
+    critical: "high",
     hasRecommendations: true,
   },
   { 
@@ -159,7 +159,7 @@ export const workloads = [
     potentialDollars: 170,
     lastUpdated: "22 min ago",
     mode: "recommend-only",
-    priority: "medium",
+    critical: "medium",
     hasRecommendations: true,
   },
 ];

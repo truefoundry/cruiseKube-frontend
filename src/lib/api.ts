@@ -257,7 +257,7 @@ export interface WorkloadDetailDisruptionWindow {
 }
 
 export interface WorkloadDetailConfig {
-  priority: string;
+  criticalityLevel: string;
   cruiseEnabled: boolean;
   disruptionSchedule: WorkloadDetailDisruptionWindow[];
   inDisruptionWindow: boolean;
@@ -491,14 +491,14 @@ class ApiClient {
     });
   }
 
-  /** Batch update overrides for multiple workloads. POST .../workloads/batch-overrides */
+  /** Batch update overrides for multiple workloads. POST .../workloads/overrides */
   async batchWorkloadOverrides(
     clusterID: string,
     workloadIds: string[],
     overrides: Overrides
   ): Promise<void> {
     if (workloadIds.length === 0) throw new Error('workload_ids must not be empty');
-    return this.request<void>(`/clusters/${clusterID}/workloads/batch-overrides`, {
+    return this.request<void>(`/clusters/${clusterID}/workloads/overrides`, {
       method: 'POST',
       body: JSON.stringify({ workload_ids: workloadIds, overrides }),
     });
