@@ -363,7 +363,7 @@ export default function Overview() {
             <Activity className="h-4 w-4" />
             <AlertTitle>Stats are still updating</AlertTitle>
             <AlertDescription>
-              Workload stats have not been generated yet. It may take 5–10 minutes for the overview to populate after the cluster is connected.
+              Workload stats have not been generated yet. It may take 5-10 minutes for the overview to populate after the cluster is connected.
             </AlertDescription>
           </Alert>
         )}
@@ -454,10 +454,10 @@ export default function Overview() {
                       </TooltipProvider>
                     </div>
                     <p className="font-mono text-2xl font-semibold tracking-tight text-foreground">
-                      ${d.possibleSavings > 0 ? d.currentSavings.toLocaleString() : "0"}
+                      ${d.currentSavings.toLocaleString()}
                     </p>
                     <p className="text-sm text-muted-foreground">
-                      {d.possibleSavings > 0 ? `${savingsPercent}% reduction` : "0% reduction"}
+                      ${savingsPercent}% reduction
                     </p>
                   </div>
                   <div className="rounded-lg bg-muted/50 p-2 text-muted-foreground">
@@ -671,7 +671,7 @@ export default function Overview() {
                   </p>
                 </div>
                 <p className="font-mono text-2xl font-semibold tracking-tight text-foreground mt-1">
-                  ${d.possibleSavings > 0 ? Math.round(d.possibleSavings - d.currentSavings).toLocaleString() : "0"}/mo
+                  ${d.possibleSavings !== 0 ? Math.round(d.possibleSavings - d.currentSavings).toLocaleString() : "0"}/mo
                 </p>
                 <p className="text-sm text-muted-foreground mt-2">
                   Enable CruiseKube on the remaining{" "}
