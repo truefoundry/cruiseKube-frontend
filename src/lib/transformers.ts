@@ -32,7 +32,7 @@ export interface FrontendWorkload {
   /** Unix timestamp (seconds) for tooltip / full date display. */
   updatedAt?: number;
   mode: 'enabled' | 'recommend-only';
-  critical: 'low' | 'medium' | 'high' | 'non-evictable';
+  critical: 'low' | 'medium' | 'high' | 'very-high';
   hasRecommendations: boolean;
   /** Disruption windows (cron in UTC) from overrides. */
   disruptionWindows: { startCron: string; endCron: string }[];
@@ -209,10 +209,10 @@ function calculateRecommendedMemory(
   return [currentMemory];
 }
 
-export function mapEvictionRankingToCritical(ranking: number): 'high' | 'medium' | 'low' | 'non-evictable' {
+export function mapEvictionRankingToCritical(ranking: number): 'high' | 'medium' | 'low' | 'very-high' {
   switch (Number(ranking)) {
     case EvictionRanking.EvictionRankingDisabled:
-      return 'non-evictable';
+      return 'very-high';
     case EvictionRanking.EvictionRankingLow:
       return 'low';
     case EvictionRanking.EvictionRankingMedium:
@@ -224,7 +224,7 @@ export function mapEvictionRankingToCritical(ranking: number): 'high' | 'medium'
   }
 }
 
-export function mapCriticalToEvictionRanking(critical: 'low' | 'medium' | 'high' | 'non-evictable'): number {
+export function mapCriticalToEvictionRanking(critical: 'low' | 'medium' | 'high' | 'very-high'): number {
   switch (critical) {
     case 'low':
       return EvictionRanking.EvictionRankingLow;
@@ -232,7 +232,7 @@ export function mapCriticalToEvictionRanking(critical: 'low' | 'medium' | 'high'
       return EvictionRanking.EvictionRankingMedium;
     case 'high':
       return EvictionRanking.EvictionRankingHigh;
-    case 'non-evictable':
+    case 'very-high':
       return EvictionRanking.EvictionRankingDisabled;
   }
 }

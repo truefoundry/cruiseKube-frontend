@@ -131,7 +131,7 @@ export const workloads = [
     potentialDollars: 220,
     lastUpdated: "8 min ago",
     mode: "enabled",
-    critical: "non-evictable",
+    critical: "very-high",
     hasRecommendations: false,
   },
   { 

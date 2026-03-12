@@ -9,6 +9,7 @@ import {
   Cpu,
   HardDrive,
   Info,
+  AlertTriangle,
 } from "lucide-react";
 import { useQueries } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
@@ -339,6 +340,15 @@ export default function Overview() {
   return (
     <div className="min-w-0 w-full max-w-full animate-fade-in">
       <div className="mx-auto max-w-[1600px] px-4 py-6 sm:px-6 lg:px-8 space-y-8">
+        {error && (
+          <Alert variant="destructive">
+            <AlertTriangle className="h-4 w-4" />
+            <AlertTitle>Error loading overview</AlertTitle>
+            <AlertDescription>
+              {error instanceof Error ? error.message : "Failed to load overview data. Try refreshing or selecting another cluster."}
+            </AlertDescription>
+          </Alert>
+        )}
         {!isLoading && !error && d.possibleSavings === 0 && (
           <Alert className="border-primary/30 bg-primary/5">
             <Activity className="h-4 w-4" />

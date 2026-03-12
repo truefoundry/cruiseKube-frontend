@@ -258,7 +258,7 @@ function getCriticalColor(critical: string): string {
     case "low": return "text-destructive";
     case "medium": return "text-warning";
     case "high": return "text-success";
-    case "non-evictable": return "text-primary";
+    case "very-high": return "text-primary";
     case "excluded": return "text-muted-foreground";
     default: return "text-muted-foreground";
   }
@@ -291,8 +291,8 @@ function formatUpdatedAtFull(utcSeconds: number): string {
   }
 }
 
-function normalizeCritical(p: string): "low" | "medium" | "high" | "non-evictable" {
-  if (p === "low" || p === "medium" || p === "high" || p === "non-evictable") return p;
+function normalizeCritical(p: string): "low" | "medium" | "high" | "very-high" {
+  if (p === "low" || p === "medium" || p === "high" || p === "very-high") return p;
   return "medium";
 }
 
@@ -353,7 +353,7 @@ export default function Workloads() {
   const [sortColumn, setSortColumn] = useState<string | null>("potentialDollars");
   const [sortDirection, setSortDirection] = useState<"asc" | "desc" | null>("desc");
   const [editWorkload, setEditWorkload] = useState<FrontendWorkload | null>(null);
-  const [editCritical, setEditCritical] = useState<'low' | 'medium' | 'high' | 'non-evictable'>('medium');
+  const [editCritical, setEditCritical] = useState<'low' | 'medium' | 'high' | 'very-high'>('medium');
   const [editMode, setEditMode] = useState<'enabled' | 'recommend-only'>('recommend-only');
   const [editDisruptionWindows, setEditDisruptionWindows] = useState<{ startCron: string; endCron: string }[]>([]);
   const [selectedWorkloadIds, setSelectedWorkloadIds] = useState<Set<string>>(new Set());
@@ -575,7 +575,7 @@ export default function Workloads() {
 
         case "cruiseConfig": {
           const modeOrder = (m: string) => (m === "enabled" ? 1 : 0);
-          const criticalOrder = (p: string) => ({ "non-evictable": 3, high: 2, medium: 1, low: 0 }[p] ?? -1);
+          const criticalOrder = (p: string) => ({ "very-high": 3, high: 2, medium: 1, low: 0 }[p] ?? -1);
           const aMode = modeOrder(a.mode);
           const bMode = modeOrder(b.mode);
           if (aMode !== bMode) return sortDirection === "asc" ? aMode - bMode : bMode - aMode;
@@ -697,19 +697,7 @@ export default function Workloads() {
   }
 
   const isLoadingMetrics = isLoadingSummary;
-
-  if (summaryError) {
-    const errorMessage = summaryError instanceof Error ? summaryError.message : "Unknown error";
-    return (
-      <div className="p-6 space-y-4">
-        <Alert variant="destructive">
-          <AlertTriangle className="h-4 w-4" />
-          <AlertTitle>Error loading workloads</AlertTitle>
-          <AlertDescription>{errorMessage}</AlertDescription>
-        </Alert>
-      </div>
-    );
-  }
+  const apiErrorMessage = summaryError instanceof Error ? summaryError.message : (summaryError ? "Unknown error" : null);
 
   const costOptimizedWorkloads = (summaryData?.workloadDetails ?? []).filter((w) => w.config.cruiseEnabled && w.dollarSavingsPerMonth > 0).length;
   const costOptimizedWorkloadsRecommendOnly = (summaryData?.workloadDetails ?? []).filter((w) => !w.config.cruiseEnabled && w.dollarSavingsPerMonth > 0).length;
@@ -725,6 +713,14 @@ export default function Workloads() {
   return (
     <div className="min-w-0 w-full max-w-full animate-fade-in">
       <div className="mx-auto max-w-[1600px] px-4 py-6 sm:px-6 lg:px-8 space-y-8">
+        {/* Error banner when API fails */}
+        {apiErrorMessage && (
+          <Alert variant="destructive">
+            <AlertTriangle className="h-4 w-4" />
+            <AlertTitle>Error loading workloads</AlertTitle>
+            <AlertDescription>{apiErrorMessage}</AlertDescription>
+          </Alert>
+        )}
         {/* Alert: no data */}
         {hasNoData && (
           <Alert variant="default" className="border-amber-500/50 bg-amber-500/10 [&>svg]:text-amber-600 dark:[&>svg]:text-amber-400 rounded-xl">
@@ -781,7 +777,7 @@ export default function Workloads() {
                 <SelectItem value="low">Low</SelectItem>
                 <SelectItem value="medium">Medium</SelectItem>
                 <SelectItem value="high">High</SelectItem>
-                <SelectItem value="non-evictable">Non-evictable</SelectItem>
+                <SelectItem value="very-high">very-high</SelectItem>
               </SelectContent>
             </Select>
             <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v as typeof statusFilter)}>
@@ -1430,11 +1426,11 @@ export default function Workloads() {
                       <SelectItem value="low">Low</SelectItem>
                       <SelectItem value="medium">Medium</SelectItem>
                       <SelectItem value="high">High</SelectItem>
-                      <SelectItem value="non-evictable">Non-evictable</SelectItem>
+                      <SelectItem value="very-high">very-high</SelectItem>
                     </SelectContent>
                   </Select>
                   <p className="text-xs text-muted-foreground">
-                    During node consolidation, the controller may need to evict pods to free capacity. Higher critical workloads are evicted last; low critical first. Use <strong>Non-evictable</strong> for workloads that must never be evicted (e.g. critical system pods). Use <strong>High</strong> for important apps and <strong>Low</strong> for best-effort or batch workloads.
+                    During node consolidation, the controller may need to evict pods to free capacity. Higher critical workloads are evicted last; low critical first. Use <strong>very-high</strong> for workloads that must never be evicted (e.g. critical system pods). Use <strong>High</strong> for important apps and <strong>Low</strong> for best-effort or batch workloads.
                   </p>
                 </div>
                 {editWorkload.blockingConsolidation && (
