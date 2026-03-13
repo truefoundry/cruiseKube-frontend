@@ -243,6 +243,7 @@ export interface WorkloadDetailConstraints {
 export interface WorkloadDetailResourceRecommended {
   min: number;
   max: number;
+  avg: number;
   change: number;
 }
 
