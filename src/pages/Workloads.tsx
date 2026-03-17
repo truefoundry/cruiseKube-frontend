@@ -773,11 +773,11 @@ export default function Workloads() {
                 <SelectValue placeholder="Critical" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">All priorities</SelectItem>
+                <SelectItem value="all">All Criticalities</SelectItem>
                 <SelectItem value="low">Low</SelectItem>
                 <SelectItem value="medium">Medium</SelectItem>
                 <SelectItem value="high">High</SelectItem>
-                <SelectItem value="very-high">very-high</SelectItem>
+                <SelectItem value="very-high">Very High</SelectItem>
               </SelectContent>
             </Select>
             <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v as typeof statusFilter)}>
