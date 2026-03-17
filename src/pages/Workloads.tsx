@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { ReactNode, useState } from "react";
 import { 
   Search, 
   ChevronRight,
@@ -121,6 +121,35 @@ function TimeAgoShort({ value }: { value: string }) {
     );
   }
   return <>{short}</>;
+}
+
+function InfoTooltip({
+  label,
+  children,
+  contentClassName = "max-w-xs",
+}: {
+  label: string;
+  children: ReactNode;
+  contentClassName?: string;
+}) {
+  return (
+    <TooltipProvider>
+      <Tooltip>
+        <TooltipTrigger asChild onClick={(e) => e.stopPropagation()}>
+          <button
+            type="button"
+            className="inline-flex shrink-0 text-muted-foreground hover:text-foreground focus:outline-none"
+            aria-label={label}
+          >
+            <Info className="h-3.5 w-3.5" />
+          </button>
+        </TooltipTrigger>
+        <TooltipContent side="bottom" className={contentClassName}>
+          {children}
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  );
 }
 
 export default function Workloads() {
@@ -715,6 +744,80 @@ export default function Workloads() {
     </div>
   );
 
+  const clusterUtilisationTooltipContent = (
+    <div className="space-y-2 text-left">
+      <p className="font-medium text-foreground">Cluster utilisation</p>
+      <p className="text-xs text-muted-foreground">
+        These bars compare allocatable capacity against what workloads are using and what they have requested.
+      </p>
+      <ul className="space-y-1 text-xs text-muted-foreground">
+        <li>Utilised: resources currently consumed by running workloads.</li>
+        <li>Requested: resources reserved by Kubernetes requests, including unused headroom.</li>
+        <li>Free: allocatable capacity not currently requested.</li>
+      </ul>
+    </div>
+  );
+
+  const cruiseKubeAdoptionTooltipContent = (
+    <div className="space-y-2 text-left">
+      <p className="font-medium text-foreground">CruiseKube adoption</p>
+      <p className="text-xs text-muted-foreground">
+        This summary shows how workloads are distributed across optimization states.
+      </p>
+      <ul className="space-y-1 text-xs text-muted-foreground">
+        <li>Total: all workloads discovered in the cluster.</li>
+        <li>Skipped: workloads without actionable optimization or excluded from optimization.</li>
+        <li>Optimized/Cruise: workloads in Cruise mode, with realized monthly savings.</li>
+        <li>Recommended: workloads in Recommend mode, with unrealized monthly savings.</li>
+        <li>Reliability Improved: workloads that need more resources, with added monthly cost.</li>
+      </ul>
+    </div>
+  );
+
+  const untappedSavingsTooltipContent = (
+    <div className="space-y-2 text-left">
+      <p className="font-medium text-foreground">Untapped savings</p>
+      <p className="text-xs text-muted-foreground">
+        Possible savings is the monthly reduction available if recommended requests are applied. Current savings is what the cluster is already saving relative to normalized workload requests.
+      </p>
+    </div>
+  );
+
+  const podsTooltipContent = (
+    <p className="max-w-xs text-xs text-muted-foreground">
+      Number of running pod replicas for this workload.
+    </p>
+  );
+
+  const netSavingsTooltipContent = (
+    <p className="max-w-xs text-xs text-muted-foreground">
+      Estimated monthly savings from rightsizing this workload. It reflects only cost reductions from lower resource requests and does not subtract reliability increase costs.
+    </p>
+  );
+
+  const modeTooltipContent = (
+    <p className="max-w-xs text-xs text-muted-foreground">
+      Cruise automatically applies recommendations. Recommend shows recommendations without auto-applying them.
+    </p>
+  );
+
+  const criticalityTooltipContent = (
+    <p className="max-w-xs text-xs text-muted-foreground">
+      Indicates how sensitive a workload is during optimization. Higher criticality workloads are treated more conservatively.
+    </p>
+  );
+
+  const resourceHeaderTooltipContent = (
+    <div className="space-y-2 text-left">
+      <p className="font-medium text-foreground">CPU and memory fields</p>
+      <ul className="space-y-1 text-xs text-muted-foreground">
+        <li>Current: the workload&apos;s current configured resource request.</li>
+        <li>Recommended: the request CruiseKube recommends based on observed usage.</li>
+        <li>Savings: the reduction from current request to recommended request.</li>
+      </ul>
+    </div>
+  );
+
   return (
     <div className="min-w-0 w-full max-w-full animate-fade-in">
       <div className="mx-auto max-w-[1600px] px-4 py-6 sm:px-6 lg:px-8 space-y-8">
@@ -856,18 +959,9 @@ export default function Workloads() {
                     <div className="space-y-1 min-w-0 flex-1">
                       <div className="flex items-center gap-1.5">
                         <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Possible savings</p>
-                        <TooltipProvider>
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <button type="button" className="inline-flex text-muted-foreground hover:text-foreground focus:outline-none shrink-0" aria-label="How possible savings is calculated">
-                                <Info className="h-3.5 w-3.5" />
-                              </button>
-                            </TooltipTrigger>
-                            <TooltipContent side="bottom" className="max-w-sm p-4 text-left">
-                              {possibleSavingsTooltipContent}
-                            </TooltipContent>
-                          </Tooltip>
-                        </TooltipProvider>
+                        <InfoTooltip label="How possible savings is calculated" contentClassName="max-w-sm p-4 text-left">
+                          {possibleSavingsTooltipContent}
+                        </InfoTooltip>
                       </div>
                       <p className="font-mono text-2xl font-semibold tracking-tight text-foreground">
                         ${possibleSavingsDollars.toLocaleString()}
@@ -878,7 +972,12 @@ export default function Workloads() {
                       <DollarSign className="h-5 w-5" />
                     </div>
                   </div>
-                  <p className="text-sm text-muted-foreground">How much more you can save per month</p>
+                  <div className="flex items-center gap-1.5">
+                    <p className="text-sm text-muted-foreground">How much more you can save per month</p>
+                    <InfoTooltip label="What untapped savings means" contentClassName="max-w-sm p-4 text-left">
+                      {untappedSavingsTooltipContent}
+                    </InfoTooltip>
+                  </div>
                 </>
               )}
             </div>
@@ -887,7 +986,12 @@ export default function Workloads() {
 
         {/* Cluster resources */}
         <section aria-labelledby="cluster-resources-heading">
-          <h2 id="cluster-resources-heading" className="mb-4 text-sm font-semibold uppercase tracking-wider text-muted-foreground">Cluster resources</h2>
+          <div className="mb-4 flex items-center gap-1.5">
+            <h2 id="cluster-resources-heading" className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">Cluster resources</h2>
+            <InfoTooltip label="What cluster utilisation means" contentClassName="max-w-sm p-4 text-left">
+              {clusterUtilisationTooltipContent}
+            </InfoTooltip>
+          </div>
           <div className="grid gap-4 md:grid-cols-2">
         {isLoadingClusterMetrics ? (
           <>
@@ -980,12 +1084,17 @@ export default function Workloads() {
         {/* Workload list */}
         <section aria-labelledby="workloads-heading">
           <div className="flex flex-wrap items-center justify-between gap-4 mb-4">
-            <h2 id="workloads-heading" className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
-              Workload list
-              {sortedWorkloads.length > 0 && (
-                <span className="ml-2 font-normal normal-case text-foreground">({sortedWorkloads.length})</span>
-              )}
-            </h2>
+            <div className="flex items-center gap-1.5">
+              <h2 id="workloads-heading" className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
+                Workload list
+                {sortedWorkloads.length > 0 && (
+                  <span className="ml-2 font-normal normal-case text-foreground">({sortedWorkloads.length})</span>
+                )}
+              </h2>
+              <InfoTooltip label="What CruiseKube adoption means" contentClassName="max-w-sm p-4 text-left">
+                {cruiseKubeAdoptionTooltipContent}
+              </InfoTooltip>
+            </div>
             <div className="flex flex-wrap items-center gap-2">
               <div className="relative w-56 sm:w-64">
                 <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
@@ -1137,6 +1246,9 @@ export default function Workloads() {
                 >
                   <div className="flex items-center gap-1">
                     Pods
+                    <InfoTooltip label="What pod count means">
+                      {podsTooltipContent}
+                    </InfoTooltip>
                     {sortColumn === "replicas" && (sortDirection === "asc" ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />)}
                   </div>
                 </th>
@@ -1144,12 +1256,18 @@ export default function Workloads() {
                   <span className="inline-flex items-center gap-1.5">
                     <Cpu className="h-4 w-4" />
                     CPU
+                    <InfoTooltip label="How CPU columns are defined" contentClassName="max-w-sm p-4 text-left">
+                      {resourceHeaderTooltipContent}
+                    </InfoTooltip>
                   </span>
                 </th>
                 <th colSpan={3} className="border-t border-l border-r border-b-0 border-border bg-muted/40 text-center font-medium align-top pt-3 pb-0 px-0">
                   <span className="inline-flex items-center gap-1.5">
                     <HardDrive className="h-4 w-4" />
                     Memory
+                    <InfoTooltip label="How memory columns are defined" contentClassName="max-w-sm p-4 text-left">
+                      {resourceHeaderTooltipContent}
+                    </InfoTooltip>
                   </span>
                 </th>
                 <th rowSpan={2}
@@ -1157,18 +1275,11 @@ export default function Workloads() {
                   onClick={(e) => { e.stopPropagation(); handleSort("potentialDollars"); }}
                 >
                   <div className="flex items-center gap-1">
-                  Possible Saving/M
+                  Net Savings/M
                     {sortColumn === "potentialDollars" && (sortDirection === "asc" ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />)}
-                    <TooltipProvider>
-                      <Tooltip>
-                        <TooltipTrigger asChild onClick={(e) => e.stopPropagation()}>
-                          <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
-                        </TooltipTrigger>
-                        <TooltipContent side="bottom" className="max-w-xs">
-                          <p>Saving/month doesn&apos;t include the cost of reliability, and contains only the cost saved on reduced resources.</p>
-                        </TooltipContent>
-                      </Tooltip>
-                    </TooltipProvider>
+                    <InfoTooltip label="What net savings per month means">
+                      {netSavingsTooltipContent}
+                    </InfoTooltip>
                   </div>
                 </th>
                 <th rowSpan={2}
@@ -1197,16 +1308,9 @@ export default function Workloads() {
                   <div className="flex items-center gap-1">
                     Mode
                     {sortColumn === "mode" && (sortDirection === "asc" ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />)}
-                    <TooltipProvider>
-                      <Tooltip>
-                        <TooltipTrigger asChild onClick={(e) => e.stopPropagation()}>
-                          <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
-                        </TooltipTrigger>
-                        <TooltipContent>
-                          <p className="max-w-xs">Enables auto-apply of recommendations. When Cruise is enabled, CruiseKube will automatically apply resource recommendations.</p>
-                        </TooltipContent>
-                      </Tooltip>
-                    </TooltipProvider>
+                    <InfoTooltip label="What mode means">
+                      {modeTooltipContent}
+                    </InfoTooltip>
                   </div>
                 </th>
                 {verbose && (
@@ -1216,18 +1320,11 @@ export default function Workloads() {
                       onClick={(e) => { e.stopPropagation(); handleSort("priority"); }}
                     >
                       <div className="flex items-center gap-1">
-                        Priority
+                        Criticality
                         {sortColumn === "priority" && (sortDirection === "asc" ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />)}
-                        <TooltipProvider>
-                          <Tooltip>
-                            <TooltipTrigger asChild onClick={(e) => e.stopPropagation()}>
-                              <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
-                            </TooltipTrigger>
-                            <TooltipContent>
-                              <p className="max-w-xs">Determines eviction priority during optimization. Higher priority workloads have a lower chance of being evicted when the algorithm needs to optimize resources.</p>
-                            </TooltipContent>
-                          </Tooltip>
-                        </TooltipProvider>
+                        <InfoTooltip label="What criticality means">
+                          {criticalityTooltipContent}
+                        </InfoTooltip>
                       </div>
                     </th>
                   </>
