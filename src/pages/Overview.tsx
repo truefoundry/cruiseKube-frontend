@@ -26,6 +26,7 @@ import {
   apiClient,
   type OverviewResponse,
   type OverviewCoveragePair,
+  type OverviewAdoptionCoverage,
   type OverviewResourceStats,
   type HistoricalTimelineResponse,
 } from "@/lib/api";
@@ -70,6 +71,12 @@ function clampDurationMs(ms: number): number {
 }
 
 const DEFAULT_COVERAGE = { enabled: 0, disabled: 0 };
+const DEFAULT_ADOPTION: OverviewAdoptionCoverage = {
+  optimizable: 0,
+  nonOptimizable: 0,
+  optimizableButExcluded: 0,
+  total: 0,
+};
 const DEFAULT_STATS: OverviewResourceStats = {
   allocatable: 0,
   requested: 0,
@@ -91,6 +98,16 @@ function safeCoverage(c: OverviewCoveragePair | undefined): { enabled: number; d
   return { enabled, disabled };
 }
 
+function safeAdoption(a: OverviewAdoptionCoverage | undefined): OverviewAdoptionCoverage {
+  if (!a || typeof a !== "object") return DEFAULT_ADOPTION;
+  return {
+    optimizable: safeNumber(a.optimizable),
+    nonOptimizable: safeNumber(a.nonOptimizable),
+    optimizableButExcluded: safeNumber(a.optimizableButExcluded),
+    total: safeNumber(a.total),
+  };
+}
+
 function safeStats(s: OverviewResourceStats | undefined): OverviewResourceStats {
   if (!s || typeof s !== "object") return DEFAULT_STATS;
   return {
@@ -109,7 +126,7 @@ function withDefaults(raw: OverviewResponse | null | undefined): {
   possibleSavings: number;
   clusterUtilisation: number;
   nodeCount: number;
-  adoption: OverviewCoveragePair;
+  adoption: OverviewAdoptionCoverage;
   cpuCoverage: OverviewCoveragePair;
   memoryCoverage: OverviewCoveragePair;
   cpuStats: OverviewResourceStats;
@@ -122,7 +139,7 @@ function withDefaults(raw: OverviewResponse | null | undefined): {
     possibleSavings: safeNumber(raw?.possibleSavings),
     clusterUtilisation: safeNumber(raw?.clusterUtilisation),
     nodeCount: safeNumber(raw?.nodeCount),
-    adoption: safeCoverage(c?.adoption),
+    adoption: safeAdoption(c?.adoption),
     cpuCoverage: safeCoverage(c?.cpuCoverage),
     memoryCoverage: safeCoverage(c?.memoryCoverage),
     cpuStats: safeStats(raw?.cpuStats),
@@ -290,10 +307,10 @@ export default function Overview() {
         )
       : 0;
 
-  const adoptionTotal = d.adoption.enabled + d.adoption.disabled;
+  const adoptionTotal = d.adoption.optimizable + d.adoption.optimizableButExcluded;
   const adoptionPercent =
     adoptionTotal > 0
-      ? Math.round((d.adoption.enabled / adoptionTotal) * 100)
+      ? Math.round((d.adoption.optimizable / adoptionTotal) * 100)
       : 0;
 
   const cpuCoverageTotal = d.cpuCoverage.enabled + d.cpuCoverage.disabled;
@@ -308,7 +325,7 @@ export default function Overview() {
       ? Math.round((d.memoryCoverage.enabled / memCoverageTotal) * 100)
       : 0;
 
-  const disabledCount = d.adoption.disabled;
+  const optimizableButExcludedCount = d.adoption.optimizableButExcluded;
   const hasNoWorkloads = !isLoading && !error && adoptionTotal === 0;
   const pctCpuUsed =
     d.cpuStats.allocatable > 0
@@ -591,7 +608,7 @@ export default function Overview() {
                         {adoptionPercent}%
                       </span>
                       <span className="text-xs text-muted-foreground">
-                        enabled
+                        optimizable
                       </span>
                     </div>
                   </div>
@@ -603,8 +620,11 @@ export default function Overview() {
                   <div>
                     <p className="text-sm text-muted-foreground">Workloads</p>
                     <p className="font-mono text-lg font-semibold text-foreground">
-                      {d.adoption.enabled} / {adoptionTotal || 0}
+                      {d.adoption.optimizable} / {adoptionTotal || 0}
                     </p>
+                    {/*<p className="text-xs text-muted-foreground mt-1">
+                      Optimizable: {d.adoption.optimizable} · Non-optimizable: {d.adoption.nonOptimizable} · Optimizable but excluded: {d.adoption.optimizableButExcluded}
+                    </p>*/}
                   </div>
                   <div className="space-y-2">
                     <div>
@@ -674,15 +694,21 @@ export default function Overview() {
                   ${d.possibleSavings !== 0 ? Math.round(d.possibleSavings - d.currentSavings).toLocaleString() : "0"}/mo
                 </p>
                 <p className="text-sm text-muted-foreground mt-2">
-                  Enable CruiseKube on the remaining{" "}
-                  <button
-                    type="button"
-                    onClick={() => navigate("/workloads")}
-                    className="font-semibold text-foreground underline underline-offset-2 hover:text-primary"
-                  >
-                    {disabledCount} workloads
-                  </button>{" "}
-                  to unlock additional monthly savings.
+                  {optimizableButExcludedCount === 0 ? (
+                    "All eligible workloads have CruiseKube enabled. You're on maximum savings right now."
+                  ) : (
+                    <>
+                      Enable CruiseKube on the remaining{" "}
+                      <button
+                        type="button"
+                        onClick={() => navigate("/workloads")}
+                        className="font-semibold text-foreground underline underline-offset-2 hover:text-primary"
+                      >
+                        {optimizableButExcludedCount} workloads
+                      </button>{" "}
+                      to unlock additional monthly savings.
+                    </>
+                  )}
                 </p>
                 <Button
                   variant="default"

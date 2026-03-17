@@ -290,7 +290,15 @@ export interface WorkloadSummaryResponse {
   workloadDetails: WorkloadDetail[];
 }
 
-/** Coverage counts for adoption and CPU/Memory (enabled vs disabled). API may return "enabed" typo. */
+/** Adoption coverage: three-way workload classification with explicit total. */
+export interface OverviewAdoptionCoverage {
+  optimizable: number;
+  nonOptimizable: number;
+  optimizableButExcluded: number;
+  total: number;
+}
+
+/** Coverage counts for CPU/Memory (enabled vs disabled). API may return "enabed" typo. */
 export interface OverviewCoveragePair {
   enabled?: number;
   enabed?: number;
@@ -298,7 +306,7 @@ export interface OverviewCoveragePair {
 }
 
 export interface OverviewCoverage {
-  adoption: OverviewCoveragePair;
+  adoption: OverviewAdoptionCoverage;
   cpuCoverage: OverviewCoveragePair;
   memoryCoverage: OverviewCoveragePair;
 }
