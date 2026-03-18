@@ -8,8 +8,6 @@ interface ConfigContextType {
   isLoading: boolean;
   error: Error | null;
   refetch: () => Promise<QueryObserverResult<PrometheusConfig | undefined, Error>>;
-  /** True when recommendations are applied in dry-run / recommend-only mode (no auto-apply). */
-  applyRecommendationDryRun: boolean;
 }
 
 const ConfigContext = createContext<ConfigContextType | undefined>(undefined);
@@ -26,8 +24,6 @@ export function ConfigProvider({ children }: { children: ReactNode }) {
     staleTime: 60_000,
   });
 
-  const applyRecommendationDryRun = config?.applyRecommendationDryRun ?? false;
-
   return (
     <ConfigContext.Provider
       value={{
@@ -35,7 +31,6 @@ export function ConfigProvider({ children }: { children: ReactNode }) {
         isLoading,
         error: error as Error | null,
         refetch,
-        applyRecommendationDryRun,
       }}
     >
       {children}

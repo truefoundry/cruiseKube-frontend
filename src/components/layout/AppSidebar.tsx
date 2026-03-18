@@ -1,5 +1,7 @@
-import { 
-  Layers, 
+import {
+  LayoutDashboard,
+  Layers,
+  Activity,
   Settings,
 } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
@@ -18,7 +20,9 @@ import {
 } from "@/components/ui/sidebar";
 
 const navItems = [
-  { title: "Workloads & Recommendations", url: "/", icon: Layers },
+  { title: "Overview", url: "/", icon: LayoutDashboard },
+  { title: "Workloads", url: "/workloads", icon: Layers },
+  { title: "Events", url: "/events", icon: Activity },
   { title: "Policies & Configuration", url: "/policies", icon: Settings },
 ];
 
@@ -37,9 +41,6 @@ export function AppSidebar() {
             <div className="flex flex-col min-w-0">
               <div className="flex items-center gap-2">
                 <span className="font-semibold text-sidebar-accent-foreground truncate">CruiseKube</span>
-                <span className="shrink-0 rounded bg-sidebar-accent px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-sidebar-accent-foreground/80">
-                  Beta
-                </span>
               </div>
               <span className="text-xs text-sidebar-foreground">K8s Optimizer</span>
             </div>

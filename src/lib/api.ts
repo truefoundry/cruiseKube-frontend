@@ -16,18 +16,31 @@ export interface ClustersResponse {
   cluster_mode: string;
 }
 
+/** One disruption window: cron expressions in UTC. */
+export interface DisruptionWindow {
+  start_cron: string;
+  end_cron: string;
+}
+
+/** Effective overrides returned in the workload list (always present per workload). */
+export interface WorkloadOverridesEffective {
+  eviction_ranking: number;
+  enabled: boolean;
+  disruption_windows?: DisruptionWindow[];
+}
+
 export interface WorkloadOverrideInfo {
   workload_id: string;
   name: string;
   namespace: string;
   kind: string;
-  eviction_ranking: number;
-  enabled: boolean;
+  overrides: WorkloadOverridesEffective;
 }
 
 export interface Overrides {
   eviction_ranking?: number;
   enabled?: boolean;
+  disruption_windows?: DisruptionWindow[];
 }
 
 export interface SimplePrediction {
@@ -108,7 +121,6 @@ export interface WorkloadStat {
   name: string;
   creation_time: string;
   updated_at: string;
-  continuous_optimization: boolean;
   is_horizontally_autoscaled_on_cpu: boolean;
   is_horizontally_autoscaled_on_memory: boolean;
   constraints?: WorkloadStatConstraints;
@@ -178,8 +190,12 @@ export interface WorkloadAnalysisItem {
 export interface PrometheusConfig {
   url: string;
   connected: boolean;
-  applyRecommendationDryRun: boolean;
   error?: string;
+}
+
+export interface ClusterSettings {
+  cpuPricePerCorePerHour: number;
+  memoryPricePerGBPerHour: number;
 }
 
 export interface PrometheusQueryResult {
@@ -191,6 +207,200 @@ export interface PrometheusQueryResult {
       value: [number, string];
     }>;
   };
+}
+
+export interface ImpactSummaryClusterResource {
+  utilised: number;
+  requested: number;
+  allocatable: number;
+}
+
+export interface ImpactSummaryClusterResources {
+  cpu: ImpactSummaryClusterResource;
+  memory: ImpactSummaryClusterResource;
+}
+
+export interface ImpactSummary {
+  dollarCurrentCost: number;
+  dollarCurrentSavings: number;
+  dollarPossibleSavings: number;
+  clusterResources: ImpactSummaryClusterResources;
+}
+
+export interface WorkloadDetailConstraints {
+  blockingConsolidation: boolean;
+  pdb: boolean;
+  doNotDisruptAnnotation: boolean;
+  volume: boolean;
+  affinity: boolean;
+  topologySpreadConstraint: boolean;
+  podAntiAffinity: boolean;
+  excludedAnnotation: boolean;
+  /** Whether the workload is identified as a GPU workload. */
+  isGPUWorkload?: boolean;
+}
+
+export interface WorkloadDetailResourceRecommended {
+  min: number;
+  max: number;
+  avg: number;
+  change: number;
+}
+
+export interface WorkloadDetailResource {
+  current: number;
+  recommended: WorkloadDetailResourceRecommended;
+}
+
+export interface WorkloadDetailDisruptionWindow {
+  windowStartCron: string;
+  windowEndCron: string;
+}
+
+export interface WorkloadDetailConfig {
+  criticalityLevel: string;
+  cruiseEnabled: boolean;
+  disruptionSchedule: WorkloadDetailDisruptionWindow[];
+  inDisruptionWindow: boolean;
+  /** True if the workload has HPA on CPU or memory. */
+  hpaEnabled?: boolean;
+  /** Exclusion reason codes (e.g. GPU_WORKLOAD, CPU_HPA, MEMORY_HPA). Omitted when empty. */
+  excludedCodes?: string[];
+}
+
+export interface WorkloadDetail {
+  workloadID: string;
+  kind: string;
+  namespace: string;
+  name: string;
+  updatedAt: number;
+  podsCount: number;
+  /** True when the workload has been scaled down (e.g. fewer replicas). */
+  scaledDown?: boolean;
+  constraints: WorkloadDetailConstraints;
+  cpu: WorkloadDetailResource;
+  memory: WorkloadDetailResource;
+  dollarSavingsPerMonth: number;
+  dollarExpenditurePerMonth: number;
+  config: WorkloadDetailConfig;
+}
+
+export interface WorkloadSummaryResponse {
+  impactSummary: ImpactSummary;
+  workloadDetails: WorkloadDetail[];
+}
+
+/** Adoption coverage: three-way workload classification with explicit total. */
+export interface OverviewAdoptionCoverage {
+  optimizable: number;
+  nonOptimizable: number;
+  optimizableButExcluded: number;
+  total: number;
+}
+
+/** Coverage counts for CPU/Memory (enabled vs disabled). API may return "enabed" typo. */
+export interface OverviewCoveragePair {
+  enabled?: number;
+  enabed?: number;
+  disabled?: number;
+}
+
+export interface OverviewCoverage {
+  adoption: OverviewAdoptionCoverage;
+  cpuCoverage: OverviewCoveragePair;
+  memoryCoverage: OverviewCoveragePair;
+}
+
+export interface OverviewResourceStats {
+  allocatable: number;
+  requested: number;
+  /** Total CPU/memory requested by workloads from manifests (CPU in cores, memory in GiB). */
+  workloadRequested?: number;
+  usage: number;
+  recommended: number;
+}
+
+export interface OverviewResponse {
+  currentMonthlyCost?: number;
+  currentSavings?: number;
+  possibleSavings?: number;
+  clusterUtilisation?: number;
+  nodeCount?: number;
+  coverage?: OverviewCoverage;
+  cpuStats?: OverviewResourceStats;
+  memoryStats?: OverviewResourceStats;
+}
+
+/** Single data point in historical timeline API response. */
+export interface HistoricalTimelineDataPoint {
+  legend: string;
+  color: string;
+  threshold: { value: number; color: string };
+  data: { timestamp: string; value: number };
+}
+
+/** Response from GET .../ui/overview/historical-timeline/:metric?startTime=...&endTime=... */
+export interface HistoricalTimelineResponse {
+  data: HistoricalTimelineDataPoint[];
+}
+
+/** Container in workload detail pod (from GET .../workloads/:namespace/:workload/detail). */
+export interface WorkloadDetailPodContainer {
+  container_name: string;
+  cpu_request: number;
+  cpu_rec_request: number;
+  mem_request: number;
+  mem_rec_request: number;
+}
+
+/** Pod in workload detail response. */
+export interface WorkloadDetailPod {
+  pod_name: string;
+  node_name: string;
+  containers: WorkloadDetailPodContainer[];
+}
+
+/** Response from GET /clusters/:clusterID/workloads/:namespace/:workloadName/detail */
+export interface WorkloadDetailResponse {
+  cluster: string;
+  namespace: string;
+  workload: string;
+  type: string;
+  current_cpu_request: number;
+  current_cpu_limit: number;
+  current_mem_request: number;
+  current_mem_limit: number;
+  potential_cpu_savings: number;
+  potential_mem_savings: number;
+  pods: WorkloadDetailPod[];
+}
+
+/** Kubernetes workload target for an audit event. */
+export interface AuditEventTarget {
+  kind: string;
+  name: string;
+  namespace: string;
+}
+
+/** Payload for an audit event (message, target, details as raw object). */
+export interface AuditEventPayload {
+  message?: string;
+  target?: AuditEventTarget;
+  details?: Record<string, unknown>;
+}
+
+/** Single audit event from GET .../clusters/:clusterID/audit-events?minutes=... */
+export interface AuditEvent {
+  cluster_id: string;
+  type: string;
+  category: string;
+  payload: AuditEventPayload;
+  created_at: string;
+}
+
+/** Response from GET .../clusters/:clusterID/audit-events?minutes=... */
+export interface AuditEventsResponse {
+  events: AuditEvent[];
 }
 
 class ApiClient {
@@ -249,52 +459,34 @@ class ApiClient {
     };
   }
 
-  /** Normalizes empty response: API may return {"stats": null}. Always returns { stats: array }. */
-  async getClusterStats(clusterID: string): Promise<StatsResponse> {
-    const data = await this.request<StatsResponse | null>(`/clusters/${clusterID}/stats`);
-    if (data == null) {
-      return { stats: [] };
-    }
-    /** Normalized stats array (workload stats with container_stats, original_container_resources). */
-    const stats = data.stats != null && Array.isArray(data.stats) ? data.stats : [];
-    return { ...data, stats };
-  }
-
-  /** Normalizes empty response: API may return [] or null. Always returns an array. */
-  async getWorkloads(clusterID: string): Promise<WorkloadOverrideInfo[]> {
-    const data = await this.request<WorkloadOverrideInfo[] | null>(`/clusters/${clusterID}/workloads`);
-    if (data == null || !Array.isArray(data)) {
-      return [];
-    }
-    return data;
-  }
-
-  /** Normalizes empty response: API may return { "analysis": null, "summary": {...} }. Always returns { analysis: array, summary }. */
-  async getRecommendationAnalysis(clusterID: string): Promise<RecommendationAnalysisResponse> {
-    const data = await this.request<RecommendationAnalysisResponse | null>(`/clusters/${clusterID}/recommendation-analysis`);
-    const defaultSummary: RecommendationSummary = {
-      total_current_cpu_requests: 0,
-      total_cpu_differences: 0,
-      total_current_memory_requests: 0,
-      total_memory_differences: 0,
-    };
-    if (data == null) {
-      return { analysis: [], summary: defaultSummary };
-    }
-    /** Normalized analysis array (per-container recommendation items). */
-    const analysis = data.analysis != null && Array.isArray(data.analysis) ? data.analysis : [];
-    /** Summary totals (current requests, differences) from the API. */
-    const summary = data.summary ?? defaultSummary;
-    return { ...data, analysis, summary };
-  }
-
   async getWorkloadAnalysis(clusterID: string): Promise<WorkloadAnalysisItem[]> {
     const data = await this.request<WorkloadAnalysisItem[] | null>(`/clusters/${clusterID}/workload-analysis`);
     return Array.isArray(data) ? data : [];
   }
 
-  async getWorkloadOverrides(clusterID: string, workloadID: string): Promise<Overrides> {
-    return this.request<Overrides>(`/clusters/${clusterID}/workloads/${workloadID}/overrides`);
+  async getWorkloadsSummary(clusterID: string): Promise<WorkloadSummaryResponse> {
+    return this.request<WorkloadSummaryResponse>(`/clusters/${clusterID}/workloads/summary`);
+  }
+
+  /** GET /api/clusters/:clusterID/ui/overview — overview metrics for the Overview page. */
+  async getOverview(clusterID: string): Promise<OverviewResponse> {
+    return this.request<OverviewResponse>(`/clusters/${clusterID}/ui/overview`);
+  }
+
+  /** GET /api/clusters/:clusterID/ui/overview/historical-timeline/:metric — historical timeline for CPU, memory, or cost. */
+  async getHistoricalTimeline(
+    clusterID: string,
+    metric: 'cpu' | 'memory' | 'cost',
+    startTime: string,
+    endTime: string
+  ): Promise<HistoricalTimelineResponse> {
+    const params = new URLSearchParams({
+      startTime,
+      endTime,
+    });
+    return this.request<HistoricalTimelineResponse>(
+      `/clusters/${clusterID}/ui/overview/historical-timeline/${metric}?${params.toString()}`
+    );
   }
 
   async updateWorkloadOverrides(
@@ -308,14 +500,63 @@ class ApiClient {
     });
   }
 
-  /** Fetches cluster config (Prometheus, applyRecommendationDryRun). Endpoint: GET /clusters/:clusterID/config */
+  /** Batch update overrides for multiple workloads. POST .../workloads/overrides */
+  async batchWorkloadOverrides(
+    clusterID: string,
+    workloadIds: string[],
+    overrides: Overrides
+  ): Promise<void> {
+    if (workloadIds.length === 0) throw new Error('workload_ids must not be empty');
+    return this.request<void>(`/clusters/${clusterID}/workloads/overrides`, {
+      method: 'POST',
+      body: JSON.stringify({ workload_ids: workloadIds, overrides }),
+    });
+  }
+
+  /** Fetches workload detail. GET /clusters/:clusterID/workloads/:namespace/:workloadName/detail */
+  async getWorkloadDetail(
+    clusterID: string,
+    namespace: string,
+    workloadName: string
+  ): Promise<WorkloadDetailResponse> {
+    return this.request<WorkloadDetailResponse>(
+      `/clusters/${encodeURIComponent(clusterID)}/workloads/${encodeURIComponent(namespace)}/${encodeURIComponent(workloadName)}/detail`
+    );
+  }
+
+  /** Fetches cluster config (Prometheus). Endpoint: GET /clusters/:clusterID/config */
   async getConfig(clusterID: string): Promise<PrometheusConfig> {
     return this.request<PrometheusConfig>(`/clusters/${clusterID}/config`);
   }
 
-  async queryPrometheus(clusterID: string, query: string): Promise<PrometheusQueryResult> {
-    const encodedQuery = encodeURIComponent(query);
-    return this.request<PrometheusQueryResult>(`/clusters/${clusterID}/prometheus-query?query=${encodedQuery}`);
+  /** Fetches cluster cost settings. Endpoint: GET /clusters/:clusterID/settings */
+  async getSettings(clusterID: string): Promise<ClusterSettings> {
+    return this.request<ClusterSettings>(`/clusters/${clusterID}/settings`);
+  }
+
+  /** Updates cluster cost settings. Endpoint: PUT /clusters/:clusterID/settings */
+  async updateSettings(clusterID: string, settings: ClusterSettings): Promise<ClusterSettings> {
+    return this.request<ClusterSettings>(`/clusters/${clusterID}/settings`, {
+      method: 'PUT',
+      body: JSON.stringify(settings),
+    });
+  }
+
+  /**
+   * GET .../clusters/:clusterID/audit-events?minutes= — all events.
+   * GET .../clusters/:clusterID/audit-events/:workloadId?minutes= — events for one workload.
+   * workloadId format: TYPE:NAMESPACE:NAME (e.g. Deployment:my-ns:my-app).
+   */
+  async getAuditEvents(clusterID: string, minutes: number, workloadId?: string): Promise<AuditEventsResponse> {
+    const base = `/clusters/${encodeURIComponent(clusterID)}/audit-events`;
+    const path = workloadId?.trim()
+      ? `${base}/${encodeURIComponent(workloadId.trim())}?minutes=${encodeURIComponent(String(minutes))}`
+      : `${base}?minutes=${encodeURIComponent(String(minutes))}`;
+    const data = await this.request<AuditEventsResponse | null>(path);
+    if (data == null || !Array.isArray(data.events)) {
+      return { events: [] };
+    }
+    return { events: data.events };
   }
 }
 

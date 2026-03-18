@@ -1,8 +1,8 @@
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Inter:wght@400;500;600;700&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
-
-@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Inter:wght@400;500;600;700&display=swap');
 
 @layer base {
   :root {
@@ -113,6 +113,18 @@
 
   .data-table td {
     @apply px-4 py-3 border-b border-border/50;
+  }
+
+  .data-table-compact th {
+    @apply px-1.5 py-2;
+  }
+
+  .data-table-compact td {
+    @apply px-1.5 py-2;
+  }
+
+  .data-table-compact tbody tr {
+    @apply cursor-default;
   }
 
   .data-table tr:hover {
