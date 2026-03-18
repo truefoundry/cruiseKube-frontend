@@ -150,7 +150,7 @@ export default function WorkloadDetail() {
               <Cpu className="h-5 w-5 text-primary" />
             </div>
             <div>
-              <p className="text-xs text-muted-foreground uppercase tracking-wider">CPU Savings Potential</p>
+              <p className="text-xs text-muted-foreground uppercase tracking-wider">CPU Savings</p>
               <p className="font-mono text-xl font-semibold text-foreground">{formatCpuSigned(-detail.potential_cpu_savings)}</p>
             </div>
           </div>
@@ -161,7 +161,7 @@ export default function WorkloadDetail() {
               <HardDrive className="h-5 w-5 text-primary" />
             </div>
             <div>
-              <p className="text-xs text-muted-foreground uppercase tracking-wider">Memory Savings Potential</p>
+              <p className="text-xs text-muted-foreground uppercase tracking-wider">Memory Savings</p>
               <p className="font-mono text-xl font-semibold text-foreground">{formatMemorySigned(-detail.potential_mem_savings)}</p>
             </div>
           </div>

@@ -1006,15 +1006,46 @@ export default function Overview() {
         </section>
 
     {/* Historical Timeline */}
-    <section aria-labelledby="historical-timeline-heading" className="space-y-4">
-          <div className="flex flex-wrap items-center justify-between gap-4">
-            <h2
-              id="historical-timeline-heading"
-              className="text-sm font-semibold uppercase tracking-wider text-muted-foreground"
-            >
-              Historical timeline
-            </h2>
-            <div className="flex gap-1 rounded-md border border-border bg-muted/30 p-0.5">
+	    <section aria-labelledby="historical-timeline-heading" className="space-y-4">
+	          <div className="flex flex-wrap items-center justify-between gap-4">
+	            <div className="flex items-center gap-1.5">
+	              <h2
+	                id="historical-timeline-heading"
+	                className="text-sm font-semibold uppercase tracking-wider text-muted-foreground"
+	              >
+	                Historical timeline
+	              </h2>
+	              <TooltipProvider>
+	                <Tooltip>
+	                  <TooltipTrigger asChild>
+	                    <button
+	                      type="button"
+	                      className="inline-flex text-muted-foreground hover:text-foreground focus:outline-none"
+	                      onClick={(e) => e.stopPropagation()}
+	                      aria-label="Historical timeline explained"
+	                    >
+	                      <Info className="h-3.5 w-3.5" />
+	                    </button>
+	                  </TooltipTrigger>
+	                  <TooltipContent side="bottom" className="max-w-sm p-4 text-left">
+	                    <div className="space-y-2">
+	                      <p className="font-medium text-foreground">Historical timeline</p>
+	                      <p className="text-xs text-muted-foreground">
+	                        Shows resource history for the selected time range. Switch between CPU and memory to compare allocatable capacity, requests, recommendations, and observed usage over time.
+	                      </p>
+	                      <ul className="space-y-1 text-xs text-muted-foreground">
+	                        <li>Allocatable: total cluster capacity available to schedule workloads.</li>
+	                        <li>Requested: the cluster&apos;s current requested resources at that point in time.</li>
+	                        <li>Original Requested: the resources configured at the workload level before CruiseKube recommendations are applied.</li>
+	                        <li>Recommended: CruiseKube&apos;s suggested total after rightsizing.</li>
+	                        <li>Usage: actual observed resource consumption.</li>
+	                      </ul>
+	                    </div>
+	                  </TooltipContent>
+	                </Tooltip>
+	              </TooltipProvider>
+	            </div>
+	            <div className="flex gap-1 rounded-md border border-border bg-muted/30 p-0.5">
               <Button
                 variant={historicalMetric === "cpu" ? "default" : "ghost"}
                 size="sm"
@@ -1120,15 +1151,44 @@ export default function Overview() {
           </div>
         </section>
 
-        {/* Cost Timeline */}
-        <section aria-labelledby="cost-timeline-heading" className="space-y-4">
-          <h2
-            id="cost-timeline-heading"
-            className="text-sm font-semibold uppercase tracking-wider text-muted-foreground"
-          >
-            Cost timeline
-          </h2>
-          <div className="metric-card border-border overflow-hidden">
+	        {/* Cost Timeline */}
+	        <section aria-labelledby="cost-timeline-heading" className="space-y-4">
+	          <div className="flex items-center gap-1.5">
+	            <h2
+	              id="cost-timeline-heading"
+	              className="text-sm font-semibold uppercase tracking-wider text-muted-foreground"
+	            >
+	              Cost timeline
+	            </h2>
+	            <TooltipProvider>
+	              <Tooltip>
+	                <TooltipTrigger asChild>
+	                  <button
+	                    type="button"
+	                    className="inline-flex text-muted-foreground hover:text-foreground focus:outline-none"
+	                    onClick={(e) => e.stopPropagation()}
+	                    aria-label="Cost timeline explained"
+	                  >
+	                    <Info className="h-3.5 w-3.5" />
+	                  </button>
+	                </TooltipTrigger>
+	                <TooltipContent side="bottom" className="max-w-sm p-4 text-left">
+	                  <div className="space-y-2">
+	                    <p className="font-medium text-foreground">Cost timeline</p>
+	                    <p className="text-xs text-muted-foreground">
+	                      Shows how monthly run-rate and savings trend across the selected time range using the timeline window selected above.
+	                    </p>
+	                    <ul className="space-y-1 text-xs text-muted-foreground">
+	                      <li>Hourly Cost Without CruiseKube: estimated hourly cost before CruiseKube optimization.</li>
+	                      <li>Hourly Cost: the effective current hourly cost reflected in the cluster.</li>
+	                      <li>Hourly Cost With CruiseKube: estimated hourly cost after applying CruiseKube optimization.</li>
+	                    </ul>
+	                  </div>
+	                </TooltipContent>
+	              </Tooltip>
+	            </TooltipProvider>
+	          </div>
+	          <div className="metric-card border-border overflow-hidden">
             {isLoading || isLoadingCostHistorical ? (
               <Skeleton className="h-[320px] w-full" />
             ) : costTimelineData.length === 0 ? (

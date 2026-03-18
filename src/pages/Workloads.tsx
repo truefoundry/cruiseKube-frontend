@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import { ReactNode, useEffect, useRef, useState } from "react";
 import { 
   Search,
   ChevronUp,
@@ -27,6 +27,7 @@ import {
   List,
   LockKeyhole,
   Shield,
+  DollarSign,
 } from "lucide-react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faCircleArrowUp } from "@fortawesome/free-solid-svg-icons";
@@ -334,6 +335,35 @@ function workloadDetailToFrontend(d: WorkloadDetail): FrontendWorkload {
     excludedCodes: (d.config.excludedCodes?.length ?? 0) > 0 ? d.config.excludedCodes : undefined,
     scaledDown: d.scaledDown ?? false,
   };
+}
+
+function InfoTooltip({
+  label,
+  children,
+  contentClassName = "max-w-xs",
+}: {
+  label: string;
+  children: ReactNode;
+  contentClassName?: string;
+}) {
+  return (
+    <TooltipProvider>
+      <Tooltip>
+        <TooltipTrigger asChild onClick={(e) => e.stopPropagation()}>
+          <button
+            type="button"
+            className="inline-flex shrink-0 text-muted-foreground hover:text-foreground focus:outline-none"
+            aria-label={label}
+          >
+            <Info className="h-3.5 w-3.5" />
+          </button>
+        </TooltipTrigger>
+        <TooltipContent side="bottom" className={contentClassName}>
+          {children}
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  );
 }
 
 export default function Workloads() {
@@ -710,6 +740,92 @@ export default function Workloads() {
 
   const hasNoData = !isLoadingMetrics && (summaryData?.workloadDetails?.length ?? 0) === 0;
 
+  const clusterUtilisationTooltipContent = (
+    <div className="space-y-2 text-left">
+      <p className="font-medium text-foreground">Cluster utilisation</p>
+      <p className="text-xs text-muted-foreground">
+        These bars compare allocatable capacity against what workloads are using and what they have requested.
+      </p>
+      <ul className="space-y-1 text-xs text-muted-foreground">
+        <li>Utilised: resources currently consumed by running workloads.</li>
+        <li>Requested: resources reserved by Kubernetes requests, including unused headroom.</li>
+        <li>Free: allocatable capacity not currently requested.</li>
+      </ul>
+    </div>
+  );
+
+  const cruiseKubeAdoptionTooltipContent = (
+    <div className="space-y-2 text-left">
+      <p className="font-medium text-foreground">CruiseKube adoption</p>
+      <p className="text-xs text-muted-foreground">
+        This summary shows how workloads are distributed across optimization states.
+      </p>
+      <ul className="space-y-1 text-xs text-muted-foreground">
+        <li>Total: all workloads discovered in the cluster.</li>
+        <li>Skipped: workloads without actionable optimization or excluded from optimization.</li>
+        <li>Optimized/Cruise: workloads in Cruise mode, with realized monthly savings.</li>
+        <li>Recommended: workloads in Recommend mode, with unrealized monthly savings.</li>
+        <li>Reliability Improved: workloads that need more resources, with added monthly cost.</li>
+      </ul>
+    </div>
+  );
+
+  const untappedSavingsTooltipContent = (
+    <div className="space-y-2 text-left">
+      <p className="font-medium text-foreground">Untapped savings</p>
+      <p className="text-xs text-muted-foreground">
+        Possible savings is the monthly reduction available if recommended requests are applied. Current savings is what the cluster is already saving relative to normalized workload requests.
+      </p>
+    </div>
+  );
+
+  const podsTooltipContent = (
+    <p className="max-w-xs text-xs text-muted-foreground">
+      Number of running pod replicas for this workload.
+    </p>
+  );
+
+  const netSavingsTooltipContent = (
+    <p className="max-w-xs text-xs text-muted-foreground">
+      Estimated monthly savings from rightsizing this workload. It reflects only cost reductions from lower resource requests and does not subtract reliability increase costs.
+    </p>
+  );
+
+  const modeTooltipContent = (
+    <p className="max-w-xs text-xs text-muted-foreground">
+      Cruise automatically applies recommendations. Recommend shows recommendations without auto-applying them.
+    </p>
+  );
+
+  const criticalityTooltipContent = (
+    <div className="space-y-2 text-left">
+      <p className="font-medium text-foreground">Criticality</p>
+      <p className="text-xs text-muted-foreground">
+        Indicates how sensitive a workload is during optimization. Higher criticality workloads are treated more conservatively.
+      </p>
+    </div>
+  );
+
+  const modeHeaderTooltipContent = (
+    <div className="space-y-2 text-left">
+      <p className="font-medium text-foreground">Mode</p>
+      <p className="text-xs text-muted-foreground">
+        When on, recommendations are auto-applied in Cruise mode. When off, recommendations are shown without being auto-applied.
+      </p>
+    </div>
+  );
+
+  const resourceHeaderTooltipContent = (
+    <div className="space-y-2 text-left">
+      <p className="font-medium text-foreground">CPU and memory fields</p>
+      <ul className="space-y-1 text-xs text-muted-foreground">
+        <li>Current: the workload&apos;s current configured resource request.</li>
+        <li>Recommended: the request CruiseKube recommends based on observed usage.</li>
+        <li>Savings: the reduction from current request to recommended request.</li>
+      </ul>
+    </div>
+  );
+
   return (
     <div className="min-w-0 w-full max-w-full animate-fade-in">
       <div className="mx-auto max-w-[1600px] px-4 py-6 sm:px-6 lg:px-8 space-y-8">
@@ -734,76 +850,86 @@ export default function Workloads() {
 
         {/* Workload list */}
         <section aria-labelledby="workloads-heading">
-          <div className="flex flex-wrap items-center gap-2 mb-4">
-            <h2 id="workloads-heading" className="text-sm font-semibold uppercase tracking-wider text-muted-foreground shrink-0">
-              Workload list
-            </h2>
-            <div className="relative w-56 sm:w-64 shrink-0">
-              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-              <Input
-                placeholder="Search..."
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                className="h-9 pl-8 text-sm bg-muted/30 border-border rounded-md"
-              />
+          <div className="flex flex-wrap items-center justify-between gap-4 mb-4">
+            <div className="flex items-center gap-1.5">
+              <h2 id="workloads-heading" className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
+                Workload list
+                {sortedWorkloads.length > 0 && (
+                  <span className="ml-2 font-normal normal-case text-foreground">({sortedWorkloads.length})</span>
+                )}
+              </h2>
+              <InfoTooltip label="What CruiseKube adoption means" contentClassName="max-w-sm p-4 text-left">
+                {cruiseKubeAdoptionTooltipContent}
+              </InfoTooltip>
             </div>
-            <Select value={namespaceFilter} onValueChange={setNamespaceFilter}>
-              <SelectTrigger className="h-9 min-w-[180px] flex-1 max-w-[280px] bg-muted/30 border-border rounded-md text-sm">
-                <SelectValue placeholder="Namespace" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All namespaces</SelectItem>
-                {asArray(namespaces).map((ns) => (
-                  <SelectItem key={ns} value={ns}>{ns}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Select value={modeFilter} onValueChange={setModeFilter}>
-              <SelectTrigger className="h-9 w-[120px] bg-muted/30 border-border rounded-md text-sm">
-                <SelectValue placeholder="Mode" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All modes</SelectItem>
-                <SelectItem value="enabled">Cruise</SelectItem>
-                <SelectItem value="recommend-only">Recommend</SelectItem>
-              </SelectContent>
-            </Select>
-            <Select value={criticalFilter} onValueChange={setCriticalFilter}>
-              <SelectTrigger className="h-9 w-[130px] bg-muted/30 border-border rounded-md text-sm">
-                <SelectValue placeholder="Critical" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Criticalities</SelectItem>
-                <SelectItem value="low">Low</SelectItem>
-                <SelectItem value="medium">Medium</SelectItem>
-                <SelectItem value="high">High</SelectItem>
-                <SelectItem value="very-high">Very High</SelectItem>
-              </SelectContent>
-            </Select>
-            <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v as typeof statusFilter)}>
-              <SelectTrigger className="h-9 w-[200px] bg-muted/30 border-border rounded-md text-sm">
-                <SelectValue placeholder="Excluded / PDB / Blocking" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All workloads</SelectItem>
-                <SelectItem value="excluded">Excluded</SelectItem>
-                <SelectItem value="blocking-consolidation">Blocking consolidation</SelectItem>
-                <SelectItem value="gpu">GPU workload</SelectItem>
-                <SelectItem value="hpa-enabled">HPA enabled</SelectItem>
-                <SelectItem value="scaled-down">Scaled down</SelectItem>
-              </SelectContent>
-            </Select>
-            <Select value={typeFilter} onValueChange={setTypeFilter}>
-              <SelectTrigger className="h-9 w-[140px] bg-muted/30 border-border rounded-md text-sm">
-                <SelectValue placeholder="Type" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All types</SelectItem>
-                {workloadTypesInData.map((t) => (
-                  <SelectItem key={t} value={t}>{t}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="relative w-56 sm:w-64">
+                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+                <Input
+                  placeholder="Search..."
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  className="h-9 pl-8 text-sm bg-muted/30 border-border rounded-md"
+                />
+              </div>
+              <Select value={namespaceFilter} onValueChange={setNamespaceFilter}>
+                <SelectTrigger className="h-9 min-w-[180px] flex-1 max-w-[280px] bg-muted/30 border-border rounded-md text-sm">
+                  <SelectValue placeholder="Namespace" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All namespaces</SelectItem>
+                  {asArray(namespaces).map((ns) => (
+                    <SelectItem key={ns} value={ns}>{ns}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Select value={modeFilter} onValueChange={setModeFilter}>
+                <SelectTrigger className="h-9 w-[120px] bg-muted/30 border-border rounded-md text-sm">
+                  <SelectValue placeholder="Mode" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All modes</SelectItem>
+                  <SelectItem value="enabled">Cruise</SelectItem>
+                  <SelectItem value="recommend-only">Recommend</SelectItem>
+                </SelectContent>
+              </Select>
+              <Select value={criticalFilter} onValueChange={setCriticalFilter}>
+                <SelectTrigger className="h-9 w-[130px] bg-muted/30 border-border rounded-md text-sm">
+                  <SelectValue placeholder="Critical" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Criticalities</SelectItem>
+                  <SelectItem value="low">Low</SelectItem>
+                  <SelectItem value="medium">Medium</SelectItem>
+                  <SelectItem value="high">High</SelectItem>
+                  <SelectItem value="very-high">Very High</SelectItem>
+                </SelectContent>
+              </Select>
+              <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v as typeof statusFilter)}>
+                <SelectTrigger className="h-9 w-[200px] bg-muted/30 border-border rounded-md text-sm">
+                  <SelectValue placeholder="Excluded / PDB / Blocking" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All workloads</SelectItem>
+                  <SelectItem value="excluded">Excluded</SelectItem>
+                  <SelectItem value="blocking-consolidation">Blocking consolidation</SelectItem>
+                  <SelectItem value="gpu">GPU workload</SelectItem>
+                  <SelectItem value="hpa-enabled">HPA enabled</SelectItem>
+                  <SelectItem value="scaled-down">Scaled down</SelectItem>
+                </SelectContent>
+              </Select>
+              <Select value={typeFilter} onValueChange={setTypeFilter}>
+                <SelectTrigger className="h-9 w-[140px] bg-muted/30 border-border rounded-md text-sm">
+                  <SelectValue placeholder="Type" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All types</SelectItem>
+                  {workloadTypesInData.map((t) => (
+                    <SelectItem key={t} value={t}>{t}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
           </div>
 
           <div className="rounded-xl border border-border bg-card/50 overflow-hidden shadow-sm">
@@ -974,7 +1100,10 @@ export default function Workloads() {
                   onClick={(e) => { e.stopPropagation(); handleSort("replicas"); }}
                 >
                   <div className="flex items-center justify-center gap-1 pr-2">
-                    Pod
+                    Pods
+                    <InfoTooltip label="What pod count means">
+                      {podsTooltipContent}
+                    </InfoTooltip>
                     {sortColumn === "replicas" && (sortDirection === "asc" ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />)}
                   </div>
                   <div className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-primary/30 active:bg-primary/50" onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); startResize(4, e.clientX); }} aria-hidden />
@@ -984,6 +1113,9 @@ export default function Workloads() {
                     <span className="inline-flex items-center gap-1.5">
                       <Cpu className="h-4 w-4" />
                       CPU
+                      <InfoTooltip label="How CPU columns are defined" contentClassName="max-w-sm p-4 text-left">
+                        {resourceHeaderTooltipContent}
+                      </InfoTooltip>
                     </span>
                   </div>
                 </th>
@@ -992,6 +1124,9 @@ export default function Workloads() {
                     <span className="inline-flex items-center gap-1.5">
                       <HardDrive className="h-4 w-4" />
                       Memory
+                      <InfoTooltip label="How memory columns are defined" contentClassName="max-w-sm p-4 text-left">
+                        {resourceHeaderTooltipContent}
+                      </InfoTooltip>
                     </span>
                   </div>
                 </th>
@@ -1000,18 +1135,11 @@ export default function Workloads() {
                   onClick={(e) => { e.stopPropagation(); handleSort("netSavings"); }}
                 >
                   <div className="flex items-center justify-center gap-1 pr-2">
-                    Net<br />Savings/M <br />
+                    Net Savings/M
                     {sortColumn === "netSavings" && (sortDirection === "asc" ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />)}
-                    <TooltipProvider>
-                      <Tooltip>
-                        <TooltipTrigger asChild onClick={(e) => e.stopPropagation()}>
-                          <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
-                        </TooltipTrigger>
-                        <TooltipContent side="bottom" className="max-w-xs">
-                          <p>Possible savings from resource reductions minus cost of increasing resources for reliability. Reliability Up = reliability was improved (resources recommended to be increased).</p>
-                        </TooltipContent>
-                      </Tooltip>
-                    </TooltipProvider>
+                    <InfoTooltip label="What net savings per month means">
+                      {netSavingsTooltipContent}
+                    </InfoTooltip>
                   </div>
                   <div className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-primary/30 active:bg-primary/50" onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); startResize(9, e.clientX); }} aria-hidden />
                 </th>
@@ -1104,17 +1232,10 @@ export default function Workloads() {
                   onClick={(e) => { e.stopPropagation(); handleSort("cruiseConfig"); }}
                 >
                   <div className="flex items-center justify-center gap-1 pr-2">
-                    Mode 
-                    <TooltipProvider>
-                      <Tooltip>
-                        <TooltipTrigger asChild onClick={(e) => e.stopPropagation()}>
-                          <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
-                        </TooltipTrigger>
-                        <TooltipContent side="bottom" className="max-w-xs">
-                          <p>When on, recommendations are auto-applied (Cruise mode). When off, only recommendations are shown (Recommend only). Toggle inline to change.</p>
-                        </TooltipContent>
-                      </Tooltip>
-                    </TooltipProvider>
+                    Mode
+                    <InfoTooltip label="How mode is defined" contentClassName="max-w-sm p-4 text-left">
+                      {modeHeaderTooltipContent}
+                    </InfoTooltip>
                   </div>
                   <div className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-primary/30 active:bg-primary/50" onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); startResize(10, e.clientX); }} aria-hidden />
                 </th>
@@ -1124,16 +1245,9 @@ export default function Workloads() {
                 >
                   <div className="flex items-center justify-center gap-1 pr-2">
                     Critical
-                    <TooltipProvider>
-                      <Tooltip>
-                        <TooltipTrigger asChild onClick={(e) => e.stopPropagation()}>
-                          <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
-                        </TooltipTrigger>
-                        <TooltipContent side="bottom" className="max-w-xs">
-                          <p>Eviction order during optimization: higher critical workloads are less likely to be evicted. Edit CruiseConfig to change.</p>
-                        </TooltipContent>
-                      </Tooltip>
-                    </TooltipProvider>
+                    <InfoTooltip label="How criticality is defined" contentClassName="max-w-sm p-4 text-left">
+                      {criticalityTooltipContent}
+                    </InfoTooltip>
                   </div>
                   <div className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-primary/30 active:bg-primary/50" onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); startResize(11, e.clientX); }} aria-hidden />
                 </th>
