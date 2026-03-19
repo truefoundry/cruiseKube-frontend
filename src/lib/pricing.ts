@@ -45,7 +45,7 @@ Here we assume that half of the price is for CPUs, and half is for memory.
 
 So, the price per core/hour and price per GB/hour are divided by 2.
 price per core/hour = $0.029/2 = $0.0145/hour
-price per GB/hour = $0.0145/2 = $0.00725/hour
+price per GB/hour = $0.0145/2 = $0.00724/hour
  
  */
 /** CPU price in $/core/hour. Used for cost calculations on Workloads. */
