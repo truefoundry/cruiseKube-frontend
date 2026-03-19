@@ -3,8 +3,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route, useLocation } from "react-router-dom";
-import { useEffect } from "react";
+import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { ClusterProvider } from "@/contexts/ClusterContext";
 import { ConfigProvider } from "@/contexts/ConfigContext";
@@ -19,27 +18,6 @@ const queryClient = new QueryClient();
 
 const SentryRoutes = Sentry.withSentryReactRouterV6Routing(Routes);
 
-declare global {
-  interface Window {
-    dataLayer: unknown[];
-    gtag?: (...args: unknown[]) => void;
-  }
-}
-
-const AnalyticsPageTracker = () => {
-  const location = useLocation();
-
-  useEffect(() => {
-    window.gtag?.("event", "page_view", {
-      page_path: `${location.pathname}${location.search}${location.hash}`,
-      page_title: document.title,
-      page_location: window.location.href,
-    });
-  }, [location]);
-
-  return null;
-};
-
 const App = () => (
  <Sentry.ErrorBoundary fallback={<p>An unexpected error has occurred.</p>} showDialog>
   <QueryClientProvider client={queryClient}>
@@ -49,8 +27,7 @@ const App = () => (
           <Toaster />
           <Sonner />
           <BrowserRouter>
-            <AnalyticsPageTracker />
-            <SentryRoutes>
+            <Routes>
               <Route element={<AppLayout />}>
                 <Route path="/" element={<Overview />} />
                 <Route path="/workloads" element={<Workloads />} />
@@ -59,7 +36,7 @@ const App = () => (
                 <Route path="/events" element={<Events />} />
               </Route>
               <Route path="*" element={<NotFound />} />
-            </SentryRoutes>
+            </Routes>
           </BrowserRouter>
         </ConfigProvider>
       </ClusterProvider>
