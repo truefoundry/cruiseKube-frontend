@@ -17,6 +17,8 @@ import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
 
+const SentryRoutes = Sentry.withSentryReactRouterV6Routing(Routes);
+
 declare global {
   interface Window {
     dataLayer: unknown[];
@@ -48,7 +50,7 @@ const App = () => (
           <Sonner />
           <BrowserRouter>
             <AnalyticsPageTracker />
-            <Routes>
+            <SentryRoutes>
               <Route element={<AppLayout />}>
                 <Route path="/" element={<Overview />} />
                 <Route path="/workloads" element={<Workloads />} />
@@ -57,7 +59,7 @@ const App = () => (
                 <Route path="/events" element={<Events />} />
               </Route>
               <Route path="*" element={<NotFound />} />
-            </Routes>
+            </SentryRoutes>
           </BrowserRouter>
         </ConfigProvider>
       </ClusterProvider>
