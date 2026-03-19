@@ -544,11 +544,11 @@ export default function Workloads() {
     if (!memString) return 0;
     const rangeParts = memString.split("-");
     const valueToParse = rangeParts.length > 1 ? rangeParts[1].trim() : memString;
-    if (valueToParse.endsWith("Mi")) {
-      return parseFloat(valueToParse.replace("Mi", "")) || 0;
+    if (valueToParse.endsWith("MB")) {
+      return parseFloat(valueToParse.replace("MB", "")) || 0;
     }
     if (valueToParse.endsWith("GB")) {
-      return (parseFloat(valueToParse.replace(" GB", "")) || 0) * 1024;
+      return (parseFloat(valueToParse.replace(" GB", "")) || 0) * 1000;
     }
     return parseFloat(valueToParse) || 0;
   };
@@ -563,7 +563,7 @@ export default function Workloads() {
   const tableMemDisplay = (memString: string): string => {
     const mb = parseMemoryValue(memString);
     if (mb === 0) return "—";
-    return (mb / 1024).toFixed(4);
+    return (mb / 1000).toFixed(4);
   };
 
   const updatedAtSeconds = (w: FrontendWorkload): number => w.updatedAt ?? 0;

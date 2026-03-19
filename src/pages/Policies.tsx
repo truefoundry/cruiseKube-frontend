@@ -17,7 +17,7 @@ import { toast } from "@/hooks/use-toast";
 import { setResourcePricing } from "@/lib/pricing";
 
 const DEFAULT_CPU = 0.0145;
-const DEFAULT_MEMORY = 0.00725;
+const DEFAULT_MEMORY = 0.00724;
 
 export default function Policies() {
   const { selectedClusterId } = useCluster();

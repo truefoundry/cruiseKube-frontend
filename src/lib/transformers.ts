@@ -117,10 +117,10 @@ export function formatCpu(cores: number): string {
 }
 
 export function formatMemory(mb: number): string {
-  if (mb < 1024) {
-    return `${Math.round(mb)}Mi`;
+  if (mb < 1000) {
+    return `${Math.round(mb)}MB`;
   }
-  return `${(mb / 1024).toFixed(1)} GB`;
+  return `${(mb / 1000).toFixed(1)} GB`;
 }
 
 /** Format CPU for display with sign: positive → "+500m", negative → "-500m", zero → "0m". */
@@ -130,9 +130,9 @@ export function formatCpuSigned(cores: number): string {
   return `+${formatCpu(cores)}`;
 }
 
-/** Format memory for display with sign: positive → "+256Mi", negative → "-256Mi", zero → "0Mi". */
+/** Format memory for display with sign: positive → "+256MB", negative → "-256MB", zero → "0MB". */
 export function formatMemorySigned(mb: number): string {
-  if (mb === 0) return "0Mi";
+  if (mb === 0) return "0MB";
   if (mb < 0) return `-${formatMemory(-mb)}`;
   return `+${formatMemory(mb)}`;
 }
@@ -396,9 +396,9 @@ export function transformWorkloadStatToFrontend(
     totalPotentialMemoryDiff = 0;
   }
 
-  const potentialMemoryGB = totalPotentialMemoryDiff / 1024;
+  const potentialMemoryGB = totalPotentialMemoryDiff / 1000;
   const potentialDollars = calculateDollarSavings(Math.max(0, totalPotentialCpuDiff), Math.max(0, potentialMemoryGB));
-  const reliabilityMemoryGB = totalReliabilityMemoryDiffMB / 1024;
+  const reliabilityMemoryGB = totalReliabilityMemoryDiffMB / 1000;
   const reliabilityCostDollars = calculateDollarSavings(totalReliabilityCpuDiff, reliabilityMemoryGB);
 
   const enabled = !override?.overrides ? true : override.overrides.enabled;
@@ -656,7 +656,7 @@ export function transformStatsToWastefulWorkloads(
       potentialMemoryDiff = workloadCurrentMemory > workloadRecommendedMemory ? workloadCurrentMemory - workloadRecommendedMemory : 0;
     }
 
-    const potentialMemoryGB = potentialMemoryDiff / 1024;
+    const potentialMemoryGB = potentialMemoryDiff / 1000;
     const savingsPerHour = calculateDollarSavings(potentialCpuDiff, potentialMemoryGB);
 
     const statContainers = Array.isArray(stat.container_stats) ? stat.container_stats : [];
