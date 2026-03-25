@@ -87,6 +87,7 @@ export const EXCLUDED_CODES = {
   GPU_WORKLOAD: "GPU_WORKLOAD",
   MEMORY_HPA: "MEMORY_HPA",
   CPU_HPA: "CPU_HPA",
+  INCOMPLETE_STATS: "INCOMPLETE_STATS",
 } as const;
 export type ExcludedCode = (typeof EXCLUDED_CODES)[keyof typeof EXCLUDED_CODES];
 
@@ -95,11 +96,12 @@ export const EXCLUDED_CODE_LABELS: Record<string, string> = {
   [EXCLUDED_CODES.GPU_WORKLOAD]: "GPU workload",
   [EXCLUDED_CODES.MEMORY_HPA]: "Memory HPA",
   [EXCLUDED_CODES.CPU_HPA]: "CPU HPA",
+  [EXCLUDED_CODES.INCOMPLETE_STATS]: "Incomplete stats",
 };
 
 export interface WorkloadStatMetadata {
   excluded: boolean;
-  /** Known values: GPU_WORKLOAD, MEMORY_HPA, CPU_HPA */
+  /** Known values: GPU_WORKLOAD, MEMORY_HPA, CPU_HPA, INCOMPLETE_STATS */
   excluded_codes?: string[];
 }
 
