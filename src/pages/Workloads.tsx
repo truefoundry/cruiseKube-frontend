@@ -249,9 +249,14 @@ function WorkloadStatusIcons({ workload }: { workload: FrontendWorkload }) {
   );
 }
 
-/** True when workload should be disabled for Cruise (excluded, GPU, or HPA). */
+/** True when workload should be disabled for Cruise. */
 function isWorkloadDisabled(workload: FrontendWorkload): boolean {
-  return !!(workload.excluded || workload.isGpuWorkload || workload.hpaEnabled);
+  return !!(
+    workload.excluded ||
+    workload.isGpuWorkload ||
+    workload.hpaEnabled ||
+    (workload.excludedCodes && workload.excludedCodes.length > 0)
+  );
 }
 
 function getCriticalColor(critical: string): string {
