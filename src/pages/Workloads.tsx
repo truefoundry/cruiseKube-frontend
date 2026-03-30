@@ -1,4 +1,5 @@
 import { ReactNode, useEffect, useRef, useState } from "react";
+import { flushSync } from "react-dom";
 import { 
   Search,
   ChevronUp,
@@ -124,9 +125,9 @@ function WorkloadStatusIcons({ workload }: { workload: FrontendWorkload }) {
               </span>
             </TooltipTrigger>
             <TooltipContent side="right" className="max-w-sm">
-              <p className="font-semibold">Excluded</p>
+              <p className="font-semibold">Non-optimizable</p>
               <p className="mt-1 text-muted-foreground">
-                {workload.excludedReason || "Excluded from optimization."}
+                {workload.excludedReason || "This workload is not optimizable by CruiseKube."}
               </p>
             </TooltipContent>
           </Tooltip>
@@ -177,7 +178,7 @@ function WorkloadStatusIcons({ workload }: { workload: FrontendWorkload }) {
             <TooltipContent side="right" className="max-w-sm">
               <p className="font-semibold">GPU workload</p>
               <p className="mt-1 text-muted-foreground">
-                This workload is identified as a GPU workload. {workload.excluded ? "It is excluded from optimization because it uses GPU resources." : "It may be excluded from optimization when it uses GPU resources."}
+                This workload is identified as a GPU workload. {workload.excluded ? "It is non-optimizable for Cruise because it uses GPU resources." : "It may be non-optimizable for Cruise when it uses GPU resources."}
               </p>
             </TooltipContent>
           </Tooltip>
@@ -271,7 +272,7 @@ function getCriticalColor(critical: string): string {
     case "medium": return "text-warning";
     case "high": return "text-success";
     case "very-high": return "text-primary";
-    case "excluded": return "text-muted-foreground";
+    case "nonOptimizable": return "text-muted-foreground";
     default: return "text-muted-foreground";
   }
 }
@@ -366,7 +367,7 @@ function workloadDetailToFrontend(d: WorkloadDetail): FrontendWorkload {
     critical,
     hasRecommendations: d.dollarSavingsPerMonth !== 0 || d.dollarExpenditurePerMonth !== 0,
     excluded: c?.excludedAnnotation ?? false,
-    excludedReason: c?.excludedAnnotation ? "Excluded annotation" : undefined,
+    excludedReason: c?.excludedAnnotation ? "Non-optimizable (exclusion annotation)" : undefined,
     disruptionWindows: (d.config.disruptionSchedule ?? []).map((w) => ({
       startCron: w.windowStartCron,
       endCron: w.windowEndCron,
@@ -479,14 +480,6 @@ export default function Workloads() {
       if (!selectedClusterId) throw new Error('No cluster selected');
       return apiClient.updateWorkloadOverrides(selectedClusterId, workloadId, overrides);
     },
-    onMutate: async ({ workloadId, overrides }) => {
-      if (selectedClusterId == null || overrides.enabled === undefined) return;
-      await queryClient.cancelQueries({ queryKey: ['workloads-summary', selectedClusterId] });
-      queryClient.setQueryData<WorkloadSummaryResponse>(
-        ['workloads-summary', selectedClusterId],
-        (old) => patchWorkloadsSummaryCruiseEnabled(old, workloadId, overrides.enabled!)
-      );
-    },
     onSuccess: () => {
       toast({
         title: "Success",
@@ -512,14 +505,6 @@ export default function Workloads() {
     mutationFn: async ({ workloadIds, enabled }: { workloadIds: string[]; enabled: boolean }) => {
       if (!selectedClusterId) throw new Error('No cluster selected');
       return apiClient.batchWorkloadOverrides(selectedClusterId, workloadIds, { enabled });
-    },
-    onMutate: async ({ workloadIds, enabled }) => {
-      if (selectedClusterId == null) return;
-      await queryClient.cancelQueries({ queryKey: ['workloads-summary', selectedClusterId] });
-      queryClient.setQueryData<WorkloadSummaryResponse>(
-        ['workloads-summary', selectedClusterId],
-        (old) => patchWorkloadsSummaryCruiseEnabledBatch(old, workloadIds, enabled)
-      );
     },
     onSuccess: (_, { workloadIds, enabled }) => {
       setSelectedWorkloadIds(new Set());
@@ -563,11 +548,20 @@ export default function Workloads() {
   };
 
   const handleModeToggle = (workload: FrontendWorkload) => {
-    if (isWorkloadDisabled(workload)) return;
+    if (isWorkloadDisabled(workload) || !selectedClusterId) return;
     const newMode = workload.mode === "enabled" ? "recommend-only" : "enabled";
+    const cruiseEnabled = newMode === "enabled";
+    const apiWorkloadId = workloadIdForApi(workload.id);
+    void queryClient.cancelQueries({ queryKey: ['workloads-summary', selectedClusterId] });
+    flushSync(() => {
+      queryClient.setQueryData<WorkloadSummaryResponse>(
+        ['workloads-summary', selectedClusterId],
+        (old) => patchWorkloadsSummaryCruiseEnabled(old, apiWorkloadId, cruiseEnabled)
+      );
+    });
     const overrides: Overrides = {
       eviction_ranking: mapCriticalToEvictionRanking(workload.critical),
-      enabled: newMode === "enabled",
+      enabled: cruiseEnabled,
     };
     const windows = asArray(workload.disruptionWindows);
     if (windows.length > 0) {
@@ -577,17 +571,25 @@ export default function Workloads() {
       }));
     }
     updateOverrideMutation.mutate({
-      workloadId: workloadIdForApi(workload.id),
+      workloadId: apiWorkloadId,
       overrides,
     });
   };
 
   const handleSaveCruiseConfig = () => {
-    if (!editWorkload) return;
+    if (!editWorkload || !selectedClusterId) return;
     const id = workloadIdForApi(editWorkload.id);
+    const cruiseEnabled = editMode === "enabled";
+    void queryClient.cancelQueries({ queryKey: ['workloads-summary', selectedClusterId] });
+    flushSync(() => {
+      queryClient.setQueryData<WorkloadSummaryResponse>(
+        ['workloads-summary', selectedClusterId],
+        (old) => patchWorkloadsSummaryCruiseEnabled(old, id, cruiseEnabled)
+      );
+    });
     const overrides: Overrides = {
       eviction_ranking: mapCriticalToEvictionRanking(editCritical),
-      enabled: editMode === 'enabled',
+      enabled: cruiseEnabled,
     };
     if (editDisruptionWindows.length > 0) {
       overrides.disruption_windows = editDisruptionWindows.map((w) => ({
@@ -772,12 +774,26 @@ export default function Workloads() {
 
   const handleBatchEnable = () => {
     const ids = [...selectedWorkloadIds].map((id) => workloadIdForApi(id));
-    if (ids.length === 0) return;
+    if (ids.length === 0 || !selectedClusterId) return;
+    void queryClient.cancelQueries({ queryKey: ['workloads-summary', selectedClusterId] });
+    flushSync(() => {
+      queryClient.setQueryData<WorkloadSummaryResponse>(
+        ['workloads-summary', selectedClusterId],
+        (old) => patchWorkloadsSummaryCruiseEnabledBatch(old, ids, true)
+      );
+    });
     batchOverridesMutation.mutate({ workloadIds: ids, enabled: true });
   };
   const handleBatchDisable = () => {
     const ids = [...selectedWorkloadIds].map((id) => workloadIdForApi(id));
-    if (ids.length === 0) return;
+    if (ids.length === 0 || !selectedClusterId) return;
+    void queryClient.cancelQueries({ queryKey: ['workloads-summary', selectedClusterId] });
+    flushSync(() => {
+      queryClient.setQueryData<WorkloadSummaryResponse>(
+        ['workloads-summary', selectedClusterId],
+        (old) => patchWorkloadsSummaryCruiseEnabledBatch(old, ids, false)
+      );
+    });
     batchOverridesMutation.mutate({ workloadIds: ids, enabled: false });
   };
 
@@ -811,14 +827,14 @@ export default function Workloads() {
   const isLoadingMetrics = isLoadingSummary;
   const apiErrorMessage = summaryError instanceof Error ? summaryError.message : (summaryError ? "Unknown error" : null);
 
-  const costOptimizedWorkloads = (summaryData?.workloadDetails ?? []).filter((w) => w.config.cruiseEnabled && w.dollarSavingsPerMonth > 0).length;
-  const costOptimizedWorkloadsRecommendOnly = (summaryData?.workloadDetails ?? []).filter((w) => !w.config.cruiseEnabled && w.dollarSavingsPerMonth > 0).length;
-  const reliabilityIssues = (summaryData?.workloadDetails ?? []).filter((w) => w.dollarExpenditurePerMonth > 0).length;
-  const overviewMetrics = {
-    costOptimizedWorkloads,
-    costOptimizedWorkloadsRecommendOnly,
-    reliabilityIssues,
-  };
+  const enabledWorkloads = sortedWorkloads.filter((w) => w.mode === "enabled" && !isWorkloadDisabled(w));
+  const enabledCount = enabledWorkloads.length;
+  const costOptimisedCount = enabledWorkloads.filter((w) => w.potentialDollars > 0).length;
+  const reliabilityImprovedCount = enabledWorkloads.filter((w) => w.reliabilityCostDollars > 0).length;
+  const disabledCount = sortedWorkloads.filter((w) => w.mode === "recommend-only" && !isWorkloadDisabled(w)).length;
+  const nonOptimizableCount = sortedWorkloads.filter(
+    (w) => w.excluded === true || !!(w.excludedCodes && w.excludedCodes.length > 0)
+  ).length;
 
   const hasNoData = !isLoadingMetrics && (summaryData?.workloadDetails?.length ?? 0) === 0;
 
@@ -843,11 +859,10 @@ export default function Workloads() {
         This summary shows how workloads are distributed across optimization states.
       </p>
       <ul className="space-y-1 text-xs text-muted-foreground">
-        <li>Total: all workloads discovered in the cluster.</li>
-        <li>Skipped: workloads without actionable optimization or excluded from optimization.</li>
-        <li>Optimized/Cruise: workloads in Cruise mode, with realized monthly savings.</li>
-        <li>Recommended: workloads in Recommend mode, with unrealized monthly savings.</li>
-        <li>Reliability Improved: workloads that need more resources, with added monthly cost.</li>
+        <li>Workloads: rows currently shown in the table (after search and filters).</li>
+        <li>Enabled: Cruise mode on (non-disabled rows), then cost optimised and reliability improved as count and estimated monthly total, separated by middots.</li>
+        <li>Disabled: recommend-only among non-disabled visible rows.</li>
+        <li>Non-optimizable: visible workloads that are not eligible for optimization (per server metadata or reason codes).</li>
       </ul>
     </div>
   );
@@ -989,11 +1004,11 @@ export default function Workloads() {
               </Select>
               <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v as typeof statusFilter)}>
                 <SelectTrigger className="h-9 w-[200px] bg-muted/30 border-border rounded-md text-sm">
-                  <SelectValue placeholder="Excluded / PDB / Blocking" />
+                  <SelectValue placeholder="Non-optimizable / PDB / blocking" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All workloads</SelectItem>
-                  <SelectItem value="excluded">Excluded</SelectItem>
+                  <SelectItem value="excluded">Non-optimizable</SelectItem>
                   <SelectItem value="blocking-consolidation">Blocking consolidation</SelectItem>
                   <SelectItem value="gpu">GPU workload</SelectItem>
                   <SelectItem value="hpa-enabled">HPA enabled</SelectItem>
@@ -1020,10 +1035,9 @@ export default function Workloads() {
               {isLoadingMetrics ? (
                 <div className="flex flex-wrap items-center gap-6">
                   <Skeleton className="h-4 w-16" />
-                  <Skeleton className="h-4 w-20" />
+                  <Skeleton className="h-4 w-[min(100%,36rem)]" />
                   <Skeleton className="h-4 w-24" />
-                  <Skeleton className="h-4 w-28" />
-                  <Skeleton className="h-4 w-32" />
+                  <Skeleton className="h-4 w-20" />
                 </div>
               ) : (
                 <div className="flex flex-wrap items-center justify-between gap-x-8 gap-y-2 text-sm">
@@ -1032,17 +1046,32 @@ export default function Workloads() {
                       <span className="text-muted-foreground">Workloads</span>
                       <span className="font-mono font-semibold tabular-nums text-foreground">{sortedWorkloads.length}</span>
                     </div>
-                    <div className="flex items-baseline gap-1.5">
-                      <span className="text-muted-foreground">Optimized/Cruise</span>
-                      <span className="font-mono font-semibold tabular-nums text-foreground">{overviewMetrics.costOptimizedWorkloads}</span>
+                    <div
+                      className="flex min-w-0 max-w-full items-baseline gap-x-1.5 overflow-x-auto whitespace-nowrap text-sm [scrollbar-width:thin]"
+                      aria-label={`Enabled ${enabledCount} workloads. Cost optimised: ${costOptimisedCount} workloads. Reliability improved: ${reliabilityImprovedCount} workloads.`}
+                    >
+                      <span className="text-muted-foreground shrink-0">Enabled</span>
+                      <span className="font-mono font-semibold tabular-nums text-foreground shrink-0">
+                        {enabledCount}
+                      </span>
+                      <span className="text-muted-foreground/50 shrink-0" aria-hidden>
+                        ·
+                      </span>
+                      <span className="text-muted-foreground shrink-0">Cost optimised</span>
+                      <span className="font-mono tabular-nums text-foreground shrink-0">{costOptimisedCount}</span>
+                      <span className="text-muted-foreground/50 shrink-0" aria-hidden>
+                        ·
+                      </span>
+                      <span className="text-muted-foreground shrink-0">Reliability improved</span>
+                      <span className="font-mono tabular-nums text-foreground shrink-0">{reliabilityImprovedCount}</span>
                     </div>
                     <div className="flex items-baseline gap-1.5">
-                      <span className="text-muted-foreground">Recommended</span>
-                      <span className="font-mono font-semibold tabular-nums text-foreground">{overviewMetrics.costOptimizedWorkloadsRecommendOnly}</span>
+                      <span className="text-muted-foreground">Disabled</span>
+                      <span className="font-mono font-semibold tabular-nums text-foreground">{disabledCount}</span>
                     </div>
                     <div className="flex items-baseline gap-1.5">
-                      <span className="text-muted-foreground">Reliability Improved</span>
-                      <span className="font-mono font-semibold tabular-nums text-foreground">{overviewMetrics.reliabilityIssues}</span>
+                      <span className="text-muted-foreground">Non-optimizable</span>
+                      <span className="font-mono font-semibold tabular-nums text-foreground">{nonOptimizableCount}</span>
                     </div>
                   </div>
                   {someSelected && (
@@ -1384,7 +1413,7 @@ export default function Workloads() {
                           <div className="flex flex-wrap gap-1">
                             {workload.excluded && (
                               <Badge variant="secondary" className="text-xs font-normal py-0">
-                                {workload.excludedReason || "Excluded from optimization"}
+                                {workload.excludedReason || "Non-optimizable"}
                               </Badge>
                             )}
                             {workload.excludedCodes?.map((code) => (
@@ -1453,7 +1482,7 @@ export default function Workloads() {
                   <td className={`min-w-0 overflow-hidden ${index === 0 ? "border-t" : ""} border-l border-b border-border align-middle`}>
                     <div className="flex justify-center min-w-0" onClick={(e) => e.stopPropagation()}>
                       {isWorkloadDisabled(workload) ? (
-                        <span className="text-xs font-medium text-muted-foreground">Excluded</span>
+                        <span className="text-xs font-medium text-muted-foreground">Non-optimizable</span>
                       ) : (
                         <TooltipProvider>
                           <Tooltip>
@@ -1482,8 +1511,8 @@ export default function Workloads() {
                   <td className={`border-r border-b border-border min-w-0 overflow-hidden ${index === 0 ? "border-t" : ""} align-middle`}>
                     <div className="flex flex-col gap-0.5 justify-center min-w-0">
                       <div className="flex items-center gap-1 flex-wrap min-w-0">
-                        <span className={`text-xs font-medium capitalize ${getCriticalColor(isWorkloadDisabled(workload) ? "excluded" : workload.critical)}`}>
-                          {isWorkloadDisabled(workload) ? "Excluded" : workload.critical}
+                        <span className={`text-xs font-medium capitalize ${getCriticalColor(isWorkloadDisabled(workload) ? "nonOptimizable" : workload.critical)}`}>
+                          {isWorkloadDisabled(workload) ? "Non-optimizable" : workload.critical}
                         </span>
                         {!isWorkloadDisabled(workload) && asArray(workload.disruptionWindows).length > 0 && (
                           <TooltipProvider>

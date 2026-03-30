@@ -623,7 +623,7 @@ export default function Overview() {
                       {d.adoption.optimizable} / {adoptionTotal || 0}
                     </p>
                     {/*<p className="text-xs text-muted-foreground mt-1">
-                      Optimizable: {d.adoption.optimizable} · Non-optimizable: {d.adoption.nonOptimizable} · Optimizable but excluded: {d.adoption.optimizableButExcluded}
+                      Optimizable: {d.adoption.optimizable} · Non-optimizable: {d.adoption.nonOptimizable} · Optimizable but non-optimizable: {d.adoption.optimizableButExcluded}
                     </p>*/}
                   </div>
                   <div className="space-y-2">

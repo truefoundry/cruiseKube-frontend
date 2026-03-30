@@ -36,7 +36,7 @@ export interface FrontendWorkload {
   hasRecommendations: boolean;
   /** Disruption windows (cron in UTC) from overrides. */
   disruptionWindows: { startCron: string; endCron: string }[];
-  /** True when workload is excluded from optimization; reason in excludedReason. */
+  /** API `excluded`: workload is not optimizable by Cruise; details in excludedReason (shown as non-optimizable in UI). */
   excluded?: boolean;
   excludedReason?: string;
   /** True when this workload blocks node consolidation (e.g. PDB or do-not-disrupt). */
