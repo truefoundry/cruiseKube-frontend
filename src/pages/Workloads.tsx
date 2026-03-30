@@ -23,11 +23,11 @@ import {
   BarChart2,
   Shrink,
   Ban,
-  Clock,
   List,
   LockKeyhole,
   Shield,
   DollarSign,
+  MoreVertical,
 } from "lucide-react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faCircleArrowUp } from "@fortawesome/free-solid-svg-icons";
@@ -69,6 +69,12 @@ import {
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Switch } from "@/components/ui/switch";
 import { asArray } from "@/lib/utils";
@@ -287,16 +293,6 @@ function formatUpdatedAtShort(utcSeconds: number): string {
   return `${diffDays}d`;
 }
 
-/** Full date/time for tooltip. */
-function formatUpdatedAtFull(utcSeconds: number): string {
-  try {
-    const d = new Date(utcSeconds * 1000);
-    return d.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
-  } catch {
-    return "";
-  }
-}
-
 function normalizeCritical(p: string): "low" | "medium" | "high" | "very-high" {
   if (p === "low" || p === "medium" || p === "high" || p === "very-high") return p;
   return "medium";
@@ -394,7 +390,7 @@ export default function Workloads() {
   const [selectedWorkloadIds, setSelectedWorkloadIds] = useState<Set<string>>(new Set());
 
   const MIN_COLUMN_WIDTH = 40;
-  const DEFAULT_COLUMN_WIDTHS = [30, 40, 290, 130, 40, 90, 120, 90, 120, 100, 80, 80, 100];
+  const DEFAULT_COLUMN_WIDTHS = [30, 290, 130, 40, 90, 120, 90, 120, 100, 80, 80, 36];
   const [columnWidths, setColumnWidths] = useState<number[]>(() => DEFAULT_COLUMN_WIDTHS);
   const [resizingCol, setResizingCol] = useState<number | null>(null);
   const resizeStartXRef = useRef(0);
@@ -571,8 +567,6 @@ export default function Workloads() {
     return (mb / 1000).toFixed(4);
   };
 
-  const updatedAtSeconds = (w: FrontendWorkload): number => w.updatedAt ?? 0;
-
   const sortWorkloads = (workloads: FrontendWorkload[]): FrontendWorkload[] => {
     const list = workloads ?? [];
     if (!sortColumn || !sortDirection) {
@@ -639,11 +633,6 @@ export default function Workloads() {
         case "potentialMem":
           aValue = a.potentialMem;
           bValue = b.potentialMem;
-          return sortDirection === "asc" ? aValue - bValue : bValue - aValue;
-
-        case "lastUpdated":
-          aValue = updatedAtSeconds(a);
-          bValue = updatedAtSeconds(b);
           return sortDirection === "asc" ? aValue - bValue : bValue - aValue;
 
         default:
@@ -1062,25 +1051,6 @@ export default function Workloads() {
                   </div>
                 </th>
                 <th rowSpan={2}
-                  className="cursor-pointer select-none hover:bg-muted/50 transition-colors align-middle text-center leading-none py-2 relative"
-                  onClick={(e) => { e.stopPropagation(); handleSort("lastUpdated"); }}
-                >
-                  <div className="flex items-center justify-center gap-1 pr-2">
-                    <TooltipProvider>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <span className="inline-flex items-center justify-center gap-1 cursor-pointer">
-                            <Clock className="h-3.5 w-3.5 text-muted-foreground" aria-hidden />
-                            {sortColumn === "lastUpdated" && (sortDirection === "asc" ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />)}
-                          </span>
-                        </TooltipTrigger>
-                        <TooltipContent side="top">Updated at</TooltipContent>
-                      </Tooltip>
-                    </TooltipProvider>
-                  </div>
-                  <div className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-primary/30 active:bg-primary/50" onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); startResize(1, e.clientX); }} aria-hidden />
-                </th>
-                <th rowSpan={2}
                   className="cursor-pointer select-none hover:bg-muted/50 transition-colors align-middle text-left leading-none py-2 relative"
                   onClick={(e) => { e.stopPropagation(); handleSort("workload"); }}
                 >
@@ -1088,7 +1058,7 @@ export default function Workloads() {
                     Workload
                     {sortColumn === "workload" && (sortDirection === "asc" ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />)}
                   </div>
-                  <div className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-primary/30 active:bg-primary/50" onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); startResize(2, e.clientX); }} aria-hidden />
+                  <div className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-primary/30 active:bg-primary/50" onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); startResize(1, e.clientX); }} aria-hidden />
                 </th>
                 <th rowSpan={2}
                   className="cursor-pointer select-none hover:bg-muted/50 transition-colors align-middle text-left leading-none py-2 relative"
@@ -1098,7 +1068,7 @@ export default function Workloads() {
                     Namespace
                     {sortColumn === "namespace" && (sortDirection === "asc" ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />)}
                   </div>
-                  <div className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-primary/30 active:bg-primary/50" onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); startResize(3, e.clientX); }} aria-hidden />
+                  <div className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-primary/30 active:bg-primary/50" onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); startResize(2, e.clientX); }} aria-hidden />
                 </th>
                 <th rowSpan={2}
                   className="cursor-pointer select-none hover:bg-muted/50 transition-colors align-middle text-center leading-none py-2 relative w-20"
@@ -1111,7 +1081,7 @@ export default function Workloads() {
                     </InfoTooltip>
                     {sortColumn === "replicas" && (sortDirection === "asc" ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />)}
                   </div>
-                  <div className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-primary/30 active:bg-primary/50" onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); startResize(4, e.clientX); }} aria-hidden />
+                  <div className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-primary/30 active:bg-primary/50" onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); startResize(3, e.clientX); }} aria-hidden />
                 </th>
                 <th colSpan={2} className="border-t border-l border-r border-b-0 border-border bg-muted/40 font-medium align-middle text-center leading-none py-2 px-0">
                   <div className="flex items-center justify-center">
@@ -1146,7 +1116,7 @@ export default function Workloads() {
                       {netSavingsTooltipContent}
                     </InfoTooltip>
                   </div>
-                  <div className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-primary/30 active:bg-primary/50" onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); startResize(9, e.clientX); }} aria-hidden />
+                  <div className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-primary/30 active:bg-primary/50" onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); startResize(8, e.clientX); }} aria-hidden />
                 </th>
                 <th colSpan={2} className="border-t border-l border-r border-b-0 border-border font-medium align-middle text-center leading-none py-2 px-0">
                   <div className="flex items-center justify-center">
@@ -1156,11 +1126,9 @@ export default function Workloads() {
                     </span>
                   </div>
                 </th>
-                <th rowSpan={2} className="relative text-center align-middle leading-none py-2">
-                  <div className="flex items-center justify-center">
-                    Actions
-                  </div>
-                  <div className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-primary/30 active:bg-primary/50" onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); startResize(12, e.clientX); }} aria-hidden />
+                <th rowSpan={2} className="relative w-9 min-w-9 max-w-9 p-0 align-middle border-l border-border">
+                  <span className="sr-only">Row actions</span>
+                  <div className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-primary/30 active:bg-primary/50" onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); startResize(11, e.clientX); }} aria-hidden />
                 </th>
               </tr>
               <tr>
@@ -1179,7 +1147,7 @@ export default function Workloads() {
                     </TooltipProvider>
                     {sortColumn === "currentCpu" && (sortDirection === "asc" ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />)}
                   </div>
-                  <div className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-primary/30 active:bg-primary/50" onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); startResize(5, e.clientX); }} aria-hidden />
+                  <div className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-primary/30 active:bg-primary/50" onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); startResize(4, e.clientX); }} aria-hidden />
                 </th>
                 <th
                   className="cursor-pointer select-none hover:bg-muted/30 transition-colors border-b border-r border-border bg-muted/30 relative text-right align-middle leading-none py-1.5"
@@ -1196,7 +1164,7 @@ export default function Workloads() {
                     </TooltipProvider>
                     {sortColumn === "recommendedCpu" && (sortDirection === "asc" ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />)}
                   </div>
-                  <div className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-primary/30 active:bg-primary/50" onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); startResize(6, e.clientX); }} aria-hidden />
+                  <div className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-primary/30 active:bg-primary/50" onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); startResize(5, e.clientX); }} aria-hidden />
                 </th>
                 <th
                   className="cursor-pointer select-none hover:bg-muted/30 transition-colors border-b border-l border-border bg-muted/30 relative text-right align-middle leading-none py-1.5"
@@ -1213,7 +1181,7 @@ export default function Workloads() {
                     </TooltipProvider>
                     {sortColumn === "currentMem" && (sortDirection === "asc" ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />)}
                   </div>
-                  <div className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-primary/30 active:bg-primary/50" onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); startResize(7, e.clientX); }} aria-hidden />
+                  <div className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-primary/30 active:bg-primary/50" onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); startResize(6, e.clientX); }} aria-hidden />
                 </th>
                 <th
                   className="cursor-pointer select-none hover:bg-muted/30 transition-colors border-b border-r border-border bg-muted/30 relative text-right align-middle leading-none py-1.5"
@@ -1230,7 +1198,7 @@ export default function Workloads() {
                     </TooltipProvider>
                     {sortColumn === "recommendedMem" && (sortDirection === "asc" ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />)}
                   </div>
-                  <div className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-primary/30 active:bg-primary/50" onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); startResize(8, e.clientX); }} aria-hidden />
+                  <div className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-primary/30 active:bg-primary/50" onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); startResize(7, e.clientX); }} aria-hidden />
                 </th>
                 <th
                   className="cursor-pointer select-none hover:bg-muted/30 transition-colors border-b border-l border-border relative text-center align-middle leading-none py-1.5"
@@ -1242,7 +1210,7 @@ export default function Workloads() {
                       {modeHeaderTooltipContent}
                     </InfoTooltip>
                   </div>
-                  <div className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-primary/30 active:bg-primary/50" onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); startResize(10, e.clientX); }} aria-hidden />
+                  <div className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-primary/30 active:bg-primary/50" onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); startResize(9, e.clientX); }} aria-hidden />
                 </th>
                 <th
                   className="cursor-pointer select-none hover:bg-muted/30 transition-colors border-b border-r border-border relative text-center align-middle leading-none py-1.5"
@@ -1254,7 +1222,7 @@ export default function Workloads() {
                       {criticalityTooltipContent}
                     </InfoTooltip>
                   </div>
-                  <div className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-primary/30 active:bg-primary/50" onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); startResize(11, e.clientX); }} aria-hidden />
+                  <div className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-primary/30 active:bg-primary/50" onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); startResize(10, e.clientX); }} aria-hidden />
                 </th>
               </tr>
             </thead>
@@ -1278,22 +1246,6 @@ export default function Workloads() {
                         className="h-4 w-4 data-[state=checked]:bg-muted data-[state=checked]:text-muted-foreground border-muted-foreground/40"
                       />
                     </div>
-                  </td>
-                  <td className="border-l border-b border-border min-w-0 overflow-hidden align-middle text-center text-xs text-muted-foreground whitespace-nowrap">
-                    {workload.updatedAt != null ? (
-                      <TooltipProvider>
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <span className="cursor-default">{workload.lastUpdated}</span>
-                          </TooltipTrigger>
-                          <TooltipContent side="top">
-                            {formatUpdatedAtFull(workload.updatedAt)}
-                          </TooltipContent>
-                        </Tooltip>
-                      </TooltipProvider>
-                    ) : (
-                      workload.lastUpdated
-                    )}
                   </td>
                   <td className="min-w-0 break-words align-middle text-left">
                     <div className="grid grid-cols-[auto_1fr] gap-x-2 gap-y-1 items-start min-w-0">
@@ -1431,65 +1383,47 @@ export default function Workloads() {
                       </div>
                     </div>
                   </td>
-                  <td className="min-w-0 overflow-hidden align-middle whitespace-nowrap text-center" onClick={(e) => e.stopPropagation()}>
-                    <div className="flex items-center justify-center gap-1 min-w-0">
-                      <TooltipProvider>
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-8 w-8 shrink-0"
-                              onClick={() => navigate(`/workloads/${workload.namespace}/${workload.workload}`)}
-                              disabled={isWorkloadDisabled(workload)}
-                              aria-label={`Pod details for ${workload.workload}`}
-                            >
-                              <List className="h-3.5 w-3.5" />
-                            </Button>
-                          </TooltipTrigger>
-                          <TooltipContent>
-                            <p>Pod Details</p>
-                          </TooltipContent>
-                        </Tooltip>
-                      </TooltipProvider>
-                      <TooltipProvider>
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-8 w-8 shrink-0"
-                              onClick={() => navigate(`/events?workload=${encodeURIComponent(workloadIdForApi(workload.id))}`)}
-                              disabled={isWorkloadDisabled(workload)}
-                              aria-label={`View events for ${workload.workload}`}
-                            >
-                              <Activity className="h-3.5 w-3.5" />
-                            </Button>
-                          </TooltipTrigger>
-                          <TooltipContent>
-                            <p>View events for this workload</p>
-                          </TooltipContent>
-                        </Tooltip>
-                      </TooltipProvider>
-                      <TooltipProvider>
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-8 w-8 shrink-0"
-                              onClick={() => openEditModal(workload)}
-                              disabled={isWorkloadDisabled(workload)}
-                              aria-label="Edit CruiseConfig"
-                            >
-                              <Pencil className="h-3.5 w-3.5" />
-                            </Button>
-                          </TooltipTrigger>
-                          <TooltipContent>
-                            <p>Edit CruiseConfig</p>
-                          </TooltipContent>
-                        </Tooltip>
-                      </TooltipProvider>
+                  <td className="w-9 min-w-9 max-w-9 p-0 overflow-hidden align-middle text-center border-l border-border" onClick={(e) => e.stopPropagation()}>
+                    <div className="flex items-center justify-center">
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-7 w-7 shrink-0 text-muted-foreground hover:text-foreground"
+                            disabled={isWorkloadDisabled(workload)}
+                            aria-label={`Actions for ${workload.workload}`}
+                          >
+                            <MoreVertical className="h-4 w-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent
+                          align="end"
+                          className="min-w-[9rem] py-1"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <DropdownMenuItem
+                            className="text-xs py-1.5"
+                            onSelect={() => navigate(`/workloads/${workload.namespace}/${workload.workload}`)}
+                          >
+                            <List className="mr-2 h-3.5 w-3.5" />
+                            Pod details
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            className="text-xs py-1.5"
+                            onSelect={() =>
+                              navigate(`/events?workload=${encodeURIComponent(workloadIdForApi(workload.id))}`)
+                            }
+                          >
+                            <Activity className="mr-2 h-3.5 w-3.5" />
+                            View events
+                          </DropdownMenuItem>
+                          <DropdownMenuItem className="text-xs py-1.5" onSelect={() => openEditModal(workload)}>
+                            <Pencil className="mr-2 h-3.5 w-3.5" />
+                            Edit CruiseConfig
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
                     </div>
                   </td>
                 </tr>
