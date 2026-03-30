@@ -193,6 +193,8 @@ export interface PrometheusConfig {
   url: string;
   connected: boolean;
   error?: string;
+  /** Backend / controller release version from GET .../config */
+  version?: string;
 }
 
 export interface ClusterSettings {
