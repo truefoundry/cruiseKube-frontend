@@ -34,7 +34,13 @@ import { faCircleArrowUp } from "@fortawesome/free-solid-svg-icons";
 import { useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useCluster } from "@/contexts/ClusterContext";
-import { apiClient, type Overrides, type WorkloadDetail, EXCLUDED_CODE_LABELS } from "@/lib/api";
+import {
+  apiClient,
+  type Overrides,
+  type WorkloadDetail,
+  type WorkloadSummaryResponse,
+  EXCLUDED_CODE_LABELS,
+} from "@/lib/api";
 import { 
   FrontendWorkload,
   formatCpu,
@@ -430,25 +436,52 @@ export default function Workloads() {
     resizeStartWidthRef.current = columnWidths[colIndex];
   };
 
-  const updateOverrideMutation = useMutation({
+  const updateOverrideMutation = useMutation<
+    Awaited<ReturnType<typeof apiClient.updateWorkloadOverrides>>,
+    Error,
+    { workloadId: string; overrides: Overrides },
+    { previous?: WorkloadSummaryResponse }
+  >({
     mutationFn: async ({ workloadId, overrides }: { workloadId: string; overrides: Overrides }) => {
       if (!selectedClusterId) throw new Error('No cluster selected');
       return apiClient.updateWorkloadOverrides(selectedClusterId, workloadId, overrides);
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['workloads-summary', selectedClusterId] });
-      toast({
-        title: "Success",
-        description: "CruiseConfig updated successfully",
-      });
-      setEditWorkload(null);
+    onMutate: async ({ workloadId, overrides }) => {
+      if (!selectedClusterId || typeof overrides.enabled !== "boolean")
+        return {} as { previous?: WorkloadSummaryResponse };
+      const key = ["workloads-summary", selectedClusterId] as const;
+      await queryClient.cancelQueries({ queryKey: key });
+      const previous = queryClient.getQueryData<WorkloadSummaryResponse>(key);
+      if (previous) {
+        queryClient.setQueryData<WorkloadSummaryResponse>(key, {
+          ...previous,
+          workloadDetails: previous.workloadDetails.map((d) =>
+            workloadIdForApi(d.workloadID) === workloadId
+              ? { ...d, config: { ...d.config, cruiseEnabled: overrides.enabled! } }
+              : d
+          ),
+        });
+      }
+      return { previous };
     },
-    onError: (error: Error) => {
+    onError: (error: Error, _vars, context) => {
+      const key = ["workloads-summary", selectedClusterId] as const;
+      if (context?.previous !== undefined) {
+        queryClient.setQueryData(key, context.previous);
+      }
       toast({
         title: "Error",
         description: error.message || "Failed to update CruiseConfig",
         variant: "destructive",
       });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["workloads-summary", selectedClusterId] });
+      toast({
+        title: "Success",
+        description: "CruiseConfig updated successfully",
+      });
+      setEditWorkload(null);
     },
   });
 
@@ -1337,7 +1370,10 @@ export default function Workloads() {
                                 <Switch
                                   checked={workload.mode === "enabled"}
                                   onCheckedChange={() => handleModeToggle(workload)}
-                                  disabled={updateOverrideMutation.isPending}
+                                  disabled={
+                                    updateOverrideMutation.isPending &&
+                                    updateOverrideMutation.variables?.workloadId === workloadIdForApi(workload.id)
+                                  }
                                   className="scale-90 opacity-90 data-[state=checked]:bg-muted-foreground/80"
                                   aria-label={workload.mode === "enabled" ? "Cruise on; click to switch to Recommend" : "Recommend; click to switch to Cruise"}
                                 />
