@@ -133,7 +133,8 @@ const DEFAULT_CATEGORY_META = {
   explanation: "This event was recorded by CruiseKube. Check the Details section for more information.",
 };
 
-const MINUTES_OPTIONS = [1, 5, 15, 30, 60];
+/** Minutes lookback for audit-events API (12h, 1d, 7d as common presets). */
+const MINUTES_OPTIONS = [1, 5, 15, 30, 60, 720, 1440, 10080];
 
 const CATEGORY_OPTIONS = [
   "all",
@@ -160,6 +161,22 @@ function formatEventTime(iso: string): string {
   } catch {
     return iso;
   }
+}
+
+function timeRangeOptionLabel(minutes: number): string {
+  if (minutes === 1) return "1 minute";
+  if (minutes === 720) return "12 hours";
+  if (minutes === 1440) return "1 day";
+  if (minutes === 10080) return "7 days";
+  return `${minutes} minutes`;
+}
+
+/** Phrase for empty-state copy, e.g. "the last 7 days" vs "the last 5 minutes". */
+function auditEventsWindowPhrase(minutes: number): string {
+  if (minutes === 720) return "the last 12 hours";
+  if (minutes === 1440) return "the last day";
+  if (minutes === 10080) return "the last 7 days";
+  return `the last ${minutes} minute${minutes !== 1 ? "s" : ""}`;
 }
 
 function formatTimeAgo(iso: string): string {
@@ -272,13 +289,13 @@ export default function Events() {
             value={String(minutes)}
             onValueChange={(v) => setMinutes(Number(v))}
           >
-            <SelectTrigger className="w-[7rem]">
+            <SelectTrigger className="w-[9rem]">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
               {MINUTES_OPTIONS.map((m) => (
                 <SelectItem key={m} value={String(m)}>
-                  {m === 1 ? "1 minute" : `${m} minutes`}
+                  {timeRangeOptionLabel(m)}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -360,8 +377,8 @@ export default function Events() {
               {categoryFilter !== "all" && allEvents.length > 0
                 ? `No events match the selected category (${categoryLabel(categoryFilter)}).`
                 : workloadId
-                  ? `No events for workload "${workloadId}" in the last ${minutes} minute${minutes !== 1 ? "s" : ""}`
-                  : `No events in the last ${minutes} minute${minutes !== 1 ? "s" : ""}`}
+                  ? `No events for workload "${workloadId}" in ${auditEventsWindowPhrase(minutes)}`
+                  : `No events in ${auditEventsWindowPhrase(minutes)}`}
             </div>
           ) : (
             <Table>
