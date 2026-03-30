@@ -487,14 +487,6 @@ export default function Workloads() {
       return apiClient.updateWorkloadOverrides(selectedClusterId, workloadId, overrides);
     },
 
-    onSuccess: () => {
-      toast({
-        title: "Success",
-        description: "CruiseConfig updated successfully",
-      });
-      setEditWorkload(null);
-    },
-
     onMutate: async ({ workloadId, overrides }) => {
       if (!selectedClusterId || typeof overrides.enabled !== "boolean")
         return {} as { previous?: WorkloadSummaryResponse };
@@ -525,19 +517,17 @@ export default function Workloads() {
       });
     },
 
-    onSettled: () => {
-      if (selectedClusterId) {
-        void queryClient.invalidateQueries({ queryKey: ['workloads-summary', selectedClusterId] });
-      }
-    },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["workloads-summary", selectedClusterId] });
       toast({
         title: "Success",
         description: "CruiseConfig updated successfully",
       });
       setEditWorkload(null);
-
+    },
+    onSettled: () => {
+      if (selectedClusterId) {
+        void queryClient.invalidateQueries({ queryKey: ['workloads-summary', selectedClusterId] });
+      }
     },
   });
 
