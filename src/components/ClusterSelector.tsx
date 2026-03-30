@@ -59,11 +59,11 @@ export function ClusterSelector() {
             ))}
           </SelectContent>
         </Select>
-        {selectedCluster?.stats_available && (
+        {/* {selectedCluster?.stats_available && (
           <Badge variant="secondary" className="text-xs">
             Stats Available
           </Badge>
-        )}
+        )} */}
       </div>
     </div>
   );
