@@ -293,40 +293,6 @@ function workloadIdForApi(id: string): string {
   return id.includes("/") ? id.replace(/\//g, ":") : id;
 }
 
-function patchWorkloadsSummaryCruiseEnabled(
-  data: WorkloadSummaryResponse | undefined,
-  workloadId: string,
-  cruiseEnabled: boolean
-): WorkloadSummaryResponse | undefined {
-  if (!data?.workloadDetails?.length) return data;
-  const target = workloadIdForApi(workloadId);
-  return {
-    ...data,
-    workloadDetails: data.workloadDetails.map((d) =>
-      workloadIdForApi(d.workloadID) === target
-        ? { ...d, config: { ...d.config, cruiseEnabled } }
-        : d
-    ),
-  };
-}
-
-function patchWorkloadsSummaryCruiseEnabledBatch(
-  data: WorkloadSummaryResponse | undefined,
-  workloadIds: string[],
-  cruiseEnabled: boolean
-): WorkloadSummaryResponse | undefined {
-  if (!data?.workloadDetails?.length) return data;
-  const targets = new Set(workloadIds.map((id) => workloadIdForApi(id)));
-  return {
-    ...data,
-    workloadDetails: data.workloadDetails.map((d) =>
-      targets.has(workloadIdForApi(d.workloadID))
-        ? { ...d, config: { ...d.config, cruiseEnabled } }
-        : d
-    ),
-  };
-}
-
 /** Short relative time for table display (e.g. "now", "5m", "2h", "3d"). */
 function formatUpdatedAtShort(utcSeconds: number): string {
   const diffMs = Date.now() - utcSeconds * 1000;
@@ -494,13 +460,15 @@ export default function Workloads() {
       await queryClient.cancelQueries({ queryKey: key });
       const previous = queryClient.getQueryData<WorkloadSummaryResponse>(key);
       if (previous) {
-        queryClient.setQueryData<WorkloadSummaryResponse>(key, {
-          ...previous,
-          workloadDetails: previous.workloadDetails.map((d) =>
-            workloadIdForApi(d.workloadID) === workloadId
-              ? { ...d, config: { ...d.config, cruiseEnabled: overrides.enabled! } }
-              : d
-          ),
+        flushSync(() => {
+          queryClient.setQueryData<WorkloadSummaryResponse>(key, {
+            ...previous,
+            workloadDetails: previous.workloadDetails.map((d) =>
+              workloadIdForApi(d.workloadID) === workloadId
+                ? { ...d, config: { ...d.config, cruiseEnabled: overrides.enabled! } }
+                : d
+            ),
+          });
         });
       }
       return { previous };
@@ -531,23 +499,52 @@ export default function Workloads() {
     },
   });
 
-  const batchOverridesMutation = useMutation({
+  const batchOverridesMutation = useMutation<
+    Awaited<ReturnType<typeof apiClient.batchWorkloadOverrides>>,
+    Error,
+    { workloadIds: string[]; enabled: boolean },
+    { previous?: WorkloadSummaryResponse }
+  >({
     mutationFn: async ({ workloadIds, enabled }: { workloadIds: string[]; enabled: boolean }) => {
       if (!selectedClusterId) throw new Error('No cluster selected');
       return apiClient.batchWorkloadOverrides(selectedClusterId, workloadIds, { enabled });
+    },
+    onMutate: async ({ workloadIds, enabled }) => {
+      if (!selectedClusterId) return {} as { previous?: WorkloadSummaryResponse };
+      const key = ["workloads-summary", selectedClusterId] as const;
+      await queryClient.cancelQueries({ queryKey: key });
+      const previous = queryClient.getQueryData<WorkloadSummaryResponse>(key);
+      const targets = new Set(workloadIds.map((id) => workloadIdForApi(id)));
+      if (previous) {
+        flushSync(() => {
+          queryClient.setQueryData<WorkloadSummaryResponse>(key, {
+            ...previous,
+            workloadDetails: previous.workloadDetails.map((d) =>
+              targets.has(workloadIdForApi(d.workloadID))
+                ? { ...d, config: { ...d.config, cruiseEnabled: enabled } }
+                : d
+            ),
+          });
+        });
+      }
+      return { previous };
+    },
+    onError: (error: Error, _vars, context) => {
+      const key = ["workloads-summary", selectedClusterId] as const;
+      if (context?.previous !== undefined) {
+        queryClient.setQueryData(key, context.previous);
+      }
+      toast({
+        title: "Error",
+        description: error.message || "Failed to update workloads",
+        variant: "destructive",
+      });
     },
     onSuccess: (_, { workloadIds, enabled }) => {
       setSelectedWorkloadIds(new Set());
       toast({
         title: "Success",
         description: `Cruise ${enabled ? "enabled" : "disabled"} for ${workloadIds.length} workload${workloadIds.length !== 1 ? "s" : ""}.`,
-      });
-    },
-    onError: (error: Error) => {
-      toast({
-        title: "Error",
-        description: error.message || "Failed to update workloads",
-        variant: "destructive",
       });
     },
     onSettled: () => {
@@ -582,13 +579,6 @@ export default function Workloads() {
     const newMode = workload.mode === "enabled" ? "recommend-only" : "enabled";
     const cruiseEnabled = newMode === "enabled";
     const apiWorkloadId = workloadIdForApi(workload.id);
-    void queryClient.cancelQueries({ queryKey: ['workloads-summary', selectedClusterId] });
-    flushSync(() => {
-      queryClient.setQueryData<WorkloadSummaryResponse>(
-        ['workloads-summary', selectedClusterId],
-        (old) => patchWorkloadsSummaryCruiseEnabled(old, apiWorkloadId, cruiseEnabled)
-      );
-    });
     const overrides: Overrides = {
       eviction_ranking: mapCriticalToEvictionRanking(workload.critical),
       enabled: cruiseEnabled,
@@ -610,13 +600,6 @@ export default function Workloads() {
     if (!editWorkload || !selectedClusterId) return;
     const id = workloadIdForApi(editWorkload.id);
     const cruiseEnabled = editMode === "enabled";
-    void queryClient.cancelQueries({ queryKey: ['workloads-summary', selectedClusterId] });
-    flushSync(() => {
-      queryClient.setQueryData<WorkloadSummaryResponse>(
-        ['workloads-summary', selectedClusterId],
-        (old) => patchWorkloadsSummaryCruiseEnabled(old, id, cruiseEnabled)
-      );
-    });
     const overrides: Overrides = {
       eviction_ranking: mapCriticalToEvictionRanking(editCritical),
       enabled: cruiseEnabled,
@@ -798,25 +781,11 @@ export default function Workloads() {
   const handleBatchEnable = () => {
     const ids = [...selectedWorkloadIds].map((id) => workloadIdForApi(id));
     if (ids.length === 0 || !selectedClusterId) return;
-    void queryClient.cancelQueries({ queryKey: ['workloads-summary', selectedClusterId] });
-    flushSync(() => {
-      queryClient.setQueryData<WorkloadSummaryResponse>(
-        ['workloads-summary', selectedClusterId],
-        (old) => patchWorkloadsSummaryCruiseEnabledBatch(old, ids, true)
-      );
-    });
     batchOverridesMutation.mutate({ workloadIds: ids, enabled: true });
   };
   const handleBatchDisable = () => {
     const ids = [...selectedWorkloadIds].map((id) => workloadIdForApi(id));
     if (ids.length === 0 || !selectedClusterId) return;
-    void queryClient.cancelQueries({ queryKey: ['workloads-summary', selectedClusterId] });
-    flushSync(() => {
-      queryClient.setQueryData<WorkloadSummaryResponse>(
-        ['workloads-summary', selectedClusterId],
-        (old) => patchWorkloadsSummaryCruiseEnabledBatch(old, ids, false)
-      );
-    });
     batchOverridesMutation.mutate({ workloadIds: ids, enabled: false });
   };
 
