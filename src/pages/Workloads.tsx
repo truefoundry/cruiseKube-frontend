@@ -256,6 +256,11 @@ function WorkloadStatusIcons({ workload }: { workload: FrontendWorkload }) {
   );
 }
 
+/** Server metadata: exclusion annotation and/or non-empty excludedCodes (matches Non-optimizable summary + filter). */
+function isNonOptimizableByMetadata(workload: FrontendWorkload): boolean {
+  return workload.excluded === true || !!(workload.excludedCodes && workload.excludedCodes.length > 0);
+}
+
 /** True when workload should be disabled for Cruise. */
 function isWorkloadDisabled(workload: FrontendWorkload): boolean {
   return !!(
@@ -742,7 +747,7 @@ export default function Workloads() {
     const matchesCritical = criticalFilter === "all" || w.critical === criticalFilter;
     const matchesStatus =
       statusFilter === "all" ||
-      (statusFilter === "excluded" && w.excluded === true) ||
+      (statusFilter === "excluded" && isNonOptimizableByMetadata(w)) ||
       (statusFilter === "blocking-consolidation" && w.blockingConsolidation === true) ||
       (statusFilter === "gpu" && w.isGpuWorkload === true) ||
       (statusFilter === "hpa-enabled" && w.hpaEnabled === true) ||
@@ -832,9 +837,7 @@ export default function Workloads() {
   const costOptimisedCount = enabledWorkloads.filter((w) => w.potentialDollars > 0).length;
   const reliabilityImprovedCount = enabledWorkloads.filter((w) => w.reliabilityCostDollars > 0).length;
   const disabledCount = sortedWorkloads.filter((w) => w.mode === "recommend-only" && !isWorkloadDisabled(w)).length;
-  const nonOptimizableCount = sortedWorkloads.filter(
-    (w) => w.excluded === true || !!(w.excludedCodes && w.excludedCodes.length > 0)
-  ).length;
+  const nonOptimizableCount = sortedWorkloads.filter(isNonOptimizableByMetadata).length;
 
   const hasNoData = !isLoadingMetrics && (summaryData?.workloadDetails?.length ?? 0) === 0;
 
