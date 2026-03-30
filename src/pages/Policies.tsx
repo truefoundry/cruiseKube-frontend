@@ -220,6 +220,13 @@ export default function Policies() {
                   </div>
                 </div>
 
+                {prometheusConfig?.version ? (
+                  <div>
+                    <label className="text-sm font-medium text-foreground">Version</label>
+                    <p className="mt-2 text-sm font-mono text-muted-foreground break-all">{prometheusConfig.version}</p>
+                  </div>
+                ) : null}
+
                 {prometheusConfig && (
                   <div className={`flex items-center gap-2 p-3 rounded-lg ${
                     prometheusConfig.connected 
