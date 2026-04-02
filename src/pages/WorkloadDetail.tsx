@@ -152,6 +152,13 @@ export default function WorkloadDetail() {
             <div>
               <p className="text-xs text-muted-foreground uppercase tracking-wider">CPU Savings</p>
               <p className="font-mono text-xl font-semibold text-foreground">{formatCpuSigned(-detail.potential_cpu_savings)}</p>
+              <p className="text-xs text-muted-foreground">
+                {detail.potential_cpu_savings > 0
+                  ? "CPU reduced"
+                  : detail.potential_cpu_savings < 0
+                    ? "CPU increased to improve reliability"
+                    : "No change"}
+              </p>
             </div>
           </div>
         </div>
@@ -163,6 +170,13 @@ export default function WorkloadDetail() {
             <div>
               <p className="text-xs text-muted-foreground uppercase tracking-wider">Memory Savings</p>
               <p className="font-mono text-xl font-semibold text-foreground">{formatMemorySigned(-detail.potential_mem_savings)}</p>
+              <p className="text-xs text-muted-foreground">
+                {detail.potential_mem_savings > 0
+                  ? "Memory reduced"
+                  : detail.potential_mem_savings < 0
+                    ? "Memory increased to improve reliability"
+                    : "No change"}
+              </p>
             </div>
           </div>
         </div>
