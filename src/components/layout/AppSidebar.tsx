@@ -67,7 +67,18 @@ export function AppSidebar() {
       <SidebarHeader className="border-b border-sidebar-border p-4">
         <div className={cn("flex items-center gap-3", isCollapsed && "justify-center")}>
           <div className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-lg ">
-            <img src="/logo.png" alt="CruiseKube" className="h-8 w-8 object-contain" />
+            <div
+              className="h-8 w-8 shrink-0 bg-white opacity-80"
+              style={{
+                maskImage: "url(/logo.svg)",
+                WebkitMaskImage: "url(/logo.svg)",
+                maskSize: "contain",
+                maskRepeat: "no-repeat",
+                maskPosition: "center",
+              }}
+              role="img"
+              aria-label="CruiseKube"
+            />
           </div>
           {!isCollapsed && (
             <div className="flex flex-col min-w-0">
