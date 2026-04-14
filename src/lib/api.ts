@@ -4,6 +4,16 @@ export interface ApiError {
   error: string;
 }
 
+export interface LoginRequest {
+  username: string;
+  password: string;
+}
+
+export interface LoginResponse {
+  token: string;
+  user?: { id: string; name: string };
+}
+
 export interface Cluster {
   id: string;
   name: string;
@@ -450,6 +460,17 @@ class ApiClient {
       }
       throw new Error(`Network error: ${String(error)}`);
     }
+  }
+
+  /**
+   * POST /api/auth/login — proxied to /api/v1/auth/login on the backend.
+   * Until the backend implements this route, dev and preview servers stub it (always succeeds).
+   */
+  async login(body: LoginRequest): Promise<LoginResponse> {
+    return this.request<LoginResponse>('/auth/login', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    });
   }
 
   async getClusters(): Promise<ClustersResponse> {
