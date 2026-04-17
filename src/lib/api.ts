@@ -253,6 +253,9 @@ export interface WorkloadDetailResourceRecommended {
 
 export interface WorkloadDetailResource {
   current: number;
+  /** Average usage per pod (same units as `current`). From workloads summary API. */
+  pod_current_avg?: number;
+  podCurrentAvg?: number;
   recommended: WorkloadDetailResourceRecommended;
 }
 
