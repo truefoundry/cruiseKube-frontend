@@ -188,22 +188,77 @@ export default function WorkloadDetail() {
           Pods & Containers
         </h3>
         <div className="overflow-x-auto">
-          <table className="data-table">
+          <table className="data-table data-table-compact w-full border-collapse">
             <thead>
               <tr>
-                <th>Pod</th>
-                <th>Node</th>
-                <th>Container Name</th>
-                <th>CPU Request</th>
-                <th>CPU Recommended</th>
-                <th>Memory Request</th>
-                <th>Memory Recommended</th>
+                <th
+                  rowSpan={2}
+                  className="select-none align-middle border-b border-border transition-colors hover:bg-muted/50"
+                >
+                  Pod
+                </th>
+                <th
+                  rowSpan={2}
+                  className="select-none align-middle border-b border-border transition-colors hover:bg-muted/50"
+                >
+                  Node
+                </th>
+                <th
+                  rowSpan={2}
+                  className="select-none align-middle border-b border-border !text-center text-center transition-colors hover:bg-muted/50"
+                >
+                  <div className="flex w-full items-center justify-center px-2 py-2 normal-case">
+                    Container Name
+                  </div>
+                </th>
+                <th
+                  colSpan={3}
+                  className="select-none border-t border-l border-r border-b-0 border-border bg-muted/40 font-medium align-middle text-center normal-case py-2 px-0 transition-colors hover:bg-muted/50"
+                >
+                  <div className="flex items-center justify-center">
+                    <span className="inline-flex items-center gap-1.5 text-xs text-foreground">
+                      <Cpu className="h-4 w-4" />
+                      CPU
+                    </span>
+                  </div>
+                </th>
+                <th
+                  colSpan={3}
+                  className="select-none border-t border-l border-r border-b-0 border-border bg-muted/40 font-medium align-middle text-center normal-case py-2 px-0 transition-colors hover:bg-muted/50"
+                >
+                  <div className="flex items-center justify-center">
+                    <span className="inline-flex items-center gap-1.5 text-xs text-foreground">
+                      <HardDrive className="h-4 w-4" />
+                      Memory
+                    </span>
+                  </div>
+                </th>
+              </tr>
+              <tr>
+                <th className="select-none border-b border-l border-border bg-muted/30 align-middle normal-case text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/40 !text-right">
+                  <div className="flex w-full items-center justify-end pr-2 py-1.5">Workload</div>
+                </th>
+                <th className="select-none border-b border-border bg-muted/30 align-middle normal-case text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/40 !text-right">
+                  <div className="flex w-full items-center justify-end pr-2 py-1.5">Current</div>
+                </th>
+                <th className="select-none border-b border-r border-border bg-muted/30 align-middle normal-case text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/40 !text-right">
+                  <div className="flex w-full items-center justify-end pr-2 py-1.5">Rec</div>
+                </th>
+                <th className="select-none border-b border-l border-border bg-muted/30 align-middle normal-case text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/40 !text-right">
+                  <div className="flex w-full items-center justify-end pr-2 py-1.5">Workload</div>
+                </th>
+                <th className="select-none border-b border-border bg-muted/30 align-middle normal-case text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/40 !text-right">
+                  <div className="flex w-full items-center justify-end pr-2 py-1.5">Current</div>
+                </th>
+                <th className="select-none border-b border-r border-border bg-muted/30 align-middle normal-case text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/40 !text-right">
+                  <div className="flex w-full items-center justify-end pr-2 py-1.5">Rec</div>
+                </th>
               </tr>
             </thead>
             <tbody>
               {pods.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="text-center text-muted-foreground py-8">
+                  <td colSpan={9} className="text-center text-muted-foreground py-8">
                     No pods found for this workload
                   </td>
                 </tr>
@@ -212,24 +267,71 @@ export default function WorkloadDetail() {
                   <Fragment key={pod.pod_name}>
                     <tr className="bg-muted/50">
                       <td className="font-mono text-sm font-medium py-2 px-4">{pod.pod_name}</td>
-                      <td className="font-mono text-xs text-muted-foreground py-2 px-4">{pod.node_name ?? "—"}</td>
-                      <td colSpan={5}></td>
+                      <td className="font-mono text-xs text-muted-foreground py-2 px-4">
+                        {pod.node_name ?? "—"}
+                      </td>
+                      <td className="border-b border-border bg-muted/50 py-2" aria-hidden />
+                      <td className="border-b border-l border-border bg-muted/40 py-2" aria-hidden />
+                      <td className="border-b border-border bg-muted/40 py-2" aria-hidden />
+                      <td className="border-b border-r border-border bg-muted/40 py-2" aria-hidden />
+                      <td className="border-b border-l border-border bg-muted/40 py-2" aria-hidden />
+                      <td className="border-b border-border bg-muted/40 py-2" aria-hidden />
+                      <td className="border-b border-r border-border bg-muted/40 py-2" aria-hidden />
                     </tr>
                     {asArray(pod.containers).length > 0 ? (
-                      asArray(pod.containers).map((container) => (
-                        <tr key={`${pod.pod_name}-${container.container_name}`}>
-                          <td></td>
-                          <td></td>
-                          <td className="font-medium">{container.container_name}</td>
-                          <td className="font-mono text-sm">{formatCpu(container.cpu_request)}</td>
-                          <td className="font-mono text-sm text-primary">{formatCpu(container.cpu_rec_request)}</td>
-                          <td className="font-mono text-sm">{formatMemory(container.mem_request)}</td>
-                          <td className="font-mono text-sm text-primary">{formatMemory(container.mem_rec_request)}</td>
-                        </tr>
-                      ))
+                      asArray(pod.containers).map((container) => {
+                        const cpuRequest =
+                          container.current_cpu_request ?? container.cpu_request;
+                        const memRequest =
+                          container.current_mem_request ?? container.mem_request;
+                        /** Recommended minus workload manifest (same sign idea as workloads list Rec delta). */
+                        const deltaCpu =
+                          container.cpu_rec_request - container.cpu_request;
+                        const deltaMem =
+                          container.mem_rec_request - container.mem_request;
+                        const showCpuDelta = Math.abs(deltaCpu) > 1e-9;
+                        const showMemDelta = Math.abs(deltaMem) > 1e-9;
+                        const resTd =
+                          "font-mono text-sm tabular-nums text-right bg-muted/20 border-b border-border align-middle px-2 py-2";
+                        return (
+                          <tr key={`${pod.pod_name}-${container.container_name}`}>
+                            <td />
+                            <td />
+                            <td className="text-center align-middle font-medium px-2 py-2">
+                              {container.container_name}
+                            </td>
+                            <td className={`${resTd} border-l text-muted-foreground`}>
+                              {formatCpu(container.cpu_request)}
+                            </td>
+                            <td className={`${resTd}`}>{formatCpu(cpuRequest)}</td>
+                            <td className={`${resTd} border-r text-primary`}>
+                              {formatCpu(container.cpu_rec_request)}
+                              {showCpuDelta && (
+                                <span className={deltaCpu > 0 ? "text-amber-500 dark:text-amber-400" : ""}>
+                                  <br />
+                                  <span className="opacity-40">({formatCpuSigned(deltaCpu)})</span>
+                                </span>
+                              )}
+                            </td>
+                            <td className={`${resTd} border-l text-muted-foreground`}>
+                              {formatMemory(container.mem_request)}
+                            </td>
+                            <td className={`${resTd}`}>{formatMemory(memRequest)}</td>
+                            <td className={`${resTd} border-r text-primary`}>
+                              {formatMemory(container.mem_rec_request)}
+                              {showMemDelta && (
+                                <span className={deltaMem > 0 ? "text-amber-500 dark:text-amber-400 opacity-100" : ""}>
+                                  <br />
+                                  <span className="opacity-40">({formatMemorySigned(deltaMem)})</span>
+                                </span>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })
                     ) : (
                       <tr key={`${pod.pod_name}-empty`}>
-                        <td colSpan={7} className="text-muted-foreground text-sm py-2 px-4">
+                        <td colSpan={9} className="text-muted-foreground text-sm py-2 px-4">
                           No containers found
                         </td>
                       </tr>
