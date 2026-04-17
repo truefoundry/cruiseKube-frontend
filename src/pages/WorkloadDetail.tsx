@@ -4,15 +4,43 @@ import {
   ArrowLeft,
   ChevronRight,
   Cpu,
-  HardDrive
+  HardDrive,
+  Info,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { useQuery } from "@tanstack/react-query";
 import { useCluster } from "@/contexts/ClusterContext";
 import { apiClient } from "@/lib/api";
 import { formatCpu, formatMemory, formatCpuSigned, formatMemorySigned } from "@/lib/transformers";
 import { asArray } from "@/lib/utils";
+
+const WORKLOAD_COLUMN_TOOLTIP =
+  "Represents the resource set in the configuration of workload.";
+const CURRENT_COLUMN_TOOLTIP = "Current pod resource.";
+const RECOMMENDED_COLUMN_TOOLTIP = "What cruiseKube recommends.";
+
+function SubHeaderWithTooltip({ label, description }: { label: string; description: string }) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <div className="flex w-full cursor-help items-center justify-end gap-1 pr-2 py-1.5">
+          <span>{label}</span>
+          <Info className="h-3 w-3 shrink-0 text-muted-foreground opacity-70" aria-hidden />
+        </div>
+      </TooltipTrigger>
+      <TooltipContent side="top" className="max-w-xs text-left">
+        {description}
+      </TooltipContent>
+    </Tooltip>
+  );
+}
 
 export default function WorkloadDetail() {
   const { namespace, workloadName } = useParams();
@@ -188,7 +216,8 @@ export default function WorkloadDetail() {
           Pods & Containers
         </h3>
         <div className="overflow-x-auto">
-          <table className="data-table data-table-compact w-full border-collapse">
+          <TooltipProvider delayDuration={300}>
+            <table className="data-table data-table-compact w-full border-collapse">
             <thead>
               <tr>
                 <th
@@ -236,22 +265,22 @@ export default function WorkloadDetail() {
               </tr>
               <tr>
                 <th className="select-none border-b border-l border-border bg-muted/30 align-middle normal-case text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/40 !text-right">
-                  <div className="flex w-full items-center justify-end pr-2 py-1.5">Workload</div>
+                  <SubHeaderWithTooltip label="Workload" description={WORKLOAD_COLUMN_TOOLTIP} />
                 </th>
                 <th className="select-none border-b border-border bg-muted/30 align-middle normal-case text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/40 !text-right">
-                  <div className="flex w-full items-center justify-end pr-2 py-1.5">Current</div>
+                  <SubHeaderWithTooltip label="Current" description={CURRENT_COLUMN_TOOLTIP} />
                 </th>
                 <th className="select-none border-b border-r border-border bg-muted/30 align-middle normal-case text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/40 !text-right">
-                  <div className="flex w-full items-center justify-end pr-2 py-1.5">Rec</div>
+                  <SubHeaderWithTooltip label="Rec" description={RECOMMENDED_COLUMN_TOOLTIP} />
                 </th>
                 <th className="select-none border-b border-l border-border bg-muted/30 align-middle normal-case text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/40 !text-right">
-                  <div className="flex w-full items-center justify-end pr-2 py-1.5">Workload</div>
+                  <SubHeaderWithTooltip label="Workload" description={WORKLOAD_COLUMN_TOOLTIP} />
                 </th>
                 <th className="select-none border-b border-border bg-muted/30 align-middle normal-case text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/40 !text-right">
-                  <div className="flex w-full items-center justify-end pr-2 py-1.5">Current</div>
+                  <SubHeaderWithTooltip label="Current" description={CURRENT_COLUMN_TOOLTIP} />
                 </th>
                 <th className="select-none border-b border-r border-border bg-muted/30 align-middle normal-case text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/40 !text-right">
-                  <div className="flex w-full items-center justify-end pr-2 py-1.5">Rec</div>
+                  <SubHeaderWithTooltip label="Rec" description={RECOMMENDED_COLUMN_TOOLTIP} />
                 </th>
               </tr>
             </thead>
@@ -341,6 +370,7 @@ export default function WorkloadDetail() {
               )}
             </tbody>
           </table>
+          </TooltipProvider>
         </div>
       </div>
     </div>

@@ -913,7 +913,7 @@ export default function Workloads() {
       <p className="font-medium text-foreground">CPU and memory fields</p>
       <ul className="space-y-1 text-xs text-muted-foreground">
         <li>Workload: configured resource request for the workload (from manifests).</li>
-        <li>Current: average observed usage per pod.</li>
+        <li>Current: average observed per pod.</li>
         <li>Recommended: the request CruiseKube recommends based on observed usage.</li>
         <li>Savings: the reduction from workload request to recommended request.</li>
       </ul>
@@ -1271,9 +1271,9 @@ export default function Workloads() {
                     <TooltipProvider>
                       <Tooltip>
                         <TooltipTrigger asChild onClick={(e) => e.stopPropagation()}>
-                          <span className="cursor-help">Curr</span>
+                          <span className="cursor-help normal-case">Current</span>
                         </TooltipTrigger>
-                        <TooltipContent side="top">Current (average usage per pod)</TooltipContent>
+                        <TooltipContent side="top">Current (average per pod)</TooltipContent>
                       </Tooltip>
                     </TooltipProvider>
                     {sortColumn === "podCurrentAvgCpu" && (sortDirection === "asc" ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />)}
@@ -1322,9 +1322,9 @@ export default function Workloads() {
                     <TooltipProvider>
                       <Tooltip>
                         <TooltipTrigger asChild onClick={(e) => e.stopPropagation()}>
-                          <span className="cursor-help">Curr</span>
+                          <span className="cursor-help normal-case">Current</span>
                         </TooltipTrigger>
-                        <TooltipContent side="top">Current (average usage per pod)</TooltipContent>
+                        <TooltipContent side="top">Current (average per pod)</TooltipContent>
                       </Tooltip>
                     </TooltipProvider>
                     {sortColumn === "podCurrentAvgMem" && (sortDirection === "asc" ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />)}
