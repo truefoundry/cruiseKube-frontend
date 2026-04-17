@@ -16,18 +16,6 @@ const indexPath = join(distPath, 'index.html');
 
 app.use(express.json());
 
-/** Temporary stub until the backend implements POST /api/v1/auth/login (accepts any credentials). */
-app.post('/api/auth/login', (req, res) => {
-  const username =
-    typeof req.body?.username === 'string' && req.body.username.trim()
-      ? req.body.username.trim()
-      : 'user';
-  res.json({
-    token: `dummy-token-${Date.now()}`,
-    user: { id: '1', name: username },
-  });
-});
-
 app.use('/api', createProxyMiddleware({
   target: BACKEND_URL,
   changeOrigin: true,

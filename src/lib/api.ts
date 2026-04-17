@@ -11,6 +11,8 @@ export interface LoginRequest {
 
 export interface LoginResponse {
   token: string;
+  /** ISO 8601 timestamp when the token expires (from POST /api/v1/auth/login). */
+  expires_at?: string;
   user?: { id: string; name: string };
 }
 
@@ -462,10 +464,7 @@ class ApiClient {
     }
   }
 
-  /**
-   * POST /api/auth/login — proxied to /api/v1/auth/login on the backend.
-   * Until the backend implements this route, dev and preview servers stub it (always succeeds).
-   */
+  /** POST /api/auth/login — proxied to POST /api/v1/auth/login on the backend. */
   async login(body: LoginRequest): Promise<LoginResponse> {
     return this.request<LoginResponse>('/auth/login', {
       method: 'POST',
