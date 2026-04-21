@@ -1,6 +1,7 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { apiClient, Cluster } from '@/lib/api';
+import { useAuth } from '@/contexts/AuthContext';
 
 const STORAGE_KEY = 'cruisekube-selected-cluster-id';
 
@@ -15,6 +16,7 @@ interface ClusterContextType {
 const ClusterContext = createContext<ClusterContextType | undefined>(undefined);
 
 export function ClusterProvider({ children }: { children: ReactNode }) {
+  const { isAuthenticated } = useAuth();
   const [selectedClusterId, setSelectedClusterIdState] = useState<string | null>(() => {
     const stored = localStorage.getItem(STORAGE_KEY);
     return stored || null;
@@ -23,6 +25,7 @@ export function ClusterProvider({ children }: { children: ReactNode }) {
   const { data, isLoading, error } = useQuery({
     queryKey: ['clusters'],
     queryFn: () => apiClient.getClusters(),
+    enabled: isAuthenticated,
   });
 
   const clusters = Array.isArray(data?.clusters) ? data.clusters : [];

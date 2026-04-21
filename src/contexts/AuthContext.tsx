@@ -1,23 +1,23 @@
-import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from "react";
-import { apiClient, type LoginRequest } from "@/lib/api";
-
-const STORAGE_KEY = "cruisekube-auth-session";
-
-function readStoredSession(): { token: string; userName: string | null } | null {
-  try {
-    const raw = sessionStorage.getItem(STORAGE_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as { token?: string; userName?: string | null };
-    if (typeof parsed.token !== "string" || !parsed.token) return null;
-    return { token: parsed.token, userName: parsed.userName ?? null };
-  } catch {
-    return null;
-  }
-}
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+  type ReactNode,
+} from "react";
+import { useNavigate } from "react-router-dom";
+import { useQueryClient } from "@tanstack/react-query";
+import { apiClient, setApiUnauthorizedHandler, type LoginRequest } from "@/lib/api";
+import {
+  clearAuthSession,
+  readAuthSession,
+  writeAuthSession,
+} from "@/lib/auth-session";
 
 interface AuthContextValue {
-  token: string | null;
-  userName: string | null;
+  username: string | null;
   isAuthenticated: boolean;
   isSubmitting: boolean;
   login: (credentials: LoginRequest) => Promise<void>;
@@ -27,49 +27,53 @@ interface AuthContextValue {
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [token, setToken] = useState<string | null>(() => readStoredSession()?.token ?? null);
-  const [userName, setUserName] = useState<string | null>(() => readStoredSession()?.userName ?? null);
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const [session, setSession] = useState(() => readAuthSession());
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const persistSession = useCallback((nextToken: string, nextUserName: string | null) => {
-    sessionStorage.setItem(
-      STORAGE_KEY,
-      JSON.stringify({ token: nextToken, userName: nextUserName })
-    );
-    setToken(nextToken);
-    setUserName(nextUserName);
-  }, []);
-
-  const login = useCallback(
-    async (credentials: LoginRequest) => {
-      setIsSubmitting(true);
-      try {
-        const res = await apiClient.login(credentials);
-        const name = res.user?.name ?? credentials.username;
-        persistSession(res.token, name);
-      } finally {
-        setIsSubmitting(false);
-      }
-    },
-    [persistSession]
-  );
-
   const logout = useCallback(() => {
-    sessionStorage.removeItem(STORAGE_KEY);
-    setToken(null);
-    setUserName(null);
+    clearAuthSession();
+    setSession(null);
+    queryClient.clear();
+    navigate("/login", { replace: true });
+  }, [navigate, queryClient]);
+
+  useEffect(() => {
+    setApiUnauthorizedHandler(() => {
+      clearAuthSession();
+      setSession(null);
+      queryClient.clear();
+      navigate("/login", { replace: true });
+    });
+    return () => setApiUnauthorizedHandler(null);
+  }, [navigate, queryClient]);
+
+  const login = useCallback(async (credentials: LoginRequest) => {
+    setIsSubmitting(true);
+    try {
+      const res = await apiClient.login(credentials);
+      if (typeof res.token !== "string" || !res.token) {
+        throw new Error("Invalid login response");
+      }
+      const username = credentials.username.trim();
+      const next = { username, basicToken: res.token };
+      writeAuthSession(next);
+      setSession(next);
+    } finally {
+      setIsSubmitting(false);
+    }
   }, []);
 
   const value = useMemo<AuthContextValue>(
     () => ({
-      token,
-      userName,
-      isAuthenticated: Boolean(token),
+      username: session?.username ?? null,
+      isAuthenticated: Boolean(session?.basicToken),
       isSubmitting,
       login,
       logout,
     }),
-    [token, userName, isSubmitting, login, logout]
+    [session, isSubmitting, login, logout]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

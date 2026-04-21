@@ -7,9 +7,9 @@ import { BrowserRouter, Routes, Route, useLocation } from "react-router-dom";
 import { useEffect } from "react";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { ProtectedLayout } from "@/components/layout/ProtectedLayout";
+import { AuthProvider } from "@/contexts/AuthContext";
 import { ClusterProvider } from "@/contexts/ClusterContext";
 import { ConfigProvider } from "@/contexts/ConfigContext";
-import { AuthProvider } from "@/contexts/AuthContext";
 import Overview from "./pages/Overview";
 import Workloads from "./pages/Workloads";
 import WorkloadDetail from "./pages/WorkloadDetail";
@@ -47,10 +47,10 @@ const App = () => (
  <Sentry.ErrorBoundary fallback={<p>An unexpected error has occurred.</p>} showDialog>
   <QueryClientProvider client={queryClient}>
     <TooltipProvider>
-      <AuthProvider>
-        <Toaster />
-        <Sonner />
-        <BrowserRouter>
+      <Toaster />
+      <Sonner />
+      <BrowserRouter>
+        <AuthProvider>
           <AnalyticsPageTracker />
           <SentryRoutes>
             <Route path="/login" element={<Login />} />
@@ -73,8 +73,8 @@ const App = () => (
               </Route>
             </Route>
           </SentryRoutes>
-        </BrowserRouter>
-      </AuthProvider>
+        </AuthProvider>
+      </BrowserRouter>
     </TooltipProvider>
   </QueryClientProvider>
  </Sentry.ErrorBoundary>
