@@ -143,7 +143,7 @@ export default function Login() {
           </form>
           <div className="border-t border-border/40 px-6 py-4 text-center text-xs text-muted-foreground">
             <a
-              href="https://cruisekube.com/src/gs-installation/"
+              href="https://cruisekube.com/documentation/operate/authentication/"
               className="font-medium text-primary underline-offset-4 hover:underline"
               target="_blank"
               rel="noopener noreferrer"
