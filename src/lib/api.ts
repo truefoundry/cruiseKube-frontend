@@ -279,8 +279,6 @@ export interface WorkloadDetailResourceRecommended {
 
 export interface WorkloadDetailResource {
   current: number;
-  /** Average per pod (same units as `current`). From workloads summary API. */
-  podCurrentAvg?: number;
   recommended: WorkloadDetailResourceRecommended;
 }
 
@@ -379,15 +377,10 @@ export interface HistoricalTimelineResponse {
 /** Container in workload detail pod (from GET .../workloads/:namespace/:workload/detail). */
 export interface WorkloadDetailPodContainer {
   container_name: string;
-  /** Declared workload request from manifest (cores / MB). */
   cpu_request: number;
   cpu_rec_request: number;
   mem_request: number;
   mem_rec_request: number;
-  /** Observed effective request for this pod/container (cores). */
-  current_cpu_request?: number;
-  /** Observed effective request for this pod/container (MB). */
-  current_mem_request?: number;
 }
 
 /** Pod in workload detail response. */
@@ -407,10 +400,6 @@ export interface WorkloadDetailResponse {
   current_cpu_limit: number;
   current_mem_request: number;
   current_mem_limit: number;
-  /** Average effective CPU request per pod (cores). */
-  current_pod_avg_cpu_request?: number;
-  /** Average effective memory request per pod (MB). */
-  current_pod_avg_mem_request?: number;
   potential_cpu_savings: number;
   potential_mem_savings: number;
   pods: WorkloadDetailPod[];
