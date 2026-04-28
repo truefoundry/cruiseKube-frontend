@@ -14,8 +14,6 @@ const BACKEND_URL = process.env.BACKEND_URL || 'http://localhost:8080';
 const distPath = join(__dirname, 'dist');
 const indexPath = join(distPath, 'index.html');
 
-app.use(express.json());
-
 app.use('/api', createProxyMiddleware({
   target: BACKEND_URL,
   changeOrigin: true,
