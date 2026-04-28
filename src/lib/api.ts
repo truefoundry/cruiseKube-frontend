@@ -1,7 +1,33 @@
+import { getBasicAuthorizationHeader } from '@/lib/auth-session';
+
 const API_BASE_URL = '/api';
 
 export interface ApiError {
   error: string;
+}
+
+export interface LoginRequest {
+  username: string;
+  password: string;
+}
+
+/** Successful login: `token` is Base64(username:password) for `Authorization: Basic <token>`. */
+export interface LoginResponse {
+  token: string;
+  token_type?: 'Basic';
+}
+
+let unauthorizedHandler: (() => void) | null = null;
+
+/** Register callback for 401 on protected routes (e.g. clear session and redirect to login). */
+export function setApiUnauthorizedHandler(handler: (() => void) | null): void {
+  unauthorizedHandler = handler;
+}
+
+function isAuthLoginRequest(endpoint: string, init?: RequestInit): boolean {
+  const path = endpoint.split('?')[0] ?? '';
+  const method = (init?.method ?? 'GET').toUpperCase();
+  return path === '/auth/login' && method === 'POST';
 }
 
 export interface Cluster {
@@ -419,17 +445,31 @@ class ApiClient {
     options: RequestInit = {}
   ): Promise<T> {
     const url = `${this.baseUrl}${endpoint}`;
-    
+    const skipAuth = isAuthLoginRequest(endpoint, options);
+
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+      ...(options.headers as Record<string, string> | undefined),
+    };
+
+    if (!skipAuth) {
+      const auth = getBasicAuthorizationHeader();
+      if (auth) {
+        headers.Authorization = auth;
+      }
+    }
+
     const config: RequestInit = {
       ...options,
-      headers: {
-        'Content-Type': 'application/json',
-        ...options.headers,
-      },
+      headers,
     };
 
     try {
       const response = await fetch(url, config);
+
+      if (response.status === 401 && !skipAuth) {
+        unauthorizedHandler?.();
+      }
 
       if (!response.ok) {
         let errorMessage = `HTTP error! status: ${response.status}`;
@@ -450,6 +490,14 @@ class ApiClient {
       }
       throw new Error(`Network error: ${String(error)}`);
     }
+  }
+
+  /** POST /api/auth/login → POST /api/v1/auth/login. No Authorization header. */
+  async login(body: LoginRequest): Promise<LoginResponse> {
+    return this.request<LoginResponse>('/auth/login', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    });
   }
 
   async getClusters(): Promise<ClustersResponse> {

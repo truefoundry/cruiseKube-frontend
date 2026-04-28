@@ -6,6 +6,8 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, useLocation } from "react-router-dom";
 import { useEffect } from "react";
 import { AppLayout } from "@/components/layout/AppLayout";
+import { ProtectedLayout } from "@/components/layout/ProtectedLayout";
+import { AuthProvider } from "@/contexts/AuthContext";
 import { ClusterProvider } from "@/contexts/ClusterContext";
 import { ConfigProvider } from "@/contexts/ConfigContext";
 import Overview from "./pages/Overview";
@@ -14,6 +16,7 @@ import WorkloadDetail from "./pages/WorkloadDetail";
 import Policies from "./pages/Policies";
 import Events from "./pages/Events";
 import NotFound from "./pages/NotFound";
+import Login from "./pages/Login";
 
 const queryClient = new QueryClient();
 
@@ -44,25 +47,34 @@ const App = () => (
  <Sentry.ErrorBoundary fallback={<p>An unexpected error has occurred.</p>} showDialog>
   <QueryClientProvider client={queryClient}>
     <TooltipProvider>
-      <ClusterProvider>
-        <ConfigProvider>
-          <Toaster />
-          <Sonner />
-          <BrowserRouter>
-            <AnalyticsPageTracker />
-            <SentryRoutes>
-              <Route element={<AppLayout />}>
+      <Toaster />
+      <Sonner />
+      <BrowserRouter>
+        <AuthProvider>
+          <AnalyticsPageTracker />
+          <SentryRoutes>
+            <Route path="/login" element={<Login />} />
+            <Route element={<ProtectedLayout />}>
+              <Route
+                element={
+                  <ClusterProvider>
+                    <ConfigProvider>
+                      <AppLayout />
+                    </ConfigProvider>
+                  </ClusterProvider>
+                }
+              >
                 <Route path="/" element={<Overview />} />
                 <Route path="/workloads" element={<Workloads />} />
                 <Route path="/workloads/:namespace/:workloadName" element={<WorkloadDetail />} />
                 <Route path="/policies" element={<Policies />} />
                 <Route path="/events" element={<Events />} />
+                <Route path="*" element={<NotFound />} />
               </Route>
-              <Route path="*" element={<NotFound />} />
-            </SentryRoutes>
-          </BrowserRouter>
-        </ConfigProvider>
-      </ClusterProvider>
+            </Route>
+          </SentryRoutes>
+        </AuthProvider>
+      </BrowserRouter>
     </TooltipProvider>
   </QueryClientProvider>
  </Sentry.ErrorBoundary>
