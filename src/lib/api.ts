@@ -1,7 +1,33 @@
+import { getBasicAuthorizationHeader } from '@/lib/auth-session';
+
 const API_BASE_URL = '/api';
 
 export interface ApiError {
   error: string;
+}
+
+export interface LoginRequest {
+  username: string;
+  password: string;
+}
+
+/** Successful login: `token` is Base64(username:password) for `Authorization: Basic <token>`. */
+export interface LoginResponse {
+  token: string;
+  token_type?: 'Basic';
+}
+
+let unauthorizedHandler: (() => void) | null = null;
+
+/** Register callback for 401 on protected routes (e.g. clear session and redirect to login). */
+export function setApiUnauthorizedHandler(handler: (() => void) | null): void {
+  unauthorizedHandler = handler;
+}
+
+function isAuthLoginRequest(endpoint: string, init?: RequestInit): boolean {
+  const path = endpoint.split('?')[0] ?? '';
+  const method = (init?.method ?? 'GET').toUpperCase();
+  return path === '/auth/login' && method === 'POST';
 }
 
 export interface Cluster {
@@ -253,6 +279,9 @@ export interface WorkloadDetailResourceRecommended {
 
 export interface WorkloadDetailResource {
   current: number;
+  /** Average usage per pod (same units as `current`). From workloads summary API. */
+  pod_current_avg?: number;
+  podCurrentAvg?: number;
   recommended: WorkloadDetailResourceRecommended;
 }
 
@@ -351,10 +380,15 @@ export interface HistoricalTimelineResponse {
 /** Container in workload detail pod (from GET .../workloads/:namespace/:workload/detail). */
 export interface WorkloadDetailPodContainer {
   container_name: string;
+  /** Declared workload request from manifest (cores / MB). */
   cpu_request: number;
   cpu_rec_request: number;
   mem_request: number;
   mem_rec_request: number;
+  /** Observed effective request for this pod/container (cores). */
+  current_cpu_request?: number;
+  /** Observed effective request for this pod/container (MB). */
+  current_mem_request?: number;
 }
 
 /** Pod in workload detail response. */
@@ -374,6 +408,10 @@ export interface WorkloadDetailResponse {
   current_cpu_limit: number;
   current_mem_request: number;
   current_mem_limit: number;
+  /** Average effective CPU request per pod (cores). */
+  current_pod_avg_cpu_request?: number;
+  /** Average effective memory request per pod (MB). */
+  current_pod_avg_mem_request?: number;
   potential_cpu_savings: number;
   potential_mem_savings: number;
   pods: WorkloadDetailPod[];
@@ -419,17 +457,31 @@ class ApiClient {
     options: RequestInit = {}
   ): Promise<T> {
     const url = `${this.baseUrl}${endpoint}`;
-    
+    const skipAuth = isAuthLoginRequest(endpoint, options);
+
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+      ...(options.headers as Record<string, string> | undefined),
+    };
+
+    if (!skipAuth) {
+      const auth = getBasicAuthorizationHeader();
+      if (auth) {
+        headers.Authorization = auth;
+      }
+    }
+
     const config: RequestInit = {
       ...options,
-      headers: {
-        'Content-Type': 'application/json',
-        ...options.headers,
-      },
+      headers,
     };
 
     try {
       const response = await fetch(url, config);
+
+      if (response.status === 401 && !skipAuth) {
+        unauthorizedHandler?.();
+      }
 
       if (!response.ok) {
         let errorMessage = `HTTP error! status: ${response.status}`;
@@ -450,6 +502,14 @@ class ApiClient {
       }
       throw new Error(`Network error: ${String(error)}`);
     }
+  }
+
+  /** POST /api/auth/login → POST /api/v1/auth/login. No Authorization header. */
+  async login(body: LoginRequest): Promise<LoginResponse> {
+    return this.request<LoginResponse>('/auth/login', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    });
   }
 
   async getClusters(): Promise<ClustersResponse> {
