@@ -22,8 +22,11 @@ export interface FrontendWorkload {
   /** Potential memory savings in MB (negative = can reduce, positive = need more). */
   potentialMem: number;
   currentCpu: string;
+  /** Average observed usage per pod (CPU), when the API provides `pod_current_avg`. */
+  podCurrentAvgCpu: string;
   recommendedCpu: string;
   currentMem: string;
+  podCurrentAvgMem: string;
   recommendedMem: string;
   potentialDollars: number;
   /** Monthly cost of increasing resources when recommended > current (reliability). */
@@ -415,8 +418,10 @@ export function transformWorkloadStatToFrontend(
     potentialCpu: -totalPotentialCpuDiff,
     potentialMem: -totalPotentialMemoryDiff,
     currentCpu: formatCpu(totalCurrentCpu),
+    podCurrentAvgCpu: "—",
     recommendedCpu,
     currentMem: formatMemory(totalCurrentMemory),
+    podCurrentAvgMem: "—",
     recommendedMem,
     potentialDollars,
     reliabilityCostDollars,
