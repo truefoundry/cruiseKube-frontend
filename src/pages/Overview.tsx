@@ -148,10 +148,18 @@ function withDefaults(raw: OverviewResponse | null | undefined): {
 }
 
 function formatCpuValue(value: number): string {
-  return `${value.toFixed(1)} cores`;
+  const formatted = new Intl.NumberFormat(undefined, {
+    maximumFractionDigits: 3,
+    minimumFractionDigits: 0,
+  }).format(value);
+  return `${formatted} cores`;
 }
 function formatMemoryValue(value: number): string {
-  return `${value.toFixed(1)} GiB`;
+  const formatted = new Intl.NumberFormat(undefined, {
+    maximumFractionDigits: 3,
+    minimumFractionDigits: 0,
+  }).format(value);
+  return `${formatted} GB`;
 }
 
 /** Sanitize legend to a valid CSS/object key (no spaces or special chars) so --color-{key} works. */
@@ -1085,7 +1093,7 @@ export default function Overview() {
                     tickLine={{ stroke: "hsl(var(--border))" }}
                   />
                   <YAxis
-                    unit={historicalMetric === "cpu" ? " cores" : " GiB"}
+                    unit={historicalMetric === "cpu" ? " cores" : " GB"}
                     tick={{ fill: "hsl(var(--muted-foreground))" }}
                     axisLine={{ stroke: "hsl(var(--border))" }}
                     tickLine={{ stroke: "hsl(var(--border))" }}
@@ -1113,7 +1121,7 @@ export default function Overview() {
                                 <span className="font-mono font-medium tabular-nums text-foreground">
                                   {historicalMetric === "cpu"
                                     ? `${Number(item.value).toLocaleString()} cores`
-                                    : `${Number(item.value).toLocaleString()} GiB`}
+                                    : `${Number(item.value).toLocaleString()} GB`}
                                 </span>
                               </div>
                             ))}
