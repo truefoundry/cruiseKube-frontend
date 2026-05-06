@@ -374,7 +374,10 @@ export default function Overview() {
             </AlertDescription>
           </Alert>
         )}
-        {!isLoading && !error && d.possibleSavings === 0 && (
+        {!isLoading &&
+          !error &&
+          d.cpuStats.recommended === 0 &&
+          d.memoryStats.recommended === 0 && (
           <Alert className="border-primary/30 bg-primary/5">
             <Activity className="h-4 w-4" />
             <AlertTitle>Recommendations are being generated</AlertTitle>

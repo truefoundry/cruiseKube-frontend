@@ -1271,7 +1271,7 @@ export default function Workloads() {
                     <TooltipProvider>
                       <Tooltip>
                         <TooltipTrigger asChild onClick={(e) => e.stopPropagation()}>
-                          <span className="cursor-help normal-case">Current</span>
+                          <span className="cursor-help">Current</span>
                         </TooltipTrigger>
                         <TooltipContent side="top">Current (average per pod)</TooltipContent>
                       </Tooltip>
@@ -1290,7 +1290,7 @@ export default function Workloads() {
                         <TooltipTrigger asChild onClick={(e) => e.stopPropagation()}>
                           <span className="cursor-help">Rec</span>
                         </TooltipTrigger>
-                        <TooltipContent side="top">Recommended</TooltipContent>
+                        <TooltipContent side="top">Recommended (average per pod)</TooltipContent>
                       </Tooltip>
                     </TooltipProvider>
                     {sortColumn === "recommendedCpu" && (sortDirection === "asc" ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />)}
@@ -1322,7 +1322,7 @@ export default function Workloads() {
                     <TooltipProvider>
                       <Tooltip>
                         <TooltipTrigger asChild onClick={(e) => e.stopPropagation()}>
-                          <span className="cursor-help normal-case">Current</span>
+                          <span className="cursor-help">Current</span>
                         </TooltipTrigger>
                         <TooltipContent side="top">Current (average per pod)</TooltipContent>
                       </Tooltip>
@@ -1341,7 +1341,7 @@ export default function Workloads() {
                         <TooltipTrigger asChild onClick={(e) => e.stopPropagation()}>
                           <span className="cursor-help">Rec</span>
                         </TooltipTrigger>
-                        <TooltipContent side="top">Recommended</TooltipContent>
+                        <TooltipContent side="top">Recommended (average per pod)</TooltipContent>
                       </Tooltip>
                     </TooltipProvider>
                     {sortColumn === "recommendedMem" && (sortDirection === "asc" ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />)}
