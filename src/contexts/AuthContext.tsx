@@ -59,7 +59,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     apiClient.getAuthInfo()
       .then((info) => {
         if (!cancelled) {
-          setAuthEnabled(info.auth_enabled);
+          // Only disable auth on an explicit boolean false; otherwise keep the
+          // fail-safe default (enabled). This prevents a missing or malformed
+          // `auth_enabled` field (e.g. during a rolling upgrade with an older
+          // backend) from accidentally bypassing authentication.
+          setAuthEnabled(info.auth_enabled === false ? false : true);
         }
       })
       .catch(() => {
