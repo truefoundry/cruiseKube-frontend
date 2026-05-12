@@ -14,7 +14,7 @@ import {
 } from "@/components/ui/card";
 
 export default function Login() {
-  const { login, isAuthenticated, isSubmitting } = useAuth();
+  const { login, isAuthenticated, isSubmitting, authEnabled, authLoading } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const from =
@@ -25,6 +25,14 @@ export default function Login() {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
+
+  if (authLoading) {
+    return null;
+  }
+
+  if (!authEnabled) {
+    return <Navigate to={from === "/login" ? "/" : from} replace />;
+  }
 
   if (isAuthenticated) {
     return <Navigate to={from === "/login" ? "/" : from} replace />;
