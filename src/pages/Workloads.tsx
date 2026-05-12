@@ -18,7 +18,6 @@ import {
   type LucideIcon,
   Pencil,
   ShieldAlert,
-  ShieldCheck,
   Zap,
   Activity,
   BarChart2,
@@ -26,6 +25,7 @@ import {
   Ban,
   List,
   LockKeyhole,
+  LockKeyholeOpen,
   Shield,
   DollarSign,
   MoreVertical,
@@ -120,6 +120,8 @@ function WorkloadTypeIcon({ type }: { type: string }) {
 
 function WorkloadStatusIcons({ workload }: { workload: FrontendWorkload }) {
   const isGpuWorkload = workload.isGpuWorkload === true || (workload.excluded && workload.excludedReason?.toLowerCase().includes("gpu"));
+  const hasDisruptionWindows = asArray(workload.disruptionWindows).length > 0;
+  const pdbDndMitigated = isPdbDndMitigatedForUi(workload);
   return (
     <span className="inline-flex items-center gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
       {workload.excluded && (
@@ -194,48 +196,51 @@ function WorkloadStatusIcons({ workload }: { workload: FrontendWorkload }) {
         <TooltipProvider>
           <Tooltip>
             <TooltipTrigger asChild>
-              <span className="inline-flex cursor-help text-amber-600 dark:text-amber-400">
-                <LockKeyhole className="h-4 w-4" aria-hidden />
+              <span
+                className={`inline-flex cursor-help ${pdbDndMitigated ? "text-success" : "text-destructive"}`}
+              >
+                {pdbDndMitigated ? (
+                  <LockKeyholeOpen className="h-4 w-4" aria-hidden />
+                ) : (
+                  <LockKeyhole className="h-4 w-4" aria-hidden />
+                )}
               </span>
             </TooltipTrigger>
             <TooltipContent side="right" className="max-w-sm">
-              <p className="font-semibold">Has PDB</p>
+              <p className="font-semibold">Pod Disruption Budget (PDB)</p>
               <p className="mt-1 text-muted-foreground">
-                This workload will block consolidation of nodes because of its Pod Disruption Budget (PDB). Set up a disruption window in Edit CruiseConfig so that nodes can consolidate during the window.
+                {isWorkloadDisabled(workload)
+                  ? "Cruise is disabled for this workload (non-optimizable, HPA, GPU, etc.). Disruption windows are not applied; PDB is shown as locked."
+                  : workload.mode !== "enabled"
+                    ? "Cruise is in recommend-only mode, so disruption windows are not used for consolidation; PDB is shown as locked. Turn Cruise on to use scheduled windows."
+                    : hasDisruptionWindows
+                      ? "Disruption windows are configured; during those windows the PDB is relaxed so nodes can consolidate. Outside the window the PDB still applies."
+                      : "PDB will block node consolidation. Add a disruption window in Edit CruiseConfig so consolidation can run during scheduled windows."}
               </p>
             </TooltipContent>
           </Tooltip>
         </TooltipProvider>
       )}
-      {workload.blockingConsolidationDoNotDisrupt && !workload.inDisruptionWindow && (
+      {workload.blockingConsolidationDoNotDisrupt && (
         <TooltipProvider>
           <Tooltip>
             <TooltipTrigger asChild>
-              <span className="inline-flex cursor-help text-amber-600 dark:text-amber-400">
+              <span
+                className={`inline-flex cursor-help ${pdbDndMitigated ? "text-success" : "text-destructive"}`}
+              >
                 <Shield className="h-4 w-4" aria-hidden />
               </span>
             </TooltipTrigger>
             <TooltipContent side="right" className="max-w-sm">
               <p className="font-semibold">Do-not-disrupt</p>
               <p className="mt-1 text-muted-foreground">
-                This workload will block consolidation of nodes because of its do-not-disrupt annotation. Set up a disruption window in Edit CruiseConfig so that nodes can consolidate during the window.
-              </p>
-            </TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
-      )}
-      {workload.blockingConsolidation && workload.inDisruptionWindow && (
-        <TooltipProvider>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <span className="inline-flex cursor-help text-success">
-                <ShieldCheck className="h-4 w-4" aria-hidden />
-              </span>
-            </TooltipTrigger>
-            <TooltipContent side="right" className="max-w-sm">
-              <p className="font-semibold">In disruption window</p>
-              <p className="mt-1 text-muted-foreground">
-                This workload is currently inside a disruption window. Do-not-disrupt annotations are temporarily removed to allow node consolidation.
+                {isWorkloadDisabled(workload)
+                  ? "Cruise is disabled for this workload (non-optimizable, HPA, GPU, etc.). Disruption windows are not applied; do-not-disrupt is shown as blocking."
+                  : workload.mode !== "enabled"
+                    ? "Cruise is in recommend-only mode, so disruption windows are not used for consolidation; do-not-disrupt is shown as blocking. Turn Cruise on to use scheduled windows."
+                    : hasDisruptionWindows
+                      ? "Disruption windows are configured; during those windows the do-not-disrupt annotation is lifted so nodes can consolidate. Outside the window it still applies."
+                      : "Do-not-disrupt will block node consolidation. Add a disruption window in Edit CruiseConfig so consolidation can run during scheduled windows."}
               </p>
             </TooltipContent>
           </Tooltip>
@@ -274,6 +279,15 @@ function isWorkloadDisabled(workload: FrontendWorkload): boolean {
     workload.isGpuWorkload ||
     workload.hpaEnabled ||
     (workload.excludedCodes && workload.excludedCodes.length > 0)
+  );
+}
+
+/** Green / open PDB–DND icons only when Cruise is on, the row is optimizable, and disruption windows exist. */
+function isPdbDndMitigatedForUi(workload: FrontendWorkload): boolean {
+  return (
+    !isWorkloadDisabled(workload) &&
+    workload.mode === "enabled" &&
+    asArray(workload.disruptionWindows).length > 0
   );
 }
 
@@ -1622,7 +1636,7 @@ export default function Workloads() {
                     <span className="text-sm text-muted-foreground">
                       {editMode === "enabled"
                         ? "Recommendations will be applied to pods."
-                        : "Recommendations are only computed — not shown to pods."}
+                        : "Recommendations are only computed — never applied."}
                     </span>
                   </div>
                 </div>
