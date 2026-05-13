@@ -76,7 +76,7 @@ export default function Login() {
       <div className="relative z-10 flex w-full max-w-md flex-col items-center gap-8">
         <div className="flex flex-col items-center gap-3 text-center">
           <div
-            className="h-20 w-20 shrink-0 rounded-2xl bg-primary shadow-[0_8px_32px_-6px_hsl(var(--primary)/0.65)]"
+            className="h-20 w-20 shrink-0 rounded-2xl bg-[#f0f6fc] shadow-[0_8px_32px_-6px_hsl(var(--primary)/0.45)]"
             style={{
               maskImage: "url(/logo.svg)",
               WebkitMaskImage: "url(/logo.svg)",

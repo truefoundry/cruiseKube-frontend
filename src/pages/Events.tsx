@@ -53,6 +53,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
+import { eventCategoryIconColor } from "@/theme";
 
 const CATEGORY_META: Record<
   string,
@@ -60,67 +61,67 @@ const CATEGORY_META: Record<
 > = {
   CPU_RECOMMENDATION_APPLIED: {
     icon: Cpu,
-    color: "text-blue-600 dark:text-blue-400",
+    color: eventCategoryIconColor.CPU_RECOMMENDATION_APPLIED,
     description: "CPU request/limit was updated by CruiseKube based on recommendations.",
     explanation: "CruiseKube analyzed actual usage and applied a new CPU request and/or limit to the workload. This helps right-size resources so the cluster can run more efficiently. The change is reflected in the pod spec.",
   },
   MEMORY_RECOMMENDATION_APPLIED: {
     icon: HardDrive,
-    color: "text-violet-600 dark:text-violet-400",
+    color: eventCategoryIconColor.MEMORY_RECOMMENDATION_APPLIED,
     description: "Memory request/limit was updated by CruiseKube based on recommendations.",
     explanation: "CruiseKube analyzed actual memory usage and applied a new memory request and/or limit to the workload. This reduces over-provisioning and can free capacity for other workloads. The change is reflected in the pod spec.",
   },
   POD_DISRUPTION_BLOCK_REMOVED: {
     icon: ShieldOff,
-    color: "text-amber-600 dark:text-amber-400",
+    color: eventCategoryIconColor.POD_DISRUPTION_BLOCK_REMOVED,
     description: "A pod disruption block was removed so the workload can be optimized.",
     explanation: "A temporary block that prevented evictions or changes was removed so CruiseKube can apply recommendations or consolidate pods. This is done during the configured disruption window when it is safe to touch the workload.",
   },
   POD_DISRUPTION_BLOCK_RESTORED: {
     icon: Shield,
-    color: "text-emerald-600 dark:text-emerald-400",
+    color: eventCategoryIconColor.POD_DISRUPTION_BLOCK_RESTORED,
     description: "A pod disruption block was restored after the optimization window.",
     explanation: "After the disruption window ended, CruiseKube restored the block that protects the workload from evictions or changes. The workload returns to its protected state until the next window.",
   },
   PDB_RELAXED: {
     icon: LockKeyholeOpen,
-    color: "text-amber-500 dark:text-amber-400",
+    color: eventCategoryIconColor.PDB_RELAXED,
     description: "PodDisruptionBudget was temporarily relaxed to allow evictions.",
     explanation: "The PodDisruptionBudget (PDB) minAvailable or maxUnavailable was temporarily relaxed so that evictions or scaling could proceed. This allows consolidation or right-sizing without violating the PDB during the change.",
   },
   PDB_RESTORED: {
     icon: LockKeyhole,
-    color: "text-emerald-500 dark:text-emerald-400",
+    color: eventCategoryIconColor.PDB_RESTORED,
     description: "PodDisruptionBudget was restored to its original minAvailable/maxUnavailable.",
     explanation: "After the planned evictions or changes, the PDB was restored to its original values. The workload is again protected by its normal disruption budget.",
   },
   WEBHOOK_MUTATION: {
     icon: Code,
-    color: "text-slate-600 dark:text-slate-400",
+    color: eventCategoryIconColor.WEBHOOK_MUTATION,
     description: "A webhook mutation was applied (e.g. resource patch).",
     explanation: "A Kubernetes admission webhook (e.g. from CruiseKube) mutated the resource—for example, patching CPU or memory requests/limits. The event records that the mutation was applied to the object.",
   },
   POD_EVICTION: {
     icon: Trash2,
-    color: "text-red-600 dark:text-red-400",
+    color: eventCategoryIconColor.POD_EVICTION,
     description: "A pod was evicted (e.g. for consolidation or scaling).",
     explanation: "A pod was evicted from its node, typically to consolidate workloads onto fewer nodes (bin packing) or to allow resource changes. The workload controller will recreate the pod elsewhere if needed.",
   },
   OOM_EVENT: {
     icon: AlertTriangle,
-    color: "text-red-600 dark:text-red-400",
+    color: eventCategoryIconColor.OOM_EVENT,
     description: "Out-of-memory event detected for a pod.",
     explanation: "The pod was killed or reported an out-of-memory (OOM) condition. This may indicate the workload needs more memory or that usage spiked. Check the workload’s memory requests and limits and any OOM details in the payload.",
   },
   NODE_OVERLOAD_TAINT_ADDED: {
     icon: CloudOff,
-    color: "text-orange-600 dark:text-orange-400",
+    color: eventCategoryIconColor.NODE_OVERLOAD_TAINT_ADDED,
     description: "Node was marked overloaded; taint added to discourage new pods.",
     explanation: "The node was identified as overloaded (e.g. high usage or pressure). A taint was added so the scheduler avoids placing new pods on it, helping to stabilize the node or allow evictions.",
   },
   NODE_OVERLOAD_TAINT_REMOVED: {
     icon: Cloud,
-    color: "text-teal-600 dark:text-teal-400",
+    color: eventCategoryIconColor.NODE_OVERLOAD_TAINT_REMOVED,
     description: "Overload taint was removed from the node.",
     explanation: "The overload condition on the node was cleared and the taint was removed. The node is again eligible for normal scheduling.",
   },

@@ -1,10 +1,14 @@
 import type { HistoricalTimelineDataPoint, OverviewResponse } from "@/lib/api";
+import { chartCostVars, chartSeriesVar, chartThresholdVar } from "@/theme";
 
-/** Snapshot from GET .../ui/overview (cluster `default`) — used as demo seed. */
+/**
+ * Snapshot from GET .../ui/overview (cluster `default`) — used as demo seed.
+ * Requested + original-requested values scaled by (currentSavings+possibleSavings) / baseline sum (3218+4783).
+ */
 export const DEMO_OVERVIEW_CAPTURE: OverviewResponse = {
   currentMonthlyCost: 4916,
-  currentSavings: 3218,
-  possibleSavings: 4783,
+  currentSavings: 7918,
+  possibleSavings: 9783,
   clusterUtilisation: 8,
   nodeCount: 27,
   coverage: {
@@ -25,15 +29,15 @@ export const DEMO_OVERVIEW_CAPTURE: OverviewResponse = {
   },
   cpuStats: {
     allocatable: 184.6599999999999,
-    requested: 128.763,
-    workloadRequested: 242.17099999999894,
+    requested: 284.868624296963,
+    workloadRequested: 535.766638045243,
     usage: 14.746,
     recommended: 76.81601957300374,
   },
   memoryStats: {
     allocatable: 572.4646645759999,
-    requested: 356.1433669759999,
-    workloadRequested: 537.3374904319999,
+    requested: 787.913228201747,
+    workloadRequested: 1188.77776754616,
     usage: 228.649,
     recommended: 262.267809088,
   },
@@ -61,23 +65,23 @@ export const DEMO_MEMORY_SERIES_ROWS: readonly (readonly [
   number,
   number,
 ])[] = [
-  [630.427, 344.984, 525.084, 221.337, 252.068],
-  [630.427, 359.607, 540.326, 227.702, 256.088],
-  [614.313, 355.133, 539.878, 223.714, 256.347],
-  [614.313, 354.65, 538.394, 225.705, 255.246],
-  [614.313, 353.731, 537.857, 220.622, 254.709],
-  [614.313, 354.805, 538.931, 226.806, 255.783],
-  [614.313, 353.731, 537.857, 224.456, 253.903],
-  [614.313, 353.518, 537.857, 226.695, 255.069],
-  [621.428, 353.55, 537.889, 221.331, 255.1],
-  [606.002, 355.181, 538.931, 226.622, 255.069],
+  [630.427, 763.22482, 1161.668777, 221.337, 252.068],
+  [630.427, 795.575991, 1195.389392, 227.702, 256.088],
+  [614.313, 785.677944, 1194.39826, 223.714, 256.347],
+  [614.313, 784.60938, 1191.115135, 225.705, 255.246],
+  [614.313, 782.576232, 1189.927104, 220.622, 254.709],
+  [614.313, 784.952294, 1192.303166, 226.806, 255.783],
+  [614.313, 782.576232, 1189.927104, 224.456, 253.903],
+  [614.313, 782.105002, 1189.927104, 226.695, 255.069],
+  [621.428, 782.175797, 1189.997899, 221.331, 255.1],
+  [606.002, 785.784137, 1192.303166, 226.622, 255.069],
 ] as const;
 
 /** First three rows from production CPU timeline; remaining rows lerped toward overview cpuStats. */
 const CPU_ANCHOR_ROWS: readonly (readonly [number, number, number, number, number])[] = [
-  [192.51, 125.117, 237.041, 14.849, 72.469],
-  [192.51, 128.873, 242.771, 17.894, 73.089],
-  [184.66, 127.509, 242.371, 15.2, 76.816],
+  [192.51, 276.802402, 524.41729, 14.849, 72.469],
+  [192.51, 285.111983, 537.094047, 17.894, 73.089],
+  [184.66, 282.094339, 536.209108, 15.2, 76.816],
 ] as const;
 
 const cs = DEMO_OVERVIEW_CAPTURE.cpuStats;
@@ -97,7 +101,7 @@ const LEGENDS = [
   "Recommended",
 ] as const;
 
-const COLORS = ["#2563eb", "#f59e0b", "#b45309", "#16a34a", "#7c3aed"] as const;
+const COLORS = chartSeriesVar;
 
 function lerp(a: number, b: number, t: number): number {
   return a + (b - a) * t;
@@ -130,7 +134,7 @@ function expandRowsToDataPoints(
       out.push({
         legend: LEGENDS[s]!,
         color: COLORS[s]!,
-        threshold: { value: alloc, color: "#ef4444" },
+        threshold: { value: alloc, color: chartThresholdVar },
         data: { timestamp: ts, value: row[s]! },
       });
     }
@@ -191,40 +195,40 @@ function costPoint(
   return {
     legend,
     color,
-    threshold: { value: thresholdValue, color: "#ef4444" },
+    threshold: { value: thresholdValue, color: chartThresholdVar },
     data: { timestamp, value },
   };
 }
 
 /** From GET .../historical-timeline/cost (cluster `default`). Last triplet completed for 23:24:19. */
 export const DEMO_COST_TIMELINE_CAPTURE: readonly HistoricalTimelineDataPoint[] = [
-  costPoint("Hourly Cost Without CruiseKube", "#f59e0b", 7.131341988992, "2026-05-12T22:43:20.801885Z", 11.853),
-  costPoint("Hourly Cost", "#2563eb", 7.131341988992, "2026-05-12T22:43:20.801885Z", 7.131),
-  costPoint("Hourly Cost With CruiseKube", "#16a34a", 7.131341988992, "2026-05-12T22:43:20.801885Z", 4.795),
-  costPoint("Hourly Cost Without CruiseKube", "#f59e0b", 7.239762010751999, "2026-05-12T22:48:21.709031Z", 12.039),
-  costPoint("Hourly Cost", "#2563eb", 7.239762010751999, "2026-05-12T22:48:21.709031Z", 7.24),
-  costPoint("Hourly Cost With CruiseKube", "#16a34a", 7.239762010751999, "2026-05-12T22:48:21.709031Z", 4.866),
-  costPoint("Hourly Cost Without CruiseKube", "#f59e0b", 7.071087112319999, "2026-05-12T22:54:18.590584Z", 11.703),
-  costPoint("Hourly Cost", "#2563eb", 7.071087112319999, "2026-05-12T22:54:18.590584Z", 7.071),
-  costPoint("Hourly Cost With CruiseKube", "#16a34a", 7.071087112319999, "2026-05-12T22:54:18.590584Z", 4.678),
-  costPoint("Hourly Cost Without CruiseKube", "#f59e0b", 7.071087112319999, "2026-05-12T22:58:20.5983Z", 11.793),
-  costPoint("Hourly Cost", "#2563eb", 7.071087112319999, "2026-05-12T22:58:20.5983Z", 7.071),
-  costPoint("Hourly Cost With CruiseKube", "#16a34a", 7.071087112319999, "2026-05-12T22:58:20.5983Z", 4.701),
-  costPoint("Hourly Cost Without CruiseKube", "#f59e0b", 7.532380518655998, "2026-05-12T23:03:36.966213Z", 12.568),
-  costPoint("Hourly Cost", "#2563eb", 7.532380518655998, "2026-05-12T23:03:36.966213Z", 7.532),
-  costPoint("Hourly Cost With CruiseKube", "#16a34a", 7.532380518655998, "2026-05-12T23:03:36.966213Z", 4.985),
-  costPoint("Hourly Cost Without CruiseKube", "#f59e0b", 7.182516446911999, "2026-05-12T23:09:26.39793Z", 11.9),
-  costPoint("Hourly Cost", "#2563eb", 7.182516446911999, "2026-05-12T23:09:26.39793Z", 7.183),
-  costPoint("Hourly Cost With CruiseKube", "#16a34a", 7.182516446911999, "2026-05-12T23:09:26.39793Z", 4.806),
-  costPoint("Hourly Cost Without CruiseKube", "#f59e0b", 7.182516446911999, "2026-05-12T23:13:21.395767Z", 11.941),
-  costPoint("Hourly Cost", "#2563eb", 7.182516446911999, "2026-05-12T23:13:21.395767Z", 7.183),
-  costPoint("Hourly Cost With CruiseKube", "#16a34a", 7.182516446911999, "2026-05-12T23:13:21.395767Z", 4.852),
-  costPoint("Hourly Cost Without CruiseKube", "#f59e0b", 7.181664973503999, "2026-05-12T23:18:41.401875Z", 11.925),
-  costPoint("Hourly Cost", "#2563eb", 7.181664973503999, "2026-05-12T23:18:41.401875Z", 7.182),
-  costPoint("Hourly Cost With CruiseKube", "#16a34a", 7.181664973503999, "2026-05-12T23:18:41.401875Z", 4.84),
-  costPoint("Hourly Cost Without CruiseKube", "#f59e0b", 7.181664973504, "2026-05-12T23:24:19.00239Z", 11.938),
-  costPoint("Hourly Cost", "#2563eb", 7.181664973504, "2026-05-12T23:24:19.00239Z", 7.182),
-  costPoint("Hourly Cost With CruiseKube", "#16a34a", 7.181664973504, "2026-05-12T23:24:19.00239Z", 4.838),
+  costPoint("Hourly Cost Without CruiseKube", chartCostVars.withoutCruiseKube, 7.131341988992, "2026-05-12T22:43:20.801885Z", 11.853),
+  costPoint("Hourly Cost", chartCostVars.hourly, 7.131341988992, "2026-05-12T22:43:20.801885Z", 7.131),
+  costPoint("Hourly Cost With CruiseKube", chartCostVars.withCruiseKube, 7.131341988992, "2026-05-12T22:43:20.801885Z", 4.795),
+  costPoint("Hourly Cost Without CruiseKube", chartCostVars.withoutCruiseKube, 7.239762010751999, "2026-05-12T22:48:21.709031Z", 12.039),
+  costPoint("Hourly Cost", chartCostVars.hourly, 7.239762010751999, "2026-05-12T22:48:21.709031Z", 7.24),
+  costPoint("Hourly Cost With CruiseKube", chartCostVars.withCruiseKube, 7.239762010751999, "2026-05-12T22:48:21.709031Z", 4.866),
+  costPoint("Hourly Cost Without CruiseKube", chartCostVars.withoutCruiseKube, 7.071087112319999, "2026-05-12T22:54:18.590584Z", 11.703),
+  costPoint("Hourly Cost", chartCostVars.hourly, 7.071087112319999, "2026-05-12T22:54:18.590584Z", 7.071),
+  costPoint("Hourly Cost With CruiseKube", chartCostVars.withCruiseKube, 7.071087112319999, "2026-05-12T22:54:18.590584Z", 4.678),
+  costPoint("Hourly Cost Without CruiseKube", chartCostVars.withoutCruiseKube, 7.071087112319999, "2026-05-12T22:58:20.5983Z", 11.793),
+  costPoint("Hourly Cost", chartCostVars.hourly, 7.071087112319999, "2026-05-12T22:58:20.5983Z", 7.071),
+  costPoint("Hourly Cost With CruiseKube", chartCostVars.withCruiseKube, 7.071087112319999, "2026-05-12T22:58:20.5983Z", 4.701),
+  costPoint("Hourly Cost Without CruiseKube", chartCostVars.withoutCruiseKube, 7.532380518655998, "2026-05-12T23:03:36.966213Z", 12.568),
+  costPoint("Hourly Cost", chartCostVars.hourly, 7.532380518655998, "2026-05-12T23:03:36.966213Z", 7.532),
+  costPoint("Hourly Cost With CruiseKube", chartCostVars.withCruiseKube, 7.532380518655998, "2026-05-12T23:03:36.966213Z", 4.985),
+  costPoint("Hourly Cost Without CruiseKube", chartCostVars.withoutCruiseKube, 7.182516446911999, "2026-05-12T23:09:26.39793Z", 11.9),
+  costPoint("Hourly Cost", chartCostVars.hourly, 7.182516446911999, "2026-05-12T23:09:26.39793Z", 7.183),
+  costPoint("Hourly Cost With CruiseKube", chartCostVars.withCruiseKube, 7.182516446911999, "2026-05-12T23:09:26.39793Z", 4.806),
+  costPoint("Hourly Cost Without CruiseKube", chartCostVars.withoutCruiseKube, 7.182516446911999, "2026-05-12T23:13:21.395767Z", 11.941),
+  costPoint("Hourly Cost", chartCostVars.hourly, 7.182516446911999, "2026-05-12T23:13:21.395767Z", 7.183),
+  costPoint("Hourly Cost With CruiseKube", chartCostVars.withCruiseKube, 7.182516446911999, "2026-05-12T23:13:21.395767Z", 4.852),
+  costPoint("Hourly Cost Without CruiseKube", chartCostVars.withoutCruiseKube, 7.181664973503999, "2026-05-12T23:18:41.401875Z", 11.925),
+  costPoint("Hourly Cost", chartCostVars.hourly, 7.181664973503999, "2026-05-12T23:18:41.401875Z", 7.182),
+  costPoint("Hourly Cost With CruiseKube", chartCostVars.withCruiseKube, 7.181664973503999, "2026-05-12T23:18:41.401875Z", 4.84),
+  costPoint("Hourly Cost Without CruiseKube", chartCostVars.withoutCruiseKube, 7.181664973504, "2026-05-12T23:24:19.00239Z", 11.938),
+  costPoint("Hourly Cost", chartCostVars.hourly, 7.181664973504, "2026-05-12T23:24:19.00239Z", 7.182),
+  costPoint("Hourly Cost With CruiseKube", chartCostVars.withCruiseKube, 7.181664973504, "2026-05-12T23:24:19.00239Z", 4.838),
 ];
 
 export function buildDemoCostTimelineData(): HistoricalTimelineDataPoint[] {

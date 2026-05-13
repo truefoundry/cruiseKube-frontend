@@ -28,6 +28,7 @@ import {
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useConfig } from "@/contexts/ConfigContext";
 import { useAuth } from "@/contexts/AuthContext";
+import { ClusterSelector } from "@/components/ClusterSelector";
 
 const navItems = [
   { title: "Overview", url: "/", icon: LayoutDashboard },
@@ -69,9 +70,9 @@ export function AppSidebar() {
     <Sidebar collapsible="icon" className="border-r border-sidebar-border">
       <SidebarHeader className="border-b border-sidebar-border p-4">
         <div className={cn("flex items-center gap-3", isCollapsed && "justify-center")}>
-          <div className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-lg ">
+          <div className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-lg">
             <div
-              className="h-8 w-8 shrink-0 bg-white opacity-80"
+              className="h-7 w-7 shrink-0 bg-white opacity-80"
               style={{
                 maskImage: "url(/logo.svg)",
                 WebkitMaskImage: "url(/logo.svg)",
@@ -95,6 +96,18 @@ export function AppSidebar() {
       </SidebarHeader>
       
       <SidebarContent className="">
+        {!isCollapsed && (
+          <SidebarGroup className="border-b border-sidebar-border">
+            <SidebarGroupLabel>Cluster</SidebarGroupLabel>
+            <SidebarGroupContent className="px-2 pb-3">
+              <ClusterSelector
+                variant="stacked"
+                showLabel={false}
+                triggerClassName="w-full border-sidebar-border bg-sidebar-accent/40 text-sidebar-foreground"
+              />
+            </SidebarGroupContent>
+          </SidebarGroup>
+        )}
         <SidebarGroup>
           <SidebarGroupContent>
             <SidebarMenu>

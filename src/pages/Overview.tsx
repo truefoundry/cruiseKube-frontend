@@ -6,6 +6,7 @@ import {
   Server,
   Zap,
   LayoutList,
+  LayoutDashboard,
   Cpu,
   HardDrive,
   Info,
@@ -365,6 +366,15 @@ export default function Overview() {
   return (
     <div className="min-w-0 w-full max-w-full animate-fade-in">
       <div className="mx-auto max-w-[1600px] px-4 py-6 sm:px-6 lg:px-8 space-y-8">
+        <div>
+          <h1 className="flex items-center gap-2 text-2xl font-semibold text-foreground">
+            <LayoutDashboard className="h-6 w-6 shrink-0 text-muted-foreground" />
+            Overview
+          </h1>
+          <p className="text-sm text-muted-foreground">
+            Cluster cost, savings, adoption, and resource usage with historical CPU, memory, and cost trends.
+          </p>
+        </div>
         {error && (
           <Alert variant="destructive">
             <AlertTriangle className="h-4 w-4" />
