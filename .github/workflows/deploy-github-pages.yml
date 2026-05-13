@@ -1,27 +1,23 @@
-# Deploy static build to GitHub Pages (Settings → Pages → Source: GitHub Actions).
-# Runs on pushes to `main` (including merges). Demo mode is enabled so the site works without a backend.
+# Build on every PR/push to `main`; on pushes to `main`, deploy `dist` to the `gh-pages` branch.
+# In the repo: Settings → Pages → Build and deployment → Source: **Deploy from a branch** → Branch **gh-pages** / folder **/ (root)**.
+# Demo mode is enabled in CI so the published site works without a backend.
 
 name: Deploy GitHub Pages
 
 on:
-  pull_request:
-    branches:
-      - main
   push:
     branches:
       - main
 
 permissions:
-  contents: read
-  pages: write
-  id-token: write
+  contents: write
 
 concurrency:
   group: pages
   cancel-in-progress: false
 
 jobs:
-  build:
+  build-and-deploy:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -52,18 +48,10 @@ jobs:
       - name: SPA fallback (client-side routes on refresh)
         run: cp dist/index.html dist/404.html
 
-      - name: Upload Pages artifact
-        uses: actions/upload-pages-artifact@v3
+      - name: Push to gh-pages branch
+        uses: peaceiris/actions-gh-pages@v4
         with:
-          path: dist
-
-  deploy:
-    needs: build
-    runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    steps:
-      - name: Deploy to GitHub Pages
-        id: deployment
-        uses: actions/deploy-pages@v4
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_branch: gh-pages
+          publish_dir: ./dist
+          force_orphan: true

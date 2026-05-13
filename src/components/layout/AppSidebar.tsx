@@ -50,7 +50,7 @@ const helpLinks = [
   },
   {
     title: "Documentation",
-    href: "https://cruisekube.com/src/gs-installation/",
+    href: "https://cruisekube.com/",
     icon: BookOpen,
   },
   {
@@ -201,7 +201,7 @@ export function AppSidebar() {
               <Tooltip>
                 <TooltipTrigger asChild>
                   <div className="flex justify-center py-0.5 text-sidebar-foreground/50" aria-label={`Version ${config.version}`}>
-                    <Tag className="h-3.5 w-3.5" />
+                    <Tag className="h-4 w-4" />
                   </div>
                 </TooltipTrigger>
                 <TooltipContent side="right" className="font-mono text-xs max-w-xs break-all">
