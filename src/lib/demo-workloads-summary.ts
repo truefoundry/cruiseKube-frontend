@@ -1,5 +1,4 @@
 import type { WorkloadDetail, WorkloadSummaryResponse } from "@/lib/api";
-import { calculateDollarSavings } from "@/lib/transformers";
 
 /** Same strings as `EXCLUDED_CODES` in api.ts — inlined to avoid circular import (api → demo-store → this file → api). */
 const XC = {
@@ -53,47 +52,34 @@ const resMem = (
 });
 
 /**
- * When Cruise is on, applied requests match recommendations (current === recommended.avg).
- * `recommended.change` is kept as the frozen delta vs the prior request so savings / reliability
- * dollars still follow product rules:
- * - rec > prior on a dimension → reliability (spend); rec < prior → savings on that dimension.
- * - both dimensions down → positive savings, no reliability cost; both up → reliability cost,
- *   net savings negative; mixed → net can be either sign.
+ * Per-pod-average rule for the workload table:
+ *   - CruiseKube enabled  → `pod_current_avg` mirrors `recommended.avg` (the recommendation
+ *     is being applied continuously, so the actual per-pod allocation equals the rec).
+ *   - CruiseKube disabled → `pod_current_avg` mirrors `current` (nothing is being applied,
+ *     so the actual per-pod allocation equals the configured workload request).
  */
-function applyCruiseEnabledWorkloadTableRules(w: WorkloadDetail): WorkloadDetail {
-  if (!w.config.cruiseEnabled) return w;
-
-  const cpuDelta = w.cpu.recommended.change;
-  const memDelta = w.memory.recommended.change;
-  const avgCpu = w.cpu.recommended.avg;
-  const avgMem = w.memory.recommended.avg;
-
-  const cpuReliabilityCores = Math.max(0, cpuDelta);
-  const cpuSavingsCores = Math.max(0, -cpuDelta);
-  const memReliabilityMb = Math.max(0, memDelta);
-  const memSavingsMb = Math.max(0, -memDelta);
-
-  const dollarExpenditurePerMonth = calculateDollarSavings(cpuReliabilityCores, memReliabilityMb / 1024);
-  const dollarSavingsPerMonth = calculateDollarSavings(cpuSavingsCores, memSavingsMb / 1024);
-
+function applyPodAvgRule(w: WorkloadDetail): WorkloadDetail {
+  if (w.config.cruiseEnabled) {
+    return {
+      ...w,
+      cpu: { ...w.cpu, pod_current_avg: w.cpu.recommended.avg },
+      memory: { ...w.memory, pod_current_avg: w.memory.recommended.avg },
+    };
+  }
   return {
     ...w,
-    cpu: {
-      ...w.cpu,
-      current: avgCpu,
-      recommended: { ...w.cpu.recommended, change: cpuDelta },
-    },
-    memory: {
-      ...w.memory,
-      current: avgMem,
-      recommended: { ...w.memory.recommended, change: memDelta },
-    },
-    dollarSavingsPerMonth,
-    dollarExpenditurePerMonth,
+    cpu: { ...w.cpu, pod_current_avg: w.cpu.current },
+    memory: { ...w.memory, pod_current_avg: w.memory.current },
   };
 }
 
-/** Reliability $ only when recommended increases CPU or memory (positive `change`). */
+/**
+ * Reliability $ is only paid when at least one recommendation increased over the
+ * configured workload (positive `change`). When both recommendations decrease,
+ * expenditure is forced to 0 so the workload shows pure savings (rule 4).
+ * When at least one recommendation increases, the stored expenditure is kept so
+ * the table can show "Reliability ↑" (rules 2, 3, and 5).
+ */
 function applyReliabilityExpenditureRule(w: WorkloadDetail): WorkloadDetail {
   const cpuUp = w.cpu.recommended.change > 1e-9;
   const memUp = w.memory.recommended.change > 1e-9;
@@ -647,6 +633,23 @@ const WORKLOADS_EXTRA_CASES: WorkloadDetail[] = [
     dollarExpenditurePerMonth: 18.25,
     config: cfg({ criticalityLevel: "very-high", cruiseEnabled: false }),
   },
+  // Cruise-enabled, both CPU and memory recommendations are higher than the configured
+  // workload — rule 3: reliability is increased, net savings are negative.
+  {
+    workloadID: "Deployment:production:auth-gateway",
+    kind: "Deployment",
+    namespace: "production",
+    name: "auth-gateway",
+    updatedAt: 1778644580,
+    podsCount: 4,
+    scaledDown: false,
+    constraints: cons(),
+    cpu: resCpu(0.5, { min: 0.75, avg: 0.85, max: 0.95, change: 0.35 }, 0.45),
+    memory: resMem(1024, { min: 1280, avg: 1408, max: 1536, change: 384 }, 950),
+    dollarSavingsPerMonth: 0,
+    dollarExpenditurePerMonth: 14.4,
+    config: cfg({ criticalityLevel: "high", cruiseEnabled: true }),
+  },
 ];
 
 const IMPACT_FROM_API: WorkloadSummaryResponse["impactSummary"] = {
@@ -669,7 +672,7 @@ const IMPACT_FROM_API: WorkloadSummaryResponse["impactSummary"] = {
 
 export function createDemoWorkloadSummary(): WorkloadSummaryResponse {
   const workloadDetails = [...WORKLOADS_FROM_API, ...WORKLOADS_EXTRA_CASES]
-    .map(applyCruiseEnabledWorkloadTableRules)
+    .map(applyPodAvgRule)
     .map(applyReliabilityExpenditureRule);
   return {
     impactSummary: { ...IMPACT_FROM_API },
