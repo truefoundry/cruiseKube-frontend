@@ -29,6 +29,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { useConfig } from "@/contexts/ConfigContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { ClusterSelector } from "@/components/ClusterSelector";
+import { publicUrl } from "@/lib/public-asset";
 
 const navItems = [
   { title: "Overview", url: "/", icon: LayoutDashboard },
@@ -60,6 +61,8 @@ const helpLinks = [
   },
 ] as const;
 
+const logoMaskUrl = publicUrl("logo.svg");
+
 export function AppSidebar() {
   const { state } = useSidebar();
   const isCollapsed = state === "collapsed";
@@ -74,8 +77,8 @@ export function AppSidebar() {
             <div
               className="h-7 w-7 shrink-0 bg-white opacity-80"
               style={{
-                maskImage: "url(/logo.svg)",
-                WebkitMaskImage: "url(/logo.svg)",
+                maskImage: `url(${logoMaskUrl})`,
+                WebkitMaskImage: `url(${logoMaskUrl})`,
                 maskSize: "contain",
                 maskRepeat: "no-repeat",
                 maskPosition: "center",

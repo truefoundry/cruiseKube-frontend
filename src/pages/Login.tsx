@@ -12,6 +12,9 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { publicUrl } from "@/lib/public-asset";
+
+const logoMaskUrl = publicUrl("logo.svg");
 
 export default function Login() {
   const { login, isAuthenticated, isSubmitting, authEnabled, authLoading } = useAuth();
@@ -90,8 +93,8 @@ export default function Login() {
           <div
             className="h-20 w-20 shrink-0 rounded-2xl bg-[#f0f6fc] shadow-[0_8px_32px_-6px_hsl(var(--primary)/0.45)]"
             style={{
-              maskImage: "url(/logo.svg)",
-              WebkitMaskImage: "url(/logo.svg)",
+              maskImage: `url(${logoMaskUrl})`,
+              WebkitMaskImage: `url(${logoMaskUrl})`,
               maskSize: "contain",
               maskRepeat: "no-repeat",
               maskPosition: "center",
