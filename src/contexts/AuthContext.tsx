@@ -23,6 +23,8 @@ interface AuthContextValue {
   username: string | null;
   isAuthenticated: boolean;
   isSubmitting: boolean;
+  authEnabled: boolean;
+  authLoading: boolean;
   login: (credentials: LoginRequest) => Promise<void>;
   logout: () => void;
 }
@@ -43,6 +45,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const queryClient = useQueryClient();
   const [session, setSession] = useState(() => initialAuthSession());
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [authEnabled, setAuthEnabled] = useState(true);
+  const [authLoading, setAuthLoading] = useState(true);
 
   useEffect(() => {
     if (!isDemoMode) return;
@@ -61,13 +65,37 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     setApiUnauthorizedHandler(() => {
+      if (!authEnabled) return;
       clearAuthSession();
       setSession(null);
       queryClient.clear();
       navigate("/login", { replace: true });
     });
     return () => setApiUnauthorizedHandler(null);
-  }, [navigate, queryClient]);
+  }, [authEnabled, navigate, queryClient]);
+
+  useEffect(() => {
+    let cancelled = false;
+    apiClient.getAuthInfo()
+      .then((info) => {
+        if (!cancelled) {
+          // Only disable auth on an explicit boolean false; otherwise keep the
+          // fail-safe default (enabled). This prevents a missing or malformed
+          // `auth_enabled` field (e.g. during a rolling upgrade with an older
+          // backend) from accidentally bypassing authentication.
+          setAuthEnabled(info.auth_enabled === false ? false : true);
+        }
+      })
+      .catch(() => {
+        // On error, default to auth enabled (fail-safe: show login)
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setAuthLoading(false);
+        }
+      });
+    return () => { cancelled = true; };
+  }, []);
 
   const login = useCallback(async (credentials: LoginRequest) => {
     setIsSubmitting(true);
@@ -88,12 +116,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const value = useMemo<AuthContextValue>(
     () => ({
       username: session?.username ?? null,
-      isAuthenticated: Boolean(session?.basicToken),
+      isAuthenticated: !authEnabled || Boolean(session?.basicToken),
       isSubmitting,
+      authEnabled,
+      authLoading,
       login,
       logout,
     }),
-    [session, isSubmitting, login, logout]
+    [session, isSubmitting, login, logout, authEnabled, authLoading]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

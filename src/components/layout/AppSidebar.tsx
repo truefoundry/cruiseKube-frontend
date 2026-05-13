@@ -64,7 +64,7 @@ export function AppSidebar() {
   const { state } = useSidebar();
   const isCollapsed = state === "collapsed";
   const { config } = useConfig();
-  const { username, logout } = useAuth();
+  const { username, logout, authEnabled } = useAuth();
 
   return (
     <Sidebar collapsible="icon" className="border-r border-sidebar-border">
@@ -135,39 +135,41 @@ export function AppSidebar() {
       </SidebarContent>
 
       <div className="mt-auto shrink-0 border-t border-sidebar-border p-2 space-y-3">
-        <SidebarGroup className="p-0">
-          <SidebarGroupLabel>Account</SidebarGroupLabel>
-          <SidebarGroupContent>
-            <SidebarMenu>
-              {!isCollapsed && username ? (
+        {authEnabled && (
+          <SidebarGroup className="p-0">
+            <SidebarGroupLabel>Account</SidebarGroupLabel>
+            <SidebarGroupContent>
+              <SidebarMenu>
+                {!isCollapsed && username ? (
+                  <SidebarMenuItem>
+                    <div
+                      className="cursor-default select-none truncate px-3 py-1.5 text-xs text-sidebar-foreground/80"
+                      title={username}
+                    >
+                      {username}
+                    </div>
+                  </SidebarMenuItem>
+                ) : null}
                 <SidebarMenuItem>
-                  <div
-                    className="cursor-default select-none truncate px-3 py-1.5 text-xs text-sidebar-foreground/80"
-                    title={username}
+                  <SidebarMenuButton
+                    asChild
+                    tooltip={isCollapsed ? "Sign out" : undefined}
+                    className={cn(isCollapsed && "justify-center")}
                   >
-                    {username}
-                  </div>
+                    <button
+                      type="button"
+                      onClick={() => logout()}
+                      className="cursor-pointer select-none [&>span]:pointer-events-none [&>svg]:pointer-events-none"
+                    >
+                      <LogOut className="h-4 w-4 shrink-0" />
+                      {!isCollapsed && <span>Sign out</span>}
+                    </button>
+                  </SidebarMenuButton>
                 </SidebarMenuItem>
-              ) : null}
-              <SidebarMenuItem>
-                <SidebarMenuButton
-                  asChild
-                  tooltip={isCollapsed ? "Sign out" : undefined}
-                  className={cn(isCollapsed && "justify-center")}
-                >
-                  <button
-                    type="button"
-                    onClick={() => logout()}
-                    className="cursor-pointer select-none [&>span]:pointer-events-none [&>svg]:pointer-events-none"
-                  >
-                    <LogOut className="h-4 w-4 shrink-0" />
-                    {!isCollapsed && <span>Sign out</span>}
-                  </button>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        )}
 
         <SidebarGroup className="p-0">
           <SidebarGroupLabel>Get help</SidebarGroupLabel>
