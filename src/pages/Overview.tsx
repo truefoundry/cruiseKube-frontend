@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, type Dispatch, type SetStateAction } from "react";
 import {
   DollarSign,
   TrendingDown,
@@ -69,6 +69,40 @@ function presetToMs(preset: TimeRangePreset): number | null {
 /** Clamp duration to [TIMELINE_MIN_MS, TIMELINE_MAX_MS]. */
 function clampDurationMs(ms: number): number {
   return Math.max(TIMELINE_MIN_MS, Math.min(TIMELINE_MAX_MS, ms));
+}
+
+function computeTimelineDateRange(
+  timeRangePreset: TimeRangePreset,
+  customStart: string,
+  customEnd: string
+): { startTime: string; endTime: string } {
+  const now = Date.now();
+  let endMs: number;
+  let startMs: number;
+
+  if (timeRangePreset === "custom" && customStart && customEnd) {
+    const start = new Date(customStart).getTime();
+    const end = new Date(customEnd).getTime();
+    if (Number.isFinite(start) && Number.isFinite(end) && end > start) {
+      const duration = clampDurationMs(end - start);
+      endMs = Math.min(end, now);
+      startMs = endMs - duration;
+    } else {
+      const duration = clampDurationMs(7 * 24 * 60 * 60 * 1000);
+      endMs = now;
+      startMs = endMs - duration;
+    }
+  } else {
+    const presetMs = presetToMs(timeRangePreset);
+    const duration = presetMs != null ? clampDurationMs(presetMs) : clampDurationMs(7 * 24 * 60 * 60 * 1000);
+    endMs = now;
+    startMs = endMs - duration;
+  }
+
+  return {
+    startTime: new Date(startMs).toISOString(),
+    endTime: new Date(endMs).toISOString(),
+  };
 }
 
 const DEFAULT_COVERAGE = { enabled: 0, disabled: 0 };
@@ -211,13 +245,15 @@ function OverviewTimelineRangePresets({
   customEnd,
   setCustomStart,
   setCustomEnd,
+  "aria-label": ariaLabel = "Chart time range",
 }: {
   timeRangePreset: TimeRangePreset;
-  setTimeRangePreset: (p: TimeRangePreset) => void;
+  setTimeRangePreset: Dispatch<SetStateAction<TimeRangePreset>>;
   customStart: string;
   customEnd: string;
-  setCustomStart: (v: string) => void;
-  setCustomEnd: (v: string) => void;
+  setCustomStart: Dispatch<SetStateAction<string>>;
+  setCustomEnd: Dispatch<SetStateAction<string>>;
+  "aria-label"?: string;
 }) {
   const onCustomClick = () => {
     setTimeRangePreset("custom");
@@ -233,7 +269,7 @@ function OverviewTimelineRangePresets({
     <div
       className="flex shrink-0 gap-px rounded-md border border-border/50 bg-muted/10 p-px"
       role="group"
-      aria-label="Chart time range"
+      aria-label={ariaLabel}
     >
       {TIMELINE_RANGE_PRESETS.map((preset) => (
         <Button
@@ -265,39 +301,21 @@ export default function Overview() {
   const { selectedClusterId } = useCluster();
 
   const [historicalMetric, setHistoricalMetric] = useState<"cpu" | "memory">("cpu");
-  const [timeRangePreset, setTimeRangePreset] = useState<TimeRangePreset>("6h");
-  const [customStart, setCustomStart] = useState<string>("");
-  const [customEnd, setCustomEnd] = useState<string>("");
+  const [resourceTimeRangePreset, setResourceTimeRangePreset] = useState<TimeRangePreset>("6h");
+  const [resourceCustomStart, setResourceCustomStart] = useState<string>("");
+  const [resourceCustomEnd, setResourceCustomEnd] = useState<string>("");
+  const [costTimeRangePreset, setCostTimeRangePreset] = useState<TimeRangePreset>("6h");
+  const [costCustomStart, setCostCustomStart] = useState<string>("");
+  const [costCustomEnd, setCostCustomEnd] = useState<string>("");
 
-  const historicalDateRange = useMemo(() => {
-    const now = Date.now();
-    let endMs: number;
-    let startMs: number;
-
-    if (timeRangePreset === "custom" && customStart && customEnd) {
-      const start = new Date(customStart).getTime();
-      const end = new Date(customEnd).getTime();
-      if (Number.isFinite(start) && Number.isFinite(end) && end > start) {
-        const duration = clampDurationMs(end - start);
-        endMs = Math.min(end, now);
-        startMs = endMs - duration;
-      } else {
-        const duration = clampDurationMs(7 * 24 * 60 * 60 * 1000);
-        endMs = now;
-        startMs = endMs - duration;
-      }
-    } else {
-      const presetMs = presetToMs(timeRangePreset);
-      const duration = presetMs != null ? clampDurationMs(presetMs) : clampDurationMs(7 * 24 * 60 * 60 * 1000);
-      endMs = now;
-      startMs = endMs - duration;
-    }
-
-    return {
-      startTime: new Date(startMs).toISOString(),
-      endTime: new Date(endMs).toISOString(),
-    };
-  }, [timeRangePreset, customStart, customEnd]);
+  const resourceDateRange = useMemo(
+    () => computeTimelineDateRange(resourceTimeRangePreset, resourceCustomStart, resourceCustomEnd),
+    [resourceTimeRangePreset, resourceCustomStart, resourceCustomEnd]
+  );
+  const costDateRange = useMemo(
+    () => computeTimelineDateRange(costTimeRangePreset, costCustomStart, costCustomEnd),
+    [costTimeRangePreset, costCustomStart, costCustomEnd]
+  );
 
   const [overviewResult, historicalResult, costHistoricalResult] = useQueries({
     queries: [
@@ -308,25 +326,39 @@ export default function Overview() {
         retry: 1,
       },
       {
-        queryKey: ["overview", "historical", selectedClusterId, historicalMetric, historicalDateRange.startTime, historicalDateRange.endTime],
+        queryKey: [
+          "overview",
+          "historical",
+          selectedClusterId,
+          historicalMetric,
+          resourceDateRange.startTime,
+          resourceDateRange.endTime,
+        ],
         queryFn: () =>
           apiClient.getHistoricalTimeline(
             selectedClusterId!,
             historicalMetric,
-            historicalDateRange.startTime,
-            historicalDateRange.endTime
+            resourceDateRange.startTime,
+            resourceDateRange.endTime
           ),
         enabled: !!selectedClusterId,
         retry: 1,
       },
       {
-        queryKey: ["overview", "historical", "cost", selectedClusterId, historicalDateRange.startTime, historicalDateRange.endTime],
+        queryKey: [
+          "overview",
+          "historical",
+          "cost",
+          selectedClusterId,
+          costDateRange.startTime,
+          costDateRange.endTime,
+        ],
         queryFn: () =>
           apiClient.getHistoricalTimeline(
             selectedClusterId!,
             "cost",
-            historicalDateRange.startTime,
-            historicalDateRange.endTime
+            costDateRange.startTime,
+            costDateRange.endTime
           ),
         enabled: !!selectedClusterId,
         retry: 1,
@@ -430,7 +462,7 @@ export default function Overview() {
             Overview
           </h1>
           <p className="text-sm text-muted-foreground">
-            Cluster cost, savings, adoption, and resource usage with historical CPU, memory, and cost trends.
+            Cluster cost, savings, adoption, and resource usage with CPU, memory, and cost timelines.
           </p>
         </div>
         {error && (
@@ -803,6 +835,8 @@ export default function Overview() {
           </div>
         </section>
 
+
+
         {/* Bottom: CPU & Memory efficiency */}
         <section aria-labelledby="efficiency-heading">
           <div className="mb-4 flex items-center gap-2">
@@ -994,16 +1028,17 @@ export default function Overview() {
           </div>
         </section>
 
-    {/* Historical Timeline */}
-        <section aria-labelledby="historical-timeline-heading" className="space-y-4">
+
+        {/* Cost Timeline */}
+        <section aria-labelledby="cost-timeline-heading" className="space-y-4">
           <div className="space-y-2">
             <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
               <div className="flex min-w-0 items-center gap-1.5">
                 <h2
-                  id="historical-timeline-heading"
+                  id="cost-timeline-heading"
                   className="text-sm font-semibold uppercase tracking-wider text-muted-foreground"
                 >
-                  Historical timeline
+                  Cost timeline
                 </h2>
                 <TooltipProvider>
                   <Tooltip>
@@ -1012,16 +1047,179 @@ export default function Overview() {
                         type="button"
                         className="inline-flex text-muted-foreground hover:text-foreground focus:outline-none"
                         onClick={(e) => e.stopPropagation()}
-                        aria-label="Historical timeline explained"
+                        aria-label="Cost timeline explained"
                       >
                         <Info className="h-3.5 w-3.5" />
                       </button>
                     </TooltipTrigger>
                     <TooltipContent side="bottom" className="max-w-sm p-4 text-left">
                       <div className="space-y-2">
-                        <p className="font-medium text-foreground">Historical timeline</p>
+                        <p className="font-medium text-foreground">Cost timeline</p>
                         <p className="text-xs text-muted-foreground">
-                          Shows resource history for the selected time range. Switch between CPU and memory to compare allocatable capacity, requests, recommendations, and observed usage over time.
+                          Uses the time range you set for this chart (independent of the resource timeline). Shows how monthly run-rate and savings trend over that period.
+                        </p>
+                        <ul className="space-y-1 text-xs text-muted-foreground">
+                          <li>Hourly Cost Without CruiseKube: estimated hourly cost before CruiseKube optimization.</li>
+                          <li>Hourly Cost: the effective current hourly cost reflected in the cluster.</li>
+                          <li>Hourly Cost With CruiseKube: estimated hourly cost after applying CruiseKube optimization.</li>
+                        </ul>
+                      </div>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              </div>
+              <OverviewTimelineRangePresets
+                timeRangePreset={costTimeRangePreset}
+                setTimeRangePreset={setCostTimeRangePreset}
+                customStart={costCustomStart}
+                customEnd={costCustomEnd}
+                setCustomStart={setCostCustomStart}
+                setCustomEnd={setCostCustomEnd}
+                aria-label="Cost chart time range"
+              />
+            </div>
+            {costTimeRangePreset === "custom" && (
+              <div className="flex flex-wrap items-center gap-3 border-b border-border/40 pb-2">
+                <div className="flex items-center gap-2">
+                  <Label htmlFor="overview-cost-timeline-start" className="text-[11px] text-muted-foreground/90 whitespace-nowrap">
+                    Start
+                  </Label>
+                  <Input
+                    id="overview-cost-timeline-start"
+                    type="datetime-local"
+                    value={costCustomStart}
+                    onChange={(e) => setCostCustomStart(e.target.value)}
+                    className="h-7 w-[11rem] text-[11px]"
+                  />
+                </div>
+                <div className="flex items-center gap-2">
+                  <Label htmlFor="overview-cost-timeline-end" className="text-[11px] text-muted-foreground/90 whitespace-nowrap">
+                    End
+                  </Label>
+                  <Input
+                    id="overview-cost-timeline-end"
+                    type="datetime-local"
+                    value={costCustomEnd}
+                    onChange={(e) => setCostCustomEnd(e.target.value)}
+                    className="h-7 w-[11rem] text-[11px]"
+                  />
+                </div>
+              </div>
+            )}
+          </div>
+          <div className="metric-card border-border overflow-hidden">
+            {isLoading || isLoadingCostHistorical ? (
+              <Skeleton className="h-[320px] w-full" />
+            ) : costTimelineData.length === 0 ? (
+              <div className="flex h-[320px] items-center justify-center text-sm text-muted-foreground">
+                No cost data for this period
+              </div>
+            ) : (
+              <ChartContainer
+                config={costChartConfig}
+                className="h-[320px] w-full"
+              >
+                <ComposedChart data={costTimelineData} margin={{ top: 8, right: 8, left: 8, bottom: 8 }}>
+                  <CartesianGrid strokeDasharray="3 3" className="stroke-border/50" />
+                  <XAxis
+                    dataKey="time"
+                    tick={{ fill: "hsl(var(--muted-foreground))" }}
+                    axisLine={{ stroke: "hsl(var(--border))" }}
+                    tickLine={{ stroke: "hsl(var(--border))" }}
+                  />
+                  <YAxis
+                    tickFormatter={(v) => `$${v}`}
+                    tick={{ fill: "hsl(var(--muted-foreground))" }}
+                    axisLine={{ stroke: "hsl(var(--border))" }}
+                    tickLine={{ stroke: "hsl(var(--border))" }}
+                  />
+                  <ChartTooltip
+                    content={({ active, payload }) => {
+                      if (!active || !payload?.length) return null;
+                      const sorted = [...payload].sort(
+                        (a, b) => (Number(b.value) || 0) - (Number(a.value) || 0)
+                      );
+                      return (
+                        <div className="grid min-w-[8rem] items-start gap-1.5 rounded-lg border border-border/50 bg-background px-2.5 py-1.5 text-xs shadow-xl">
+                          <div className="grid gap-1.5">
+                            {sorted.map((item) => (
+                              <div
+                                key={item.dataKey}
+                                className="flex flex-1 justify-between items-center gap-4"
+                              >
+                                <span
+                                  className="font-medium"
+                                  style={{ color: `var(--color-${String(item.name)})` }}
+                                >
+                                  {String(costChartConfig[item.name as keyof typeof costChartConfig]?.label ?? item.name)}
+                                </span>
+                                <span className="font-mono font-medium tabular-nums text-foreground">
+                                  ${Number(item.value).toLocaleString()}
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    }}
+                  />
+                  <ChartLegend content={<ChartLegendContent />} />
+                  {costSeriesKeys.map((key) =>
+                    key === "currentAllocatable" ? (
+                      <Area
+                        key={key}
+                        type="monotone"
+                        dataKey={key}
+                        fill={`var(--color-${key})`}
+                        fillOpacity={0.3}
+                        stroke={`var(--color-${key})`}
+                        strokeWidth={2.5}
+                      />
+                    ) : (
+                      <Line
+                        key={key}
+                        type="monotone"
+                        dataKey={key}
+                        stroke={`var(--color-${key})`}
+                        strokeWidth={3}
+                        dot={false}
+                      />
+                    )
+                  )}
+                </ComposedChart>
+              </ChartContainer>
+            )}
+          </div>
+        </section>
+
+    {/* Resource timeline (CPU / memory) */}
+        <section aria-labelledby="resource-timeline-heading" className="space-y-4">
+          <div className="space-y-2">
+            <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
+              <div className="flex min-w-0 items-center gap-1.5">
+                <h2
+                  id="resource-timeline-heading"
+                  className="text-sm font-semibold uppercase tracking-wider text-muted-foreground"
+                >
+                  Resource timeline
+                </h2>
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <button
+                        type="button"
+                        className="inline-flex text-muted-foreground hover:text-foreground focus:outline-none"
+                        onClick={(e) => e.stopPropagation()}
+                        aria-label="Resource timeline explained"
+                      >
+                        <Info className="h-3.5 w-3.5" />
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent side="bottom" className="max-w-sm p-4 text-left">
+                      <div className="space-y-2">
+                        <p className="font-medium text-foreground">Resource timeline</p>
+                        <p className="text-xs text-muted-foreground">
+                          Shows resource history for the time range you set here. Switch between CPU and memory to compare allocatable capacity, requests, recommendations, and observed usage over time.
                         </p>
                         <ul className="space-y-1 text-xs text-muted-foreground">
                           <li>Allocatable: total cluster capacity available to schedule workloads.</li>
@@ -1037,12 +1235,13 @@ export default function Overview() {
               </div>
               <div className="flex flex-wrap items-center justify-end gap-2">
                 <OverviewTimelineRangePresets
-                  timeRangePreset={timeRangePreset}
-                  setTimeRangePreset={setTimeRangePreset}
-                  customStart={customStart}
-                  customEnd={customEnd}
-                  setCustomStart={setCustomStart}
-                  setCustomEnd={setCustomEnd}
+                  timeRangePreset={resourceTimeRangePreset}
+                  setTimeRangePreset={setResourceTimeRangePreset}
+                  customStart={resourceCustomStart}
+                  customEnd={resourceCustomEnd}
+                  setCustomStart={setResourceCustomStart}
+                  setCustomEnd={setResourceCustomEnd}
+                  aria-label="Resource chart time range"
                 />
                 <div className="flex gap-px rounded-md border border-border/50 bg-muted/10 p-px">
                   <Button
@@ -1064,29 +1263,29 @@ export default function Overview() {
                 </div>
               </div>
             </div>
-            {timeRangePreset === "custom" && (
+            {resourceTimeRangePreset === "custom" && (
               <div className="flex flex-wrap items-center gap-3 border-b border-border/40 pb-2">
                 <div className="flex items-center gap-2">
-                  <Label htmlFor="overview-timeline-start" className="text-[11px] text-muted-foreground/90 whitespace-nowrap">
+                  <Label htmlFor="overview-resource-timeline-start" className="text-[11px] text-muted-foreground/90 whitespace-nowrap">
                     Start
                   </Label>
                   <Input
-                    id="overview-timeline-start"
+                    id="overview-resource-timeline-start"
                     type="datetime-local"
-                    value={customStart}
-                    onChange={(e) => setCustomStart(e.target.value)}
+                    value={resourceCustomStart}
+                    onChange={(e) => setResourceCustomStart(e.target.value)}
                     className="h-7 w-[11rem] text-[11px]"
                   />
                 </div>
                 <div className="flex items-center gap-2">
-                  <Label htmlFor="overview-timeline-end" className="text-[11px] text-muted-foreground/90 whitespace-nowrap">
+                  <Label htmlFor="overview-resource-timeline-end" className="text-[11px] text-muted-foreground/90 whitespace-nowrap">
                     End
                   </Label>
                   <Input
-                    id="overview-timeline-end"
+                    id="overview-resource-timeline-end"
                     type="datetime-local"
-                    value={customEnd}
-                    onChange={(e) => setCustomEnd(e.target.value)}
+                    value={resourceCustomEnd}
+                    onChange={(e) => setResourceCustomEnd(e.target.value)}
                     className="h-7 w-[11rem] text-[11px]"
                   />
                 </div>
@@ -1098,7 +1297,7 @@ export default function Overview() {
               <Skeleton className="h-[320px] w-full" />
             ) : historicalTimelineData.length === 0 ? (
               <div className="flex h-[320px] items-center justify-center text-sm text-muted-foreground">
-                No historical data for this period
+                No resource data for this period
               </div>
             ) : (
               <ChartContainer
@@ -1180,137 +1379,6 @@ export default function Overview() {
           </div>
         </section>
 
-        {/* Cost Timeline */}
-        <section aria-labelledby="cost-timeline-heading" className="space-y-4">
-          <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
-            <div className="flex min-w-0 items-center gap-1.5">
-              <h2
-                id="cost-timeline-heading"
-                className="text-sm font-semibold uppercase tracking-wider text-muted-foreground"
-              >
-                Cost timeline
-              </h2>
-              <TooltipProvider>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <button
-                      type="button"
-                      className="inline-flex text-muted-foreground hover:text-foreground focus:outline-none"
-                      onClick={(e) => e.stopPropagation()}
-                      aria-label="Cost timeline explained"
-                    >
-                      <Info className="h-3.5 w-3.5" />
-                    </button>
-                  </TooltipTrigger>
-                  <TooltipContent side="bottom" className="max-w-sm p-4 text-left">
-                    <div className="space-y-2">
-                      <p className="font-medium text-foreground">Cost timeline</p>
-                      <p className="text-xs text-muted-foreground">
-                        Uses the same time window as the historical chart. Shows how monthly run-rate and savings trend over that period.
-                      </p>
-                      <ul className="space-y-1 text-xs text-muted-foreground">
-                        <li>Hourly Cost Without CruiseKube: estimated hourly cost before CruiseKube optimization.</li>
-                        <li>Hourly Cost: the effective current hourly cost reflected in the cluster.</li>
-                        <li>Hourly Cost With CruiseKube: estimated hourly cost after applying CruiseKube optimization.</li>
-                      </ul>
-                    </div>
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
-            </div>
-            <OverviewTimelineRangePresets
-              timeRangePreset={timeRangePreset}
-              setTimeRangePreset={setTimeRangePreset}
-              customStart={customStart}
-              customEnd={customEnd}
-              setCustomStart={setCustomStart}
-              setCustomEnd={setCustomEnd}
-            />
-          </div>
-	          <div className="metric-card border-border overflow-hidden">
-            {isLoading || isLoadingCostHistorical ? (
-              <Skeleton className="h-[320px] w-full" />
-            ) : costTimelineData.length === 0 ? (
-              <div className="flex h-[320px] items-center justify-center text-sm text-muted-foreground">
-                No historical cost data for this period
-              </div>
-            ) : (
-              <ChartContainer
-                config={costChartConfig}
-                className="h-[320px] w-full"
-              >
-                <ComposedChart data={costTimelineData} margin={{ top: 8, right: 8, left: 8, bottom: 8 }}>
-                  <CartesianGrid strokeDasharray="3 3" className="stroke-border/50" />
-                  <XAxis
-                    dataKey="time"
-                    tick={{ fill: "hsl(var(--muted-foreground))" }}
-                    axisLine={{ stroke: "hsl(var(--border))" }}
-                    tickLine={{ stroke: "hsl(var(--border))" }}
-                  />
-                  <YAxis
-                    tickFormatter={(v) => `$${v}`}
-                    tick={{ fill: "hsl(var(--muted-foreground))" }}
-                    axisLine={{ stroke: "hsl(var(--border))" }}
-                    tickLine={{ stroke: "hsl(var(--border))" }}
-                  />
-                  <ChartTooltip
-                    content={({ active, payload }) => {
-                      if (!active || !payload?.length) return null;
-                      const sorted = [...payload].sort(
-                        (a, b) => (Number(b.value) || 0) - (Number(a.value) || 0)
-                      );
-                      return (
-                        <div className="grid min-w-[8rem] items-start gap-1.5 rounded-lg border border-border/50 bg-background px-2.5 py-1.5 text-xs shadow-xl">
-                          <div className="grid gap-1.5">
-                            {sorted.map((item) => (
-                              <div
-                                key={item.dataKey}
-                                className="flex flex-1 justify-between items-center gap-4"
-                              >
-                                <span
-                                  className="font-medium"
-                                  style={{ color: `var(--color-${String(item.name)})` }}
-                                >
-                                  {String(costChartConfig[item.name as keyof typeof costChartConfig]?.label ?? item.name)}
-                                </span>
-                                <span className="font-mono font-medium tabular-nums text-foreground">
-                                  ${Number(item.value).toLocaleString()}
-                                </span>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      );
-                    }}
-                  />
-                  <ChartLegend content={<ChartLegendContent />} />
-                  {costSeriesKeys.map((key) =>
-                    key === "currentAllocatable" ? (
-                      <Area
-                        key={key}
-                        type="monotone"
-                        dataKey={key}
-                        fill={`var(--color-${key})`}
-                        fillOpacity={0.3}
-                        stroke={`var(--color-${key})`}
-                        strokeWidth={2.5}
-                      />
-                    ) : (
-                      <Line
-                        key={key}
-                        type="monotone"
-                        dataKey={key}
-                        stroke={`var(--color-${key})`}
-                        strokeWidth={3}
-                        dot={false}
-                      />
-                    )
-                  )}
-                </ComposedChart>
-              </ChartContainer>
-            )}
-          </div>
-        </section>
 
       </div>
     </div>
