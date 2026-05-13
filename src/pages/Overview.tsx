@@ -202,6 +202,64 @@ function transformHistoricalTimelineResponse(raw: HistoricalTimelineResponse | n
   return { data, config };
 }
 
+const TIMELINE_RANGE_PRESETS: Exclude<TimeRangePreset, "custom">[] = ["6h", "24h", "7d", "30d"];
+
+function OverviewTimelineRangePresets({
+  timeRangePreset,
+  setTimeRangePreset,
+  customStart,
+  customEnd,
+  setCustomStart,
+  setCustomEnd,
+}: {
+  timeRangePreset: TimeRangePreset;
+  setTimeRangePreset: (p: TimeRangePreset) => void;
+  customStart: string;
+  customEnd: string;
+  setCustomStart: (v: string) => void;
+  setCustomEnd: (v: string) => void;
+}) {
+  const onCustomClick = () => {
+    setTimeRangePreset("custom");
+    if (!customStart || !customEnd) {
+      const end = new Date();
+      const start = new Date(end.getTime() - 7 * 24 * 60 * 60 * 1000);
+      setCustomEnd(end.toISOString().slice(0, 16));
+      setCustomStart(start.toISOString().slice(0, 16));
+    }
+  };
+
+  return (
+    <div
+      className="flex shrink-0 gap-px rounded-md border border-border/50 bg-muted/10 p-px"
+      role="group"
+      aria-label="Chart time range"
+    >
+      {TIMELINE_RANGE_PRESETS.map((preset) => (
+        <Button
+          key={preset}
+          type="button"
+          variant={timeRangePreset === preset ? "secondary" : "ghost"}
+          size="sm"
+          className="h-7 shrink-0 px-2 text-[11px] font-normal text-muted-foreground hover:text-foreground"
+          onClick={() => setTimeRangePreset(preset)}
+        >
+          {preset}
+        </Button>
+      ))}
+      <Button
+        type="button"
+        variant={timeRangePreset === "custom" ? "secondary" : "ghost"}
+        size="sm"
+        className="h-7 shrink-0 px-2 text-[11px] font-normal text-muted-foreground hover:text-foreground"
+        onClick={onCustomClick}
+      >
+        Custom
+      </Button>
+    </div>
+  );
+}
+
 export default function Overview() {
   const navigate = useNavigate();
   const { selectedClusterId } = useCluster();
@@ -936,154 +994,104 @@ export default function Overview() {
           </div>
         </section>
 
-    {/* Time range (for Historical + Cost timelines) */}
-        <section aria-labelledby="time-range-heading" className="space-y-3">
-          <h2
-            id="time-range-heading"
-            className="text-sm font-semibold uppercase tracking-wider text-muted-foreground"
-          >
-            Time range
-          </h2>
-          <div className="flex flex-wrap items-center gap-3">
-            <div className="flex gap-1 rounded-md border border-border bg-muted/30 p-0.5">
-              <Button
-                variant={timeRangePreset === "6h" ? "default" : "ghost"}
-                size="sm"
-                className="h-8 px-3 text-xs"
-                onClick={() => setTimeRangePreset("6h")}
-              >
-                6 hours
-              </Button>
-              <Button
-                variant={timeRangePreset === "24h" ? "default" : "ghost"}
-                size="sm"
-                className="h-8 px-3 text-xs"
-                onClick={() => setTimeRangePreset("24h")}
-              >
-                24 hours
-              </Button>
-              <Button
-                variant={timeRangePreset === "7d" ? "default" : "ghost"}
-                size="sm"
-                className="h-8 px-3 text-xs"
-                onClick={() => setTimeRangePreset("7d")}
-              >
-                7 days
-              </Button>
-              <Button
-                variant={timeRangePreset === "30d" ? "default" : "ghost"}
-                size="sm"
-                className="h-8 px-3 text-xs"
-                onClick={() => setTimeRangePreset("30d")}
-              >
-                30 days
-              </Button>
-              <Button
-                variant={timeRangePreset === "custom" ? "default" : "ghost"}
-                size="sm"
-                className="h-8 px-3 text-xs"
-                onClick={() => {
-                  setTimeRangePreset("custom");
-                  if (!customStart || !customEnd) {
-                    const end = new Date();
-                    const start = new Date(end.getTime() - 7 * 24 * 60 * 60 * 1000);
-                    setCustomEnd(end.toISOString().slice(0, 16));
-                    setCustomStart(start.toISOString().slice(0, 16));
-                  }
-                }}
-              >
-                Custom
-              </Button>
+    {/* Historical Timeline */}
+        <section aria-labelledby="historical-timeline-heading" className="space-y-4">
+          <div className="space-y-2">
+            <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
+              <div className="flex min-w-0 items-center gap-1.5">
+                <h2
+                  id="historical-timeline-heading"
+                  className="text-sm font-semibold uppercase tracking-wider text-muted-foreground"
+                >
+                  Historical timeline
+                </h2>
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <button
+                        type="button"
+                        className="inline-flex text-muted-foreground hover:text-foreground focus:outline-none"
+                        onClick={(e) => e.stopPropagation()}
+                        aria-label="Historical timeline explained"
+                      >
+                        <Info className="h-3.5 w-3.5" />
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent side="bottom" className="max-w-sm p-4 text-left">
+                      <div className="space-y-2">
+                        <p className="font-medium text-foreground">Historical timeline</p>
+                        <p className="text-xs text-muted-foreground">
+                          Shows resource history for the selected time range. Switch between CPU and memory to compare allocatable capacity, requests, recommendations, and observed usage over time.
+                        </p>
+                        <ul className="space-y-1 text-xs text-muted-foreground">
+                          <li>Allocatable: total cluster capacity available to schedule workloads.</li>
+                          <li>Requested: the cluster&apos;s current requested resources at that point in time.</li>
+                          <li>Original Requested: the resources configured at the workload level before CruiseKube recommendations are applied.</li>
+                          <li>Recommended: CruiseKube&apos;s suggested total after rightsizing.</li>
+                          <li>Usage: actual observed resource consumption.</li>
+                        </ul>
+                      </div>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              </div>
+              <div className="flex flex-wrap items-center justify-end gap-2">
+                <OverviewTimelineRangePresets
+                  timeRangePreset={timeRangePreset}
+                  setTimeRangePreset={setTimeRangePreset}
+                  customStart={customStart}
+                  customEnd={customEnd}
+                  setCustomStart={setCustomStart}
+                  setCustomEnd={setCustomEnd}
+                />
+                <div className="flex gap-px rounded-md border border-border/50 bg-muted/10 p-px">
+                  <Button
+                    variant={historicalMetric === "cpu" ? "secondary" : "ghost"}
+                    size="sm"
+                    className="h-7 px-2.5 text-[11px] font-normal text-muted-foreground hover:text-foreground"
+                    onClick={() => setHistoricalMetric("cpu")}
+                  >
+                    CPU
+                  </Button>
+                  <Button
+                    variant={historicalMetric === "memory" ? "secondary" : "ghost"}
+                    size="sm"
+                    className="h-7 px-2.5 text-[11px] font-normal text-muted-foreground hover:text-foreground"
+                    onClick={() => setHistoricalMetric("memory")}
+                  >
+                    Memory
+                  </Button>
+                </div>
+              </div>
             </div>
             {timeRangePreset === "custom" && (
-              <div className="flex flex-wrap items-center gap-3">
+              <div className="flex flex-wrap items-center gap-3 border-b border-border/40 pb-2">
                 <div className="flex items-center gap-2">
-                  <Label htmlFor="timeline-start" className="text-xs text-muted-foreground whitespace-nowrap">
+                  <Label htmlFor="overview-timeline-start" className="text-[11px] text-muted-foreground/90 whitespace-nowrap">
                     Start
                   </Label>
                   <Input
-                    id="timeline-start"
+                    id="overview-timeline-start"
                     type="datetime-local"
                     value={customStart}
                     onChange={(e) => setCustomStart(e.target.value)}
-                    className="h-8 text-xs w-[11rem]"
+                    className="h-7 w-[11rem] text-[11px]"
                   />
                 </div>
                 <div className="flex items-center gap-2">
-                  <Label htmlFor="timeline-end" className="text-xs text-muted-foreground whitespace-nowrap">
+                  <Label htmlFor="overview-timeline-end" className="text-[11px] text-muted-foreground/90 whitespace-nowrap">
                     End
                   </Label>
                   <Input
-                    id="timeline-end"
+                    id="overview-timeline-end"
                     type="datetime-local"
                     value={customEnd}
                     onChange={(e) => setCustomEnd(e.target.value)}
-                    className="h-8 text-xs w-[11rem]"
+                    className="h-7 w-[11rem] text-[11px]"
                   />
                 </div>
               </div>
             )}
-          </div>
-        </section>
-
-    {/* Historical Timeline */}
-	    <section aria-labelledby="historical-timeline-heading" className="space-y-4">
-	          <div className="flex flex-wrap items-center justify-between gap-4">
-	            <div className="flex items-center gap-1.5">
-	              <h2
-	                id="historical-timeline-heading"
-	                className="text-sm font-semibold uppercase tracking-wider text-muted-foreground"
-	              >
-	                Historical timeline
-	              </h2>
-	              <TooltipProvider>
-	                <Tooltip>
-	                  <TooltipTrigger asChild>
-	                    <button
-	                      type="button"
-	                      className="inline-flex text-muted-foreground hover:text-foreground focus:outline-none"
-	                      onClick={(e) => e.stopPropagation()}
-	                      aria-label="Historical timeline explained"
-	                    >
-	                      <Info className="h-3.5 w-3.5" />
-	                    </button>
-	                  </TooltipTrigger>
-	                  <TooltipContent side="bottom" className="max-w-sm p-4 text-left">
-	                    <div className="space-y-2">
-	                      <p className="font-medium text-foreground">Historical timeline</p>
-	                      <p className="text-xs text-muted-foreground">
-	                        Shows resource history for the selected time range. Switch between CPU and memory to compare allocatable capacity, requests, recommendations, and observed usage over time.
-	                      </p>
-	                      <ul className="space-y-1 text-xs text-muted-foreground">
-	                        <li>Allocatable: total cluster capacity available to schedule workloads.</li>
-	                        <li>Requested: the cluster&apos;s current requested resources at that point in time.</li>
-	                        <li>Original Requested: the resources configured at the workload level before CruiseKube recommendations are applied.</li>
-	                        <li>Recommended: CruiseKube&apos;s suggested total after rightsizing.</li>
-	                        <li>Usage: actual observed resource consumption.</li>
-	                      </ul>
-	                    </div>
-	                  </TooltipContent>
-	                </Tooltip>
-	              </TooltipProvider>
-	            </div>
-	            <div className="flex gap-1 rounded-md border border-border bg-muted/30 p-0.5">
-              <Button
-                variant={historicalMetric === "cpu" ? "default" : "ghost"}
-                size="sm"
-                className="h-8 px-3 text-xs"
-                onClick={() => setHistoricalMetric("cpu")}
-              >
-                CPU
-              </Button>
-              <Button
-                variant={historicalMetric === "memory" ? "default" : "ghost"}
-                size="sm"
-                className="h-8 px-3 text-xs"
-                onClick={() => setHistoricalMetric("memory")}
-              >
-                Memory
-              </Button>
-            </div>
           </div>
           <div className="metric-card border-border overflow-hidden">
             {isLoading || isLoadingHistorical ? (
@@ -1172,43 +1180,53 @@ export default function Overview() {
           </div>
         </section>
 
-	        {/* Cost Timeline */}
-	        <section aria-labelledby="cost-timeline-heading" className="space-y-4">
-	          <div className="flex items-center gap-1.5">
-	            <h2
-	              id="cost-timeline-heading"
-	              className="text-sm font-semibold uppercase tracking-wider text-muted-foreground"
-	            >
-	              Cost timeline
-	            </h2>
-	            <TooltipProvider>
-	              <Tooltip>
-	                <TooltipTrigger asChild>
-	                  <button
-	                    type="button"
-	                    className="inline-flex text-muted-foreground hover:text-foreground focus:outline-none"
-	                    onClick={(e) => e.stopPropagation()}
-	                    aria-label="Cost timeline explained"
-	                  >
-	                    <Info className="h-3.5 w-3.5" />
-	                  </button>
-	                </TooltipTrigger>
-	                <TooltipContent side="bottom" className="max-w-sm p-4 text-left">
-	                  <div className="space-y-2">
-	                    <p className="font-medium text-foreground">Cost timeline</p>
-	                    <p className="text-xs text-muted-foreground">
-	                      Shows how monthly run-rate and savings trend across the selected time range using the timeline window selected above.
-	                    </p>
-	                    <ul className="space-y-1 text-xs text-muted-foreground">
-	                      <li>Hourly Cost Without CruiseKube: estimated hourly cost before CruiseKube optimization.</li>
-	                      <li>Hourly Cost: the effective current hourly cost reflected in the cluster.</li>
-	                      <li>Hourly Cost With CruiseKube: estimated hourly cost after applying CruiseKube optimization.</li>
-	                    </ul>
-	                  </div>
-	                </TooltipContent>
-	              </Tooltip>
-	            </TooltipProvider>
-	          </div>
+        {/* Cost Timeline */}
+        <section aria-labelledby="cost-timeline-heading" className="space-y-4">
+          <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
+            <div className="flex min-w-0 items-center gap-1.5">
+              <h2
+                id="cost-timeline-heading"
+                className="text-sm font-semibold uppercase tracking-wider text-muted-foreground"
+              >
+                Cost timeline
+              </h2>
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <button
+                      type="button"
+                      className="inline-flex text-muted-foreground hover:text-foreground focus:outline-none"
+                      onClick={(e) => e.stopPropagation()}
+                      aria-label="Cost timeline explained"
+                    >
+                      <Info className="h-3.5 w-3.5" />
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom" className="max-w-sm p-4 text-left">
+                    <div className="space-y-2">
+                      <p className="font-medium text-foreground">Cost timeline</p>
+                      <p className="text-xs text-muted-foreground">
+                        Uses the same time window as the historical chart. Shows how monthly run-rate and savings trend over that period.
+                      </p>
+                      <ul className="space-y-1 text-xs text-muted-foreground">
+                        <li>Hourly Cost Without CruiseKube: estimated hourly cost before CruiseKube optimization.</li>
+                        <li>Hourly Cost: the effective current hourly cost reflected in the cluster.</li>
+                        <li>Hourly Cost With CruiseKube: estimated hourly cost after applying CruiseKube optimization.</li>
+                      </ul>
+                    </div>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            </div>
+            <OverviewTimelineRangePresets
+              timeRangePreset={timeRangePreset}
+              setTimeRangePreset={setTimeRangePreset}
+              customStart={customStart}
+              customEnd={customEnd}
+              setCustomStart={setCustomStart}
+              setCustomEnd={setCustomEnd}
+            />
+          </div>
 	          <div className="metric-card border-border overflow-hidden">
             {isLoading || isLoadingCostHistorical ? (
               <Skeleton className="h-[320px] w-full" />
