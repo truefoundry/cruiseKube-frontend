@@ -1,5 +1,4 @@
 import * as Sentry from "@sentry/react";
-import { usePostHog } from "@posthog/react";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -17,7 +16,6 @@ import WorkloadDetail from "./pages/WorkloadDetail";
 import Policies from "./pages/Policies";
 import Events from "./pages/Events";
 import NotFound from "./pages/NotFound";
-import { isPostHogEnabled } from "./posthog-config";
 import Login from "./pages/Login";
 
 
@@ -46,19 +44,6 @@ const AnalyticsPageTracker = () => {
   return null;
 };
 
-const PostHogPageViewTracker = () => {
-  const location = useLocation();
-  const posthogClient = usePostHog();
-
-  useEffect(() => {
-    posthogClient?.capture("$pageview", {
-      $current_url: window.location.href,
-    });
-  }, [location, posthogClient]);
-
-  return null;
-};
-
 const App = () => (
  <Sentry.ErrorBoundary fallback={<p>An unexpected error has occurred.</p>} showDialog>
   <QueryClientProvider client={queryClient}>
@@ -68,7 +53,6 @@ const App = () => (
       <BrowserRouter basename={import.meta.env.BASE_URL.replace(/\/$/, "") || undefined}>
         <AuthProvider>
           <AnalyticsPageTracker />
-          {isPostHogEnabled ? <PostHogPageViewTracker /> : null}
           <SentryRoutes>
             <Route path="/login" element={<Login />} />
             <Route element={<ProtectedLayout />}>

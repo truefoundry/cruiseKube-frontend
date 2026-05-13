@@ -38,8 +38,9 @@ if (isPostHogEnabled) {
     // Seed PostHog's distinct_id with the cached browser-local ID so the same
     // visitor is recognised across sessions.
     bootstrap: { distinctID: personId },
-    // SPA pageviews are tracked in App.tsx on route changes.
-    capture_pageview: true,
+    // Capture the initial pageview AND every SPA route change. Without this
+    // posthog-js only captures the first load (`true` == `'pageload'`).
+    capture_pageview: "history_change",
     session_recording: {
       // Avoid capturing sensitive input values by default.
       maskAllInputs: true,
