@@ -46,7 +46,7 @@ if (isPostHogEnabled) {
     },
     defaults: "2026-01-30",
   });
-  posthog.register({ source: "website", cruisekube_demo_mode: true });
+  posthog.register({ source: "demo-website", cruisekube_demo_mode: true });
 }
 
 const app = <App />;
