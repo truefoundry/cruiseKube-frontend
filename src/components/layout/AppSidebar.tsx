@@ -205,7 +205,10 @@ export function AppSidebar() {
             isCollapsed ? (
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <div className="flex justify-center py-0.5 text-sidebar-foreground/50" aria-label={`Version ${config.version}`}>
+                  <div
+                    className="flex cursor-pointer justify-center py-0.5 text-sidebar-foreground/50"
+                    aria-label={`Version ${config.version}`}
+                  >
                     <Tag className="h-4 w-4" />
                   </div>
                 </TooltipTrigger>

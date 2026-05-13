@@ -4,19 +4,23 @@ import posthog from "posthog-js";
 import { createRoot } from "react-dom/client";
 import App from "./App.tsx";
 import "./index.css";
+import { isDemoMode } from "./lib/demo-mode";
 import { isPostHogEnabled, posthogApiHost, posthogToken } from "./posthog-config";
 
 if (isPostHogEnabled) {
   posthog.init(posthogToken, {
     api_host: posthogApiHost,
     // SPA pageviews are tracked in App.tsx on route changes.
-    capture_pageview: false,
+    capture_pageview: true,
     session_recording: {
       // Avoid capturing sensitive input values by default.
       maskAllInputs: true,
     },
     defaults: "2026-01-30",
   });
+  if (isDemoMode) {
+    posthog.register({ cruisekube_demo_mode: true });
+  }
 }
 
 const app = <App />;
