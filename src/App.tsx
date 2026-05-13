@@ -18,6 +18,7 @@ import Events from "./pages/Events";
 import NotFound from "./pages/NotFound";
 import Login from "./pages/Login";
 
+
 const queryClient = new QueryClient();
 
 const SentryRoutes = Sentry.withSentryReactRouterV6Routing(Routes);
