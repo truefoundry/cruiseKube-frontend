@@ -440,6 +440,9 @@ export interface AuditEventPayload {
   details?: Record<string, unknown>;
 }
 
+/** Whether an audit row came from the cluster (CruiseKube controller) or from this web app. */
+export type AuditEventSource = "backend" | "website";
+
 /** Single audit event from GET .../clusters/:clusterID/audit-events?minutes=... */
 export interface AuditEvent {
   cluster_id: string;
@@ -447,6 +450,12 @@ export interface AuditEvent {
   category: string;
   payload: AuditEventPayload;
   created_at: string;
+  /**
+   * `backend`: emitted by CruiseKube in the cluster.
+   * `website`: recorded from user actions in this app.
+   * If omitted, clients should treat the event as `backend` for backward compatibility.
+   */
+  event_source?: AuditEventSource;
 }
 
 /** Response from GET .../clusters/:clusterID/audit-events?minutes=... */
