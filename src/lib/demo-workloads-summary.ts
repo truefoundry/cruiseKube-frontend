@@ -1,4 +1,5 @@
 import type { WorkloadDetail, WorkloadSummaryResponse } from "@/lib/api";
+import { calculateDollarSavings } from "@/lib/transformers";
 
 /** Same strings as `EXCLUDED_CODES` in api.ts — inlined to avoid circular import (api → demo-store → this file → api). */
 const XC = {
@@ -50,6 +51,47 @@ const resMem = (
   pod_current_avg: podAvg,
   recommended: { ...rec },
 });
+
+/**
+ * When Cruise is on, applied requests match recommendations (current === recommended.avg).
+ * `recommended.change` is kept as the frozen delta vs the prior request so savings / reliability
+ * dollars still follow product rules:
+ * - rec > prior on a dimension → reliability (spend); rec < prior → savings on that dimension.
+ * - both dimensions down → positive savings, no reliability cost; both up → reliability cost,
+ *   net savings negative; mixed → net can be either sign.
+ */
+function applyCruiseEnabledWorkloadTableRules(w: WorkloadDetail): WorkloadDetail {
+  if (!w.config.cruiseEnabled) return w;
+
+  const cpuDelta = w.cpu.recommended.change;
+  const memDelta = w.memory.recommended.change;
+  const avgCpu = w.cpu.recommended.avg;
+  const avgMem = w.memory.recommended.avg;
+
+  const cpuReliabilityCores = Math.max(0, cpuDelta);
+  const cpuSavingsCores = Math.max(0, -cpuDelta);
+  const memReliabilityMb = Math.max(0, memDelta);
+  const memSavingsMb = Math.max(0, -memDelta);
+
+  const dollarExpenditurePerMonth = calculateDollarSavings(cpuReliabilityCores, memReliabilityMb / 1024);
+  const dollarSavingsPerMonth = calculateDollarSavings(cpuSavingsCores, memSavingsMb / 1024);
+
+  return {
+    ...w,
+    cpu: {
+      ...w.cpu,
+      current: avgCpu,
+      recommended: { ...w.cpu.recommended, change: cpuDelta },
+    },
+    memory: {
+      ...w.memory,
+      current: avgMem,
+      recommended: { ...w.memory.recommended, change: memDelta },
+    },
+    dollarSavingsPerMonth,
+    dollarExpenditurePerMonth,
+  };
+}
 
 /** Reliability $ only when recommended increases CPU or memory (positive `change`). */
 function applyReliabilityExpenditureRule(w: WorkloadDetail): WorkloadDetail {
@@ -626,9 +668,9 @@ const IMPACT_FROM_API: WorkloadSummaryResponse["impactSummary"] = {
 };
 
 export function createDemoWorkloadSummary(): WorkloadSummaryResponse {
-  const workloadDetails = [...WORKLOADS_FROM_API, ...WORKLOADS_EXTRA_CASES].map(
-    applyReliabilityExpenditureRule
-  );
+  const workloadDetails = [...WORKLOADS_FROM_API, ...WORKLOADS_EXTRA_CASES]
+    .map(applyCruiseEnabledWorkloadTableRules)
+    .map(applyReliabilityExpenditureRule);
   return {
     impactSummary: { ...IMPACT_FROM_API },
     workloadDetails,

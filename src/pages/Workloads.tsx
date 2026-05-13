@@ -332,6 +332,9 @@ function workloadDetailToFrontend(d: WorkloadDetail): FrontendWorkload {
   const c = d.constraints;
   const podAvgCpu = d.cpu.pod_current_avg ?? d.cpu.podCurrentAvg;
   const podAvgMem = d.memory.pod_current_avg ?? d.memory.podCurrentAvg;
+  /** When Cruise is on, applied requests match recommendations (demo normalizes API rows the same way). */
+  const displayCpuCores = d.config.cruiseEnabled ? d.cpu.recommended.avg : d.cpu.current;
+  const displayMemMb = d.config.cruiseEnabled ? d.memory.recommended.avg : d.memory.current;
   return {
     id: d.workloadID,
     namespace: d.namespace,
@@ -340,10 +343,10 @@ function workloadDetailToFrontend(d: WorkloadDetail): FrontendWorkload {
     replicas: d.podsCount,
     potentialCpu: d.cpu.recommended.change,
     potentialMem: d.memory.recommended.change,
-    currentCpu: formatCpu(d.cpu.current),
+    currentCpu: formatCpu(displayCpuCores),
     podCurrentAvgCpu: typeof podAvgCpu === "number" ? formatCpu(podAvgCpu) : "—",
     recommendedCpu: formatCpu(d.cpu.recommended.avg),
-    currentMem: formatMemory(d.memory.current),
+    currentMem: formatMemory(displayMemMb),
     podCurrentAvgMem: typeof podAvgMem === "number" ? formatMemory(podAvgMem) : "—",
     recommendedMem: formatMemory(d.memory.recommended.avg),
     potentialDollars: d.dollarSavingsPerMonth,
@@ -1455,7 +1458,7 @@ export default function Workloads() {
                   </td>
                   <td className={`font-mono text-sm tabular-nums !text-right bg-muted/20 border-r border-b border-border min-w-0 overflow-hidden align-middle ${index === 0 ? "border-t" : ""}`}>
                     {workload.recommendedCpu}
-                    {workload.potentialCpu !== 0 && (
+                    {workload.mode !== "enabled" && workload.potentialCpu !== 0 && (
                       <span className={workload.potentialCpu > 0 ? "text-amber-500 dark:text-amber-400" : ""}>
                         <br /><span className="opacity-40">({formatCpuSigned(workload.potentialCpu)})</span>
                       </span>
@@ -1469,7 +1472,7 @@ export default function Workloads() {
                   </td>
                   <td className={`font-mono text-sm tabular-nums !text-right bg-muted/20 border-r border-b border-border min-w-0 overflow-hidden align-middle ${index === 0 ? "border-t" : ""}`}>
                     {workload.recommendedMem}
-                    {workload.potentialMem !== 0 && (
+                    {workload.mode !== "enabled" && workload.potentialMem !== 0 && (
                       <span className={workload.potentialMem > 0 ? "text-amber-500 dark:text-amber-400 opacity-100" : ""}>
                         <br /><span className="opacity-40">({formatMemorySigned(workload.potentialMem)})</span>
                       </span>

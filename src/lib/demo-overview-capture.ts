@@ -3,13 +3,35 @@ import { chartCostVars, chartSeriesVar, chartThresholdVar } from "@/theme";
 
 /**
  * Snapshot from GET .../ui/overview (cluster `default`) — used as demo seed.
- * Allocatable : requested : usage = 1 : 0.8 : 0.6 for CPU and memory headline stats.
+ *
+ * - CPU vs memory: requested/allocatable, usage/allocatable, and workloadRequested/allocatable
+ *   percentages stay within **5 percentage points** of each other across CPU and memory.
+ * - **currentMonthlyCost : currentSavings : possibleSavings** matches **CPU allocatable :
+ *   requested : workloadRequested** (original requested), up to integer rounding on the dollar fields.
  */
+const DEMO_CPU_ALLOC = 186.428;
+const DEMO_CPU_REQUESTED = 149.941;
+const DEMO_CPU_WORKLOAD_REQUESTED = 257.883;
+const DEMO_CPU_USAGE = 112.137;
+const DEMO_CPU_RECOMMENDED = 131.562;
+
+const DEMO_MEM_ALLOC = 564.228;
+const DEMO_MEM_REQUESTED = 429.941;
+const DEMO_MEM_WORKLOAD_REQUESTED = 764.528;
+const DEMO_MEM_USAGE = 355.628;
+const DEMO_MEM_RECOMMENDED = 392.315;
+
+/** Scale $ fields to same proportions as CPU alloc : requested : original requested (workloadRequested). */
+const DEMO_COST_ANCHOR = 4889;
+const DEMO_COST_SCALE = DEMO_COST_ANCHOR / DEMO_CPU_ALLOC;
+
 export const DEMO_OVERVIEW_CAPTURE: OverviewResponse = {
-  currentMonthlyCost: 4916,
-  currentSavings: 7918,
-  possibleSavings: 9783,
-  clusterUtilisation: 60,
+  currentMonthlyCost: Math.round(DEMO_COST_SCALE * DEMO_CPU_ALLOC),
+  currentSavings: Math.round(DEMO_COST_SCALE * DEMO_CPU_REQUESTED),
+  possibleSavings: Math.round(DEMO_COST_SCALE * DEMO_CPU_WORKLOAD_REQUESTED),
+  clusterUtilisation: Math.round(
+    ((DEMO_CPU_USAGE / DEMO_CPU_ALLOC + DEMO_MEM_USAGE / DEMO_MEM_ALLOC) / 2) * 100
+  ),
   nodeCount: 27,
   coverage: {
     adoption: {
@@ -28,18 +50,18 @@ export const DEMO_OVERVIEW_CAPTURE: OverviewResponse = {
     },
   },
   cpuStats: {
-    allocatable: 200,
-    requested: 160,
-    workloadRequested: 260,
-    usage: 120,
-    recommended: 144,
+    allocatable: DEMO_CPU_ALLOC,
+    requested: DEMO_CPU_REQUESTED,
+    workloadRequested: DEMO_CPU_WORKLOAD_REQUESTED,
+    usage: DEMO_CPU_USAGE,
+    recommended: DEMO_CPU_RECOMMENDED,
   },
   memoryStats: {
-    allocatable: 600,
-    requested: 480,
-    workloadRequested: 720,
-    usage: 360,
-    recommended: 432,
+    allocatable: DEMO_MEM_ALLOC,
+    requested: DEMO_MEM_REQUESTED,
+    workloadRequested: DEMO_MEM_WORKLOAD_REQUESTED,
+    usage: DEMO_MEM_USAGE,
+    recommended: DEMO_MEM_RECOMMENDED,
   },
 };
 
@@ -57,35 +79,52 @@ export const DEMO_TIMELINE_TIMESTAMPS: readonly string[] = [
   "2026-05-12T22:54:18.590584Z",
 ] as const;
 
-/** Memory timeline rows: [Allocatable, Requested, Original Requested, Usage, Recommended]; requested = 0.8×alloc, usage = 0.6×alloc. */
-function memoryOverviewRatioRow(alloc: number): readonly [number, number, number, number, number] {
-  return [alloc, 0.8 * alloc, 1.12 * alloc, 0.6 * alloc, 0.72 * alloc] as const;
+/** Per-row multipliers jitter around memory headline requested/usage ÷ allocatable. */
+const MEM_REQ_MUL: readonly number[] = [0.772, 0.758, 0.767, 0.761, 0.774, 0.756, 0.765, 0.759, 0.771, 0.757];
+const MEM_USE_MUL: readonly number[] = [0.635, 0.626, 0.638, 0.629, 0.624, 0.641, 0.627, 0.633, 0.625, 0.631];
+
+function round3(n: number): number {
+  return Math.round(n * 1000) / 1000;
 }
 
-export const DEMO_MEMORY_SERIES_ROWS: readonly (readonly [
-  number,
-  number,
-  number,
-  number,
-  number,
-])[] = [
-  memoryOverviewRatioRow(630.427),
-  memoryOverviewRatioRow(630.427),
-  memoryOverviewRatioRow(614.313),
-  memoryOverviewRatioRow(614.313),
-  memoryOverviewRatioRow(614.313),
-  memoryOverviewRatioRow(614.313),
-  memoryOverviewRatioRow(614.313),
-  memoryOverviewRatioRow(614.313),
-  memoryOverviewRatioRow(621.428),
-  memoryOverviewRatioRow(606.002),
-] as const;
+/** Memory timeline rows: [Allocatable, Requested, Original Requested, Usage, Recommended]. */
+function memoryOverviewRatioRow(alloc: number, rowIndex: number): readonly [number, number, number, number, number] {
+  const a = round3(alloc);
+  const mulR = MEM_REQ_MUL[rowIndex % MEM_REQ_MUL.length]!;
+  const mulU = MEM_USE_MUL[rowIndex % MEM_USE_MUL.length]!;
+  const requested = round3(a * mulR);
+  const usage = round3(a * mulU);
+  const origBump = 1.087 + (rowIndex % 5) * 0.009;
+  const originalRequested = round3(a * origBump);
+  const recMid = (requested + usage) / 2;
+  const recommended = round3(recMid * (1.014 + (rowIndex % 4) * 0.006));
+  return [a, requested, originalRequested, usage, recommended] as const;
+}
 
-/** First three CPU timeline rows; cols 0,1,3 follow alloc : requested : usage = 1 : 0.8 : 0.6; tail lerps to overview cpuStats. */
+const MEM_ALLOCS: readonly number[] = [
+  628.914, 631.205, 612.884, 615.991, 613.402, 616.778, 614.009, 611.227, 619.566, 605.441,
+];
+
+export const DEMO_MEMORY_SERIES_ROWS: readonly (readonly [number, number, number, number, number])[] =
+  MEM_ALLOCS.map((alloc, i) => memoryOverviewRatioRow(alloc, i)) as readonly (readonly [
+    number,
+    number,
+    number,
+    number,
+    number,
+  ])[];
+
+/** CPU timeline anchors: drift toward overview `cpuStats`; last row matches headline snapshot. */
 const CPU_ANCHOR_ROWS: readonly (readonly [number, number, number, number, number])[] = [
-  [205, 164, 229.6, 123, 147.6],
-  [202, 161.6, 226.24, 121.2, 145.44],
-  [200, 160, 224, 120, 144],
+  [193.281, 155.664, 250.881, 116.028, 135.891],
+  [189.902, 152.841, 254.112, 113.971, 133.118],
+  [
+    DEMO_CPU_ALLOC,
+    DEMO_CPU_REQUESTED,
+    DEMO_CPU_WORKLOAD_REQUESTED,
+    DEMO_CPU_USAGE,
+    DEMO_CPU_RECOMMENDED,
+  ],
 ] as const;
 
 const cs = DEMO_OVERVIEW_CAPTURE.cpuStats;
