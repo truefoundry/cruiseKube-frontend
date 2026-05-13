@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { createContext, useContext, useState, useEffect, useMemo, ReactNode } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { apiClient, Cluster } from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
@@ -28,7 +28,10 @@ export function ClusterProvider({ children }: { children: ReactNode }) {
     enabled: isAuthenticated,
   });
 
-  const clusters = Array.isArray(data?.clusters) ? data.clusters : [];
+  const clusters = useMemo(
+    () => (Array.isArray(data?.clusters) ? data.clusters : []),
+    [data?.clusters]
+  );
 
   useEffect(() => {
     if (clusters.length > 0 && !selectedClusterId) {
@@ -40,6 +43,16 @@ export function ClusterProvider({ children }: { children: ReactNode }) {
       }
     }
   }, [clusters, selectedClusterId]);
+
+  useEffect(() => {
+    if (!isAuthenticated || clusters.length === 0) return;
+    if (selectedClusterId && !clusters.some((c) => c.id === selectedClusterId)) {
+      const fallback = clusters.find((c) => c.stats_available)?.id ?? clusters[0]?.id ?? null;
+      setSelectedClusterIdState(fallback);
+      if (fallback) localStorage.setItem(STORAGE_KEY, fallback);
+      else localStorage.removeItem(STORAGE_KEY);
+    }
+  }, [isAuthenticated, clusters, selectedClusterId]);
 
   useEffect(() => {
     if (selectedClusterId) {

@@ -14,7 +14,10 @@ import {
   clearAuthSession,
   readAuthSession,
   writeAuthSession,
+  type StoredAuthSession,
 } from "@/lib/auth-session";
+import { isDemoMode } from "@/lib/demo-mode";
+import { setResourcePricing } from "@/lib/pricing";
 
 interface AuthContextValue {
   username: string | null;
@@ -26,11 +29,28 @@ interface AuthContextValue {
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 
+function initialAuthSession(): StoredAuthSession | null {
+  if (isDemoMode) {
+    const existing = readAuthSession();
+    if (existing) return existing;
+    return { username: "demo", basicToken: btoa("demo:demo") };
+  }
+  return readAuthSession();
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const [session, setSession] = useState(() => readAuthSession());
+  const [session, setSession] = useState(() => initialAuthSession());
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  useEffect(() => {
+    if (!isDemoMode) return;
+    setResourcePricing({
+      cpuPerCorePerHour: 0.0145 * 2,
+      memoryPerGbPerHour: 0.00724 * 2,
+    });
+  }, []);
 
   const logout = useCallback(() => {
     clearAuthSession();
