@@ -12,8 +12,7 @@ import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
-const SIDEBAR_COOKIE_NAME = "sidebar:state";
-const SIDEBAR_COOKIE_MAX_AGE = 60 * 60 * 24 * 7;
+const SIDEBAR_STORAGE_KEY = "sidebar:state";
 const SIDEBAR_WIDTH = "16rem";
 const SIDEBAR_WIDTH_MOBILE = "18rem";
 const SIDEBAR_WIDTH_ICON = "3rem";
@@ -53,7 +52,18 @@ const SidebarProvider = React.forwardRef<
 
   // This is the internal state of the sidebar.
   // We use openProp and setOpenProp for control from outside the component.
-  const [_open, _setOpen] = React.useState(defaultOpen);
+  // Initialize from localStorage so the user's preference persists across reloads.
+  const [_open, _setOpen] = React.useState<boolean>(() => {
+    if (typeof window === "undefined") return defaultOpen;
+    try {
+      const stored = window.localStorage.getItem(SIDEBAR_STORAGE_KEY);
+      if (stored === "true") return true;
+      if (stored === "false") return false;
+    } catch {
+      // Ignore storage access errors (e.g. private mode) and fall back to default.
+    }
+    return defaultOpen;
+  });
   const open = openProp ?? _open;
   const setOpen = React.useCallback(
     (value: boolean | ((value: boolean) => boolean)) => {
@@ -64,8 +74,11 @@ const SidebarProvider = React.forwardRef<
         _setOpen(openState);
       }
 
-      // This sets the cookie to keep the sidebar state.
-      document.cookie = `${SIDEBAR_COOKIE_NAME}=${openState}; path=/; max-age=${SIDEBAR_COOKIE_MAX_AGE}`;
+      try {
+        window.localStorage.setItem(SIDEBAR_STORAGE_KEY, String(openState));
+      } catch {
+        // Ignore storage write errors.
+      }
     },
     [setOpenProp, open],
   );
@@ -226,7 +239,7 @@ const SidebarTrigger = React.forwardRef<React.ElementRef<typeof Button>, React.C
         data-sidebar="trigger"
         variant="ghost"
         size="icon"
-        className={cn("h-7 w-7", className)}
+        className={cn("h-8 w-8", className)}
         onClick={(event) => {
           onClick?.(event);
           toggleSidebar();

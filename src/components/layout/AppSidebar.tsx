@@ -28,6 +28,8 @@ import {
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useConfig } from "@/contexts/ConfigContext";
 import { useAuth } from "@/contexts/AuthContext";
+import { ClusterSelector } from "@/components/ClusterSelector";
+import { publicUrl } from "@/lib/public-asset";
 
 const navItems = [
   { title: "Overview", url: "/", icon: LayoutDashboard },
@@ -49,7 +51,7 @@ const helpLinks = [
   },
   {
     title: "Documentation",
-    href: "https://cruisekube.com/src/gs-installation/",
+    href: "https://cruisekube.com/",
     icon: BookOpen,
   },
   {
@@ -58,6 +60,8 @@ const helpLinks = [
     icon: Calendar,
   },
 ] as const;
+
+const logoMaskUrl = publicUrl("logo.svg");
 
 export function AppSidebar() {
   const { state } = useSidebar();
@@ -69,12 +73,12 @@ export function AppSidebar() {
     <Sidebar collapsible="icon" className="border-r border-sidebar-border">
       <SidebarHeader className="border-b border-sidebar-border p-4">
         <div className={cn("flex items-center gap-3", isCollapsed && "justify-center")}>
-          <div className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-lg ">
+          <div className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-lg">
             <div
-              className="h-8 w-8 shrink-0 bg-white opacity-80"
+              className="h-7 w-7 shrink-0 bg-white opacity-80"
               style={{
-                maskImage: "url(/logo.svg)",
-                WebkitMaskImage: "url(/logo.svg)",
+                maskImage: `url(${logoMaskUrl})`,
+                WebkitMaskImage: `url(${logoMaskUrl})`,
                 maskSize: "contain",
                 maskRepeat: "no-repeat",
                 maskPosition: "center",
@@ -95,6 +99,18 @@ export function AppSidebar() {
       </SidebarHeader>
       
       <SidebarContent className="">
+        {!isCollapsed && (
+          <SidebarGroup className="border-b border-sidebar-border">
+            <SidebarGroupLabel>Cluster</SidebarGroupLabel>
+            <SidebarGroupContent className="px-2 pb-3">
+              <ClusterSelector
+                variant="stacked"
+                showLabel={false}
+                triggerClassName="w-full border-sidebar-border bg-sidebar-accent/40 text-sidebar-foreground"
+              />
+            </SidebarGroupContent>
+          </SidebarGroup>
+        )}
         <SidebarGroup>
           <SidebarGroupContent>
             <SidebarMenu>
@@ -190,7 +206,7 @@ export function AppSidebar() {
               <Tooltip>
                 <TooltipTrigger asChild>
                   <div className="flex justify-center py-0.5 text-sidebar-foreground/50" aria-label={`Version ${config.version}`}>
-                    <Tag className="h-3.5 w-3.5" />
+                    <Tag className="h-4 w-4" />
                   </div>
                 </TooltipTrigger>
                 <TooltipContent side="right" className="font-mono text-xs max-w-xs break-all">

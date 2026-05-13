@@ -24,6 +24,7 @@ import {
   Shrink,
   Ban,
   List,
+  Layers,
   LockKeyhole,
   LockKeyholeOpen,
   Shield,
@@ -48,6 +49,7 @@ import {
   formatCpuSigned,
   formatMemory,
   formatMemorySigned,
+  moneySignedClass,
   mapCriticalToEvictionRanking,
 } from "@/lib/transformers";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -937,6 +939,15 @@ export default function Workloads() {
   return (
     <div className="min-w-0 w-full max-w-full animate-fade-in">
       <div className="mx-auto max-w-[1600px] px-4 py-6 sm:px-6 lg:px-8 space-y-8">
+        <div>
+          <h1 className="flex items-center gap-2 text-2xl font-semibold text-foreground">
+            <Layers className="h-6 w-6 shrink-0 text-muted-foreground" />
+            Workloads
+          </h1>
+          <p className="text-sm text-muted-foreground">
+            Browse workloads, compare recommended CPU and memory, estimate monthly savings, and switch Cruise or recommend-only mode.
+          </p>
+        </div>
         {/* Error banner when API fails */}
         {apiErrorMessage && (
           <Alert variant="destructive">
@@ -1475,7 +1486,7 @@ export default function Workloads() {
                               const display = net === 0 ? "—" : (net >= 0 ? `$${net.toFixed(2)}` : `-$${Math.abs(net).toFixed(2)}`);
                               return (
                                 <>
-                                  <span className={net > 0 ? "text-primary" : net < 0 ? "text-destructive" : "text-muted-foreground"}>{display}</span>
+                                  <span className={moneySignedClass(net)}>{display}</span>
                                   {hasReliability && (
                                     <span className="inline-flex items-center gap-0.5 text-success text-xs font-medium" aria-label="Reliability improved" title="Reliability improved (resources recommended to be increased)">
                                       <span className="whitespace-nowrap">Reliability</span>

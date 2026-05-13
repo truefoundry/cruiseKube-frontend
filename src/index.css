@@ -1,72 +1,9 @@
 @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Inter:wght@400;500;600;700&display=swap');
+@import "./theme/theme.css";
 
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
-
-@layer base {
-  :root {
-    --background: 222 47% 6%;
-    --foreground: 210 40% 96%;
-
-    --card: 222 47% 8%;
-    --card-foreground: 210 40% 96%;
-
-    --popover: 222 47% 10%;
-    --popover-foreground: 210 40% 96%;
-
-    --primary: 160 84% 45%;
-    --primary-foreground: 222 47% 6%;
-
-    --secondary: 217 33% 17%;
-    --secondary-foreground: 210 40% 96%;
-
-    --muted: 217 33% 14%;
-    --muted-foreground: 215 20% 55%;
-
-    --accent: 217 33% 20%;
-    --accent-foreground: 210 40% 96%;
-
-    --destructive: 0 72% 51%;
-    --destructive-foreground: 210 40% 98%;
-
-    --warning: 38 92% 50%;
-    --warning-foreground: 222 47% 6%;
-
-    --success: 160 84% 45%;
-    --success-foreground: 222 47% 6%;
-
-    --border: 217 33% 17%;
-    --input: 217 33% 17%;
-    --ring: 160 84% 45%;
-
-    --radius: 0.5rem;
-
-    /* Sidebar: darker, slightly cooler tone to distinguish from main content (222 47% 6%) */
-    --sidebar-background: 225 45% 4%;
-    --sidebar-foreground: 215 20% 70%;
-    --sidebar-primary: 160 84% 45%;
-    --sidebar-primary-foreground: 222 47% 6%;
-    --sidebar-accent: 225 35% 11%;
-    --sidebar-accent-foreground: 210 40% 96%;
-    --sidebar-border: 225 35% 10%;
-    --sidebar-ring: 160 84% 45%;
-
-    /* Custom tokens */
-    --glow-primary: 0 0 20px hsl(160 84% 45% / 0.3);
-    --glow-warning: 0 0 20px hsl(38 92% 50% / 0.3);
-    --glow-destructive: 0 0 20px hsl(0 72% 51% / 0.3);
-
-    --gradient-card: linear-gradient(135deg, hsl(222 47% 10%) 0%, hsl(222 47% 8%) 100%);
-    --gradient-primary: linear-gradient(135deg, hsl(160 84% 45%) 0%, hsl(160 70% 35%) 100%);
-    --gradient-accent: linear-gradient(135deg, hsl(217 33% 20%) 0%, hsl(217 33% 15%) 100%);
-  }
-
-  .dark {
-    --background: 222 47% 6%;
-    --foreground: 210 40% 96%;
-  }
-}
 
 @layer base {
   * {
