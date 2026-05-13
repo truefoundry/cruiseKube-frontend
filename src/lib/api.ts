@@ -526,6 +526,9 @@ class ApiClient {
 
   /** GET /api/ -> GET /api/v1/ (unprotected). Returns server info including auth_enabled. */
   async getAuthInfo(): Promise<AuthInfoResponse> {
+    if (isDemoMode) {
+      return demoStore.demoGetAuthInfo();
+    }
     return this.request<AuthInfoResponse>('/');
   }
 

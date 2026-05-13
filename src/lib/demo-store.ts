@@ -1,6 +1,7 @@
 import type {
   AuditEventsResponse,
   AuditEvent,
+  AuthInfoResponse,
   ClusterSettings,
   ClustersResponse,
   HistoricalTimelineResponse,
@@ -39,6 +40,12 @@ function clone<T>(v: T): T {
 }
 
 function workloadDetailToApiResponse(d: WorkloadDetail): WorkloadDetailResponse {
+  const perPod = Math.max(1, d.podsCount);
+  const cpuReqPerPod = d.cpu.current / perPod;
+  const memReqPerPod = d.memory.current / perPod;
+  const cpuEffPerPod = d.cpu.pod_current_avg ?? d.cpu.podCurrentAvg;
+  const memEffPerPod = d.memory.pod_current_avg ?? d.memory.podCurrentAvg;
+
   const podName = `${d.name}-7d8f9a1b2c`;
   const pods =
     d.podsCount === 0
@@ -50,10 +57,16 @@ function workloadDetailToApiResponse(d: WorkloadDetail): WorkloadDetailResponse 
             containers: [
               {
                 container_name: "app",
-                cpu_request: d.cpu.current / Math.max(1, d.podsCount),
-                cpu_rec_request: d.cpu.recommended.avg / Math.max(1, d.podsCount),
-                mem_request: d.memory.current / Math.max(1, d.podsCount),
-                mem_rec_request: d.memory.recommended.avg / Math.max(1, d.podsCount),
+                cpu_request: cpuReqPerPod,
+                cpu_rec_request: d.cpu.recommended.avg / perPod,
+                mem_request: memReqPerPod,
+                mem_rec_request: d.memory.recommended.avg / perPod,
+                ...(cpuEffPerPod != null && Math.abs(cpuEffPerPod - cpuReqPerPod) > 1e-9
+                  ? { current_cpu_request: cpuEffPerPod }
+                  : {}),
+                ...(memEffPerPod != null && Math.abs(memEffPerPod - memReqPerPod) > 1e-9
+                  ? { current_mem_request: memEffPerPod }
+                  : {}),
               },
             ],
           },
@@ -67,8 +80,8 @@ function workloadDetailToApiResponse(d: WorkloadDetail): WorkloadDetailResponse 
     current_cpu_limit: d.cpu.current * 2,
     current_mem_request: d.memory.current,
     current_mem_limit: d.memory.current * 2,
-    current_pod_avg_cpu_request: d.cpu.pod_current_avg,
-    current_pod_avg_mem_request: d.memory.pod_current_avg,
+    current_pod_avg_cpu_request: cpuEffPerPod,
+    current_pod_avg_mem_request: memEffPerPod,
     potential_cpu_savings: -d.cpu.recommended.change,
     potential_mem_savings: -d.memory.recommended.change,
     pods,
@@ -367,6 +380,15 @@ function applyOverridesToDetail(d: WorkloadDetail, overrides: Overrides): Worklo
 export async function demoLogin(): Promise<LoginResponse> {
   await delay();
   return { token: btoa("demo:demo"), token_type: "Basic" };
+}
+
+/** Matches static / no-backend hosting: skip login (same contract as GET / when auth is off). */
+export async function demoGetAuthInfo(): Promise<AuthInfoResponse> {
+  await delay();
+  return {
+    auth_enabled: false,
+    message: "Demo mode: no backend; authentication is disabled.",
+  };
 }
 
 export async function demoGetClusters(): Promise<ClustersResponse> {
