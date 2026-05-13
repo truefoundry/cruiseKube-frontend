@@ -14,7 +14,7 @@ import {
 } from "@/components/ui/card";
 
 export default function Login() {
-  const { login, isAuthenticated, isSubmitting } = useAuth();
+  const { login, isAuthenticated, isSubmitting, authEnabled, authLoading } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const from =
@@ -25,6 +25,18 @@ export default function Login() {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
+
+  if (authLoading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center">
+        <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
+      </div>
+    );
+  }
+
+  if (!authEnabled) {
+    return <Navigate to={from === "/login" ? "/" : from} replace />;
+  }
 
   if (isAuthenticated) {
     return <Navigate to={from === "/login" ? "/" : from} replace />;

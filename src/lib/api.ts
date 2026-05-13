@@ -17,6 +17,11 @@ export interface LoginResponse {
   token_type?: 'Basic';
 }
 
+export interface AuthInfoResponse {
+  auth_enabled: boolean;
+  message?: string;
+}
+
 let unauthorizedHandler: (() => void) | null = null;
 
 /** Register callback for 401 on protected routes (e.g. clear session and redirect to login). */
@@ -24,10 +29,12 @@ export function setApiUnauthorizedHandler(handler: (() => void) | null): void {
   unauthorizedHandler = handler;
 }
 
-function isAuthLoginRequest(endpoint: string, init?: RequestInit): boolean {
+function isAuthSkippedRequest(endpoint: string, init?: RequestInit): boolean {
   const path = endpoint.split('?')[0] ?? '';
   const method = (init?.method ?? 'GET').toUpperCase();
-  return path === '/auth/login' && method === 'POST';
+  if (path === '/auth/login' && method === 'POST') return true;
+  if (path === '/' && method === 'GET') return true;
+  return false;
 }
 
 export interface Cluster {
@@ -457,7 +464,7 @@ class ApiClient {
     options: RequestInit = {}
   ): Promise<T> {
     const url = `${this.baseUrl}${endpoint}`;
-    const skipAuth = isAuthLoginRequest(endpoint, options);
+    const skipAuth = isAuthSkippedRequest(endpoint, options);
 
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
@@ -510,6 +517,11 @@ class ApiClient {
       method: 'POST',
       body: JSON.stringify(body),
     });
+  }
+
+  /** GET /api/ -> GET /api/v1/ (unprotected). Returns server info including auth_enabled. */
+  async getAuthInfo(): Promise<AuthInfoResponse> {
+    return this.request<AuthInfoResponse>('/');
   }
 
   async getClusters(): Promise<ClustersResponse> {
