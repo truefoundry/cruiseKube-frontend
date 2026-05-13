@@ -4,7 +4,6 @@ import type {
   ClusterSettings,
   ClustersResponse,
   HistoricalTimelineResponse,
-  HistoricalTimelineDataPoint,
   LoginResponse,
   Overrides,
   OverviewResponse,
@@ -13,6 +12,14 @@ import type {
   WorkloadDetailResponse,
   WorkloadSummaryResponse,
 } from "@/lib/api";
+import {
+  DEMO_OVERVIEW_CAPTURE,
+  buildDemoCostTimelineData,
+  buildDemoCpuTimelineData,
+  buildDemoMemoryTimelineData,
+  remapTimelineToWindow,
+} from "@/lib/demo-overview-capture";
+import { createDemoWorkloadSummary } from "@/lib/demo-workloads-summary";
 import { mapCriticalToEvictionRanking, mapEvictionRankingToCritical } from "@/lib/transformers";
 
 export const DEMO_CLUSTER_ID = "demo-cluster";
@@ -31,81 +38,26 @@ function clone<T>(v: T): T {
   return structuredClone(v);
 }
 
-function baseWorkloadDetail(p: {
-  workloadID: string;
-  kind: string;
-  namespace: string;
-  name: string;
-  cruiseEnabled: boolean;
-  criticalityLevel: "low" | "medium" | "high" | "very-high";
-  podsCount: number;
-  dollarSavingsPerMonth: number;
-  dollarExpenditurePerMonth: number;
-  cpuCurrent: number;
-  cpuAvg: number;
-  cpuRecAvg: number;
-  cpuChange: number;
-  memCurrent: number;
-  memAvg: number;
-  memRecAvg: number;
-  memChange: number;
-  constraints?: Partial<WorkloadDetail["constraints"]>;
-  config?: Partial<WorkloadDetail["config"]>;
-}): WorkloadDetail {
-  const now = Math.floor(Date.now() / 1000);
-  return {
-    workloadID: p.workloadID,
-    kind: p.kind,
-    namespace: p.namespace,
-    name: p.name,
-    updatedAt: now - 120,
-    podsCount: p.podsCount,
-    constraints: {
-      blockingConsolidation: false,
-      pdb: p.constraints?.pdb ?? false,
-      doNotDisruptAnnotation: p.constraints?.doNotDisruptAnnotation ?? false,
-      volume: false,
-      affinity: false,
-      topologySpreadConstraint: false,
-      podAntiAffinity: false,
-      excludedAnnotation: p.constraints?.excludedAnnotation ?? false,
-      isGPUWorkload: p.constraints?.isGPUWorkload ?? false,
-    },
-    cpu: {
-      current: p.cpuCurrent,
-      pod_current_avg: p.cpuAvg,
-      recommended: {
-        min: p.cpuRecAvg * 0.85,
-        max: p.cpuRecAvg * 1.1,
-        avg: p.cpuRecAvg,
-        change: p.cpuChange,
-      },
-    },
-    memory: {
-      current: p.memCurrent,
-      pod_current_avg: p.memAvg,
-      recommended: {
-        min: p.memRecAvg * 0.85,
-        max: p.memRecAvg * 1.1,
-        avg: p.memRecAvg,
-        change: p.memChange,
-      },
-    },
-    dollarSavingsPerMonth: p.dollarSavingsPerMonth,
-    dollarExpenditurePerMonth: p.dollarExpenditurePerMonth,
-    config: {
-      criticalityLevel: p.criticalityLevel,
-      cruiseEnabled: p.cruiseEnabled,
-      disruptionSchedule: [],
-      inDisruptionWindow: false,
-      hpaEnabled: p.config?.hpaEnabled ?? false,
-      excludedCodes: p.config?.excludedCodes,
-    },
-  };
-}
-
 function workloadDetailToApiResponse(d: WorkloadDetail): WorkloadDetailResponse {
   const podName = `${d.name}-7d8f9a1b2c`;
+  const pods =
+    d.podsCount === 0
+      ? []
+      : [
+          {
+            pod_name: podName,
+            node_name: "demo-node-1",
+            containers: [
+              {
+                container_name: "app",
+                cpu_request: d.cpu.current / Math.max(1, d.podsCount),
+                cpu_rec_request: d.cpu.recommended.avg / Math.max(1, d.podsCount),
+                mem_request: d.memory.current / Math.max(1, d.podsCount),
+                mem_rec_request: d.memory.recommended.avg / Math.max(1, d.podsCount),
+              },
+            ],
+          },
+        ];
   return {
     cluster: DEMO_CLUSTER_ID,
     namespace: d.namespace,
@@ -119,173 +71,16 @@ function workloadDetailToApiResponse(d: WorkloadDetail): WorkloadDetailResponse 
     current_pod_avg_mem_request: d.memory.pod_current_avg,
     potential_cpu_savings: -d.cpu.recommended.change,
     potential_mem_savings: -d.memory.recommended.change,
-    pods: [
-      {
-        pod_name: podName,
-        node_name: "demo-node-1",
-        containers: [
-          {
-            container_name: "app",
-            cpu_request: d.cpu.current / Math.max(1, d.podsCount),
-            cpu_rec_request: d.cpu.recommended.avg / Math.max(1, d.podsCount),
-            mem_request: d.memory.current / Math.max(1, d.podsCount),
-            mem_rec_request: d.memory.recommended.avg / Math.max(1, d.podsCount),
-          },
-        ],
-      },
-    ],
+    pods,
   };
 }
 
 function seedSummary(): WorkloadSummaryResponse {
-  const workloads: WorkloadDetail[] = [
-    baseWorkloadDetail({
-      workloadID: "Deployment:production:api-gateway",
-      kind: "Deployment",
-      namespace: "production",
-      name: "api-gateway",
-      cruiseEnabled: true,
-      criticalityLevel: "high",
-      podsCount: 3,
-      dollarSavingsPerMonth: 450,
-      dollarExpenditurePerMonth: 40,
-      cpuCurrent: 1.5,
-      cpuAvg: 0.45,
-      cpuRecAvg: 0.55,
-      cpuChange: -0.35,
-      memCurrent: 3072,
-      memAvg: 900,
-      memRecAvg: 1536,
-      memChange: -800,
-    }),
-    baseWorkloadDetail({
-      workloadID: "Deployment:production:user-service",
-      kind: "Deployment",
-      namespace: "production",
-      name: "user-service",
-      cruiseEnabled: true,
-      criticalityLevel: "high",
-      podsCount: 2,
-      dollarSavingsPerMonth: 320,
-      dollarExpenditurePerMonth: 28,
-      cpuCurrent: 2,
-      cpuAvg: 0.6,
-      cpuRecAvg: 0.9,
-      cpuChange: -0.4,
-      memCurrent: 4096,
-      memAvg: 1200,
-      memRecAvg: 2560,
-      memChange: -900,
-    }),
-    baseWorkloadDetail({
-      workloadID: "StatefulSet:staging:data-processor",
-      kind: "StatefulSet",
-      namespace: "staging",
-      name: "data-processor",
-      cruiseEnabled: false,
-      criticalityLevel: "medium",
-      podsCount: 4,
-      dollarSavingsPerMonth: 280,
-      dollarExpenditurePerMonth: 55,
-      cpuCurrent: 4,
-      cpuAvg: 1.2,
-      cpuRecAvg: 2.5,
-      cpuChange: -0.8,
-      memCurrent: 8192,
-      memAvg: 3000,
-      memRecAvg: 6144,
-      memChange: -1200,
-    }),
-    baseWorkloadDetail({
-      workloadID: "StatefulSet:monitoring:prometheus",
-      kind: "StatefulSet",
-      namespace: "monitoring",
-      name: "prometheus",
-      cruiseEnabled: true,
-      criticalityLevel: "very-high",
-      podsCount: 1,
-      dollarSavingsPerMonth: 0,
-      dollarExpenditurePerMonth: 120,
-      cpuCurrent: 2,
-      cpuAvg: 1.1,
-      cpuRecAvg: 1.8,
-      cpuChange: 0,
-      memCurrent: 8192,
-      memAvg: 7000,
-      memRecAvg: 8192,
-      memChange: 0,
-      constraints: { excludedAnnotation: true },
-      config: { excludedCodes: ["INCOMPLETE_STATS"] },
-    }),
-    baseWorkloadDetail({
-      workloadID: "Deployment:production:gpu-worker",
-      kind: "Deployment",
-      namespace: "production",
-      name: "gpu-worker",
-      cruiseEnabled: false,
-      criticalityLevel: "medium",
-      podsCount: 2,
-      dollarSavingsPerMonth: 0,
-      dollarExpenditurePerMonth: 200,
-      cpuCurrent: 8,
-      cpuAvg: 6,
-      cpuRecAvg: 8,
-      cpuChange: 0,
-      memCurrent: 32768,
-      memAvg: 28000,
-      memRecAvg: 32768,
-      memChange: 0,
-      constraints: { isGPUWorkload: true },
-      config: { excludedCodes: ["GPU_WORKLOAD"] },
-    }),
-  ];
-
-  return {
-    impactSummary: {
-      dollarCurrentCost: 12500,
-      dollarCurrentSavings: 1890,
-      dollarPossibleSavings: 2450,
-      clusterResources: {
-        cpu: { utilised: 38, requested: 72, allocatable: 96 },
-        memory: { utilised: 120, requested: 280, allocatable: 384 },
-      },
-    },
-    workloadDetails: workloads,
-  };
+  return clone(createDemoWorkloadSummary());
 }
 
 function seedOverview(): OverviewResponse {
-  return {
-    currentMonthlyCost: 11200,
-    currentSavings: 1650,
-    possibleSavings: 2300,
-    clusterUtilisation: 62,
-    nodeCount: 12,
-    coverage: {
-      adoption: {
-        optimizable: 42,
-        nonOptimizable: 18,
-        optimizableButExcluded: 8,
-        total: 68,
-      },
-      cpuCoverage: { enabled: 35, disabled: 33 },
-      memoryCoverage: { enabled: 32, disabled: 36 },
-    },
-    cpuStats: {
-      allocatable: 96,
-      requested: 72,
-      workloadRequested: 70,
-      usage: 38,
-      recommended: 48,
-    },
-    memoryStats: {
-      allocatable: 384,
-      requested: 280,
-      workloadRequested: 275,
-      usage: 120,
-      recommended: 190,
-    },
-  };
+  return clone(DEMO_OVERVIEW_CAPTURE);
 }
 
 function seedAuditEvents(): AuditEvent[] {
@@ -293,14 +88,44 @@ function seedAuditEvents(): AuditEvent[] {
   return [
     {
       cluster_id: DEMO_CLUSTER_ID,
+      type: "node",
+      category: "NODE_OVERLOAD_TAINT_ADDED",
+      payload: {
+        message: "Taint node.cruisekube.io/overload=true added",
+        target: { kind: "Node", name: "demo-node-1", namespace: "" },
+        details: { nodeName: "demo-node-1", taint: "node.cruisekube.io/overload=true:NoSchedule" },
+      },
+      created_at: iso(6),
+    },
+    {
+      cluster_id: DEMO_CLUSTER_ID,
       type: "recommendation",
       category: "CPU_RECOMMENDATION_APPLIED",
       payload: {
         message: "CPU request updated",
-        target: { kind: "Deployment", name: "api-gateway", namespace: "production" },
-        details: { workloadId: "Deployment:production:api-gateway" },
+        target: { kind: "Deployment", name: "gg-test-1", namespace: "gg-ws" },
+        details: {
+          workloadId: "Deployment:gg-ws:gg-test-1",
+          previousRequest: "1000m",
+          newRequest: "1000m",
+        },
       },
       created_at: iso(12),
+    },
+    {
+      cluster_id: DEMO_CLUSTER_ID,
+      type: "admission",
+      category: "WEBHOOK_MUTATION",
+      payload: {
+        message: "Mutating webhook patched container resources",
+        target: { kind: "Deployment", name: "tfy-flyte-scheduler", namespace: "truefoundry" },
+        details: {
+          workloadId: "Deployment:truefoundry:tfy-flyte-scheduler",
+          webhook: "cruisekube-mutating-webhook",
+          patches: ["spec.template.spec.containers[0].resources.requests.cpu"],
+        },
+      },
+      created_at: iso(18),
     },
     {
       cluster_id: DEMO_CLUSTER_ID,
@@ -308,30 +133,155 @@ function seedAuditEvents(): AuditEvent[] {
       category: "MEMORY_RECOMMENDATION_APPLIED",
       payload: {
         message: "Memory request updated",
-        target: { kind: "Deployment", name: "user-service", namespace: "production" },
-        details: { workloadId: "Deployment:production:user-service" },
+        target: {
+          kind: "Deployment",
+          name: "tfy-llm-gateway-test-ask-user-qs",
+          namespace: "pranjal-ws",
+        },
+        details: {
+          workloadId: "Deployment:pranjal-ws:tfy-llm-gateway-test-ask-user-qs",
+          previousRequestMi: 512,
+          newRequestMi: 441,
+        },
       },
       created_at: iso(45),
+    },
+    {
+      cluster_id: DEMO_CLUSTER_ID,
+      type: "eviction",
+      category: "POD_EVICTION",
+      payload: {
+        message: "Pod evicted for consolidation",
+        target: { kind: "Pod", name: "pdb-dnd-mitigated-xyz12", namespace: "demo-cases" },
+        details: {
+          workloadId: "Deployment:demo-cases:pdb-dnd-mitigated",
+          reason: "PreemptionByScheduler",
+          node: "demo-node-2",
+        },
+      },
+      created_at: iso(52),
+    },
+    {
+      cluster_id: DEMO_CLUSTER_ID,
+      type: "workload",
+      category: "OOM_EVENT",
+      payload: {
+        message: "OOMKilled reported for container app",
+        target: { kind: "Pod", name: "batch-etl-abc12", namespace: "demo-cases" },
+        details: {
+          workloadId: "Job:demo-cases:batch-etl",
+          container: "app",
+          exitCode: 137,
+          limitMi: 8192,
+        },
+      },
+      created_at: iso(68),
     },
     {
       cluster_id: DEMO_CLUSTER_ID,
       type: "policy",
       category: "PDB_RELAXED",
       payload: {
-        target: { kind: "StatefulSet", name: "data-processor", namespace: "staging" },
-        details: { workloadId: "StatefulSet:staging:data-processor" },
+        message: "PDB maxUnavailable raised for maintenance window",
+        target: { kind: "Deployment", name: "pdb-dnd-mitigated", namespace: "demo-cases" },
+        details: {
+          workloadId: "Deployment:demo-cases:pdb-dnd-mitigated",
+          pdbName: "pdb-dnd-mitigated-pdb",
+          previousMaxUnavailable: 1,
+          newMaxUnavailable: 2,
+        },
       },
       created_at: iso(120),
+    },
+    {
+      cluster_id: DEMO_CLUSTER_ID,
+      type: "policy",
+      category: "PDB_RESTORED",
+      payload: {
+        message: "PDB restored after maintenance",
+        target: { kind: "Deployment", name: "pdb-dnd-mitigated", namespace: "demo-cases" },
+        details: {
+          workloadId: "Deployment:demo-cases:pdb-dnd-mitigated",
+          pdbName: "pdb-dnd-mitigated-pdb",
+          restoredMaxUnavailable: 1,
+        },
+      },
+      created_at: iso(135),
     },
     {
       cluster_id: DEMO_CLUSTER_ID,
       type: "eviction",
       category: "POD_DISRUPTION_BLOCK_REMOVED",
       payload: {
-        target: { kind: "Deployment", name: "api-gateway", namespace: "production" },
-        details: { workloadId: "Deployment:production:api-gateway" },
+        message: "Temporary disruption block cleared",
+        target: { kind: "Deployment", name: "pdb-dnd-mitigated", namespace: "demo-cases" },
+        details: {
+          workloadId: "Deployment:demo-cases:pdb-dnd-mitigated",
+          blockId: "win-2026-05-12",
+        },
       },
       created_at: iso(180),
+    },
+    {
+      cluster_id: DEMO_CLUSTER_ID,
+      type: "eviction",
+      category: "POD_DISRUPTION_BLOCK_RESTORED",
+      payload: {
+        message: "Disruption protection restored",
+        target: { kind: "Deployment", name: "pdb-dnd-mitigated", namespace: "demo-cases" },
+        details: { workloadId: "Deployment:demo-cases:pdb-dnd-mitigated" },
+      },
+      created_at: iso(195),
+    },
+    {
+      cluster_id: DEMO_CLUSTER_ID,
+      type: "node",
+      category: "NODE_OVERLOAD_TAINT_REMOVED",
+      payload: {
+        message: "Overload taint removed; node healthy",
+        target: { kind: "Node", name: "demo-node-1", namespace: "" },
+        details: { nodeName: "demo-node-1", removedTaint: "node.cruisekube.io/overload=true" },
+      },
+      created_at: iso(205),
+    },
+    {
+      cluster_id: DEMO_CLUSTER_ID,
+      type: "recommendation",
+      category: "MEMORY_RECOMMENDATION_APPLIED",
+      payload: {
+        message: "No change applied (already right-sized)",
+        target: { kind: "Deployment", name: "gg-test-1", namespace: "gg-ws" },
+        details: { workloadId: "Deployment:gg-ws:gg-test-1", skipped: true },
+      },
+      created_at: iso(320),
+    },
+    {
+      cluster_id: DEMO_CLUSTER_ID,
+      type: "admission",
+      category: "WEBHOOK_MUTATION",
+      payload: {
+        message: "Webhook skipped GPU workload",
+        target: { kind: "Deployment", name: "gpu-inference", namespace: "demo-cases" },
+        details: {
+          workloadId: "Deployment:demo-cases:gpu-inference",
+          reason: "GPU_WORKLOAD",
+        },
+      },
+      created_at: iso(480),
+    },
+    {
+      cluster_id: DEMO_CLUSTER_ID,
+      type: "recommendation",
+      category: "CPU_RECOMMENDATION_APPLIED",
+      payload: {
+        message: "CPU updated (target only — no workloadId in details)",
+        target: {
+          kind: "Deployment",
+          name: "tfy-llm-gateway-test-approval",
+          namespace: "truefoundry",
+        },
+      },
+      created_at: iso(1200),
     },
   ];
 }
@@ -358,48 +308,13 @@ function buildHistoricalTimeline(
   endTime: string,
   metric: "cpu" | "memory" | "cost"
 ): HistoricalTimelineResponse {
-  const start = new Date(startTime).getTime();
-  const end = new Date(endTime).getTime();
-  const lo = Math.min(start, end);
-  const hi = Math.max(start, end);
-  const span = Math.max(hi - lo, 60_000);
-  const steps = 14;
-  const data: HistoricalTimelineDataPoint[] = [];
-
-  const series =
-    metric === "cost"
-      ? [
-          { legend: "Monthly spend", color: "#6366f1" },
-          { legend: "Allocation baseline", color: "#94a3b8" },
-        ]
-      : [
-          { legend: "Requested", color: "#94a3b8" },
-          { legend: "Usage", color: "#3b82f6" },
-          { legend: "Recommended", color: "#a855f7" },
-        ];
-
-  for (let i = 0; i <= steps; i++) {
-    const t = lo + (span * i) / steps;
-    const iso = new Date(t).toISOString();
-    let idx = 0;
-    for (const { legend, color } of series) {
-      const wobble = Math.sin(i * 0.45 + idx) * (metric === "cost" ? 8 : 0.04);
-      const base =
-        metric === "cost" ? 4200 + i * 35 + wobble : 0.55 + i * 0.015 + wobble;
-      const value =
-        metric === "cost"
-          ? base * (legend.includes("Allocation") ? 0.92 : 1)
-          : base * (legend === "Usage" ? 0.68 : legend === "Recommended" ? 0.78 : 1);
-      data.push({
-        legend,
-        color,
-        threshold: { value: 0, color: "#64748b" },
-        data: { timestamp: iso, value: Math.max(0, value) },
-      });
-      idx += 1;
-    }
+  if (metric === "cpu") {
+    return { data: remapTimelineToWindow(buildDemoCpuTimelineData(), startTime, endTime) };
   }
-  return { data };
+  if (metric === "memory") {
+    return { data: remapTimelineToWindow(buildDemoMemoryTimelineData(), startTime, endTime) };
+  }
+  return { data: remapTimelineToWindow(buildDemoCostTimelineData(), startTime, endTime) };
 }
 
 function findWorkloadIndex(workloadId: string): number {
