@@ -140,6 +140,13 @@ export function formatMemorySigned(mb: number): string {
   return `+${formatMemory(mb)}`;
 }
 
+/** Tailwind classes for signed currency deltas: positive green, negative red, zero neutral. */
+export function moneySignedClass(amount: number): string {
+  if (amount > 0) return "text-emerald-600 dark:text-emerald-500";
+  if (amount < 0) return "text-red-600 dark:text-red-500";
+  return "text-muted-foreground";
+}
+
 function formatCpuRange(min: number, max: number): string {
   return `${formatCpu(min)}-${formatCpu(max)}`;
 }

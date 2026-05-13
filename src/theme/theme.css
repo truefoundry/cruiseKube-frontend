@@ -1,0 +1,82 @@
+/**
+ * Cool dark editor theme — blue-black canvas, subdued panels, cyan-blue accents.
+ * Tuned for long sessions (low contrast chrome, readable semantics).
+ */
+@layer base {
+  :root {
+    /* Canvas & surfaces — editor-style blue-black + raised panels */
+    --background: 222 42% 4.5%;
+    --foreground: 210 22% 96%;
+
+    --card: 222 26% 8%;
+    --card-foreground: 210 22% 96%;
+
+    --popover: 222 26% 9%;
+    --popover-foreground: 210 22% 96%;
+
+    /* Accent — cool cyan-blue (editor selection / links) */
+    --primary: 199 86% 56%;
+    --primary-foreground: 222 42% 5%;
+
+    --secondary: 222 18% 12%;
+    --secondary-foreground: 210 22% 94%;
+
+    --muted: 222 16% 12%;
+    --muted-foreground: 220 11% 58%;
+
+    --accent: 222 20% 15%;
+    --accent-foreground: 210 22% 94%;
+
+    /* Semantics — readable on cool canvas */
+    --destructive: 0 72% 58%;
+    --destructive-foreground: 210 22% 98%;
+
+    --warning: 38 78% 52%;
+    --warning-foreground: 222 42% 6%;
+
+    --success: 152 52% 46%;
+    --success-foreground: 210 22% 98%;
+
+    --border: 222 14% 17%;
+    --input: 222 14% 17%;
+    --ring: 199 86% 56%;
+
+    --radius: 0.5rem;
+
+    /* Sidebar — inset strip, slightly deeper than main canvas */
+    --sidebar-background: 222 44% 3.2%;
+    --sidebar-foreground: 220 11% 58%;
+    --sidebar-primary: 199 86% 56%;
+    --sidebar-primary-foreground: 222 42% 5%;
+    --sidebar-accent: 222 26% 9%;
+    --sidebar-accent-foreground: 210 22% 94%;
+    --sidebar-border: 222 14% 14%;
+    --sidebar-ring: 199 86% 56%;
+
+    --glow-primary: 0 0 22px hsl(199 86% 56% / 0.16);
+    --glow-warning: 0 0 20px hsl(38 78% 52% / 0.12);
+    --glow-destructive: 0 0 20px hsl(0 72% 58% / 0.14);
+
+    --gradient-card: linear-gradient(180deg, hsl(222 26% 8.5%) 0%, hsl(222 26% 7.5%) 100%);
+    --gradient-primary: linear-gradient(180deg, hsl(199 86% 58%) 0%, hsl(199 78% 48%) 100%);
+    --gradient-accent: linear-gradient(180deg, hsl(222 20% 16%) 0%, hsl(222 20% 13%) 100%);
+
+    /* Charts — cool neutrals + cyan / amber accents */
+    --cruisekube-chart-series-1: #9ca8b9;
+    --cruisekube-chart-series-2: #6b7a8f;
+    --cruisekube-chart-series-3: #e5c07b;
+    --cruisekube-chart-series-4: #61afef;
+    --cruisekube-chart-series-5: #56b6c2;
+
+    --cruisekube-chart-cost-hourly: #61afef;
+    --cruisekube-chart-cost-without-cruisekube: #8b9aaf;
+    --cruisekube-chart-cost-with-cruisekube: #56c2a0;
+
+    --cruisekube-chart-threshold: #e06c75;
+  }
+
+  .dark {
+    --background: 222 42% 4.5%;
+    --foreground: 210 22% 96%;
+  }
+}

@@ -1,4 +1,6 @@
 import { getBasicAuthorizationHeader } from '@/lib/auth-session';
+import { isDemoMode } from '@/lib/demo-mode';
+import * as demoStore from '@/lib/demo-store';
 
 const API_BASE_URL = '/api';
 
@@ -17,6 +19,11 @@ export interface LoginResponse {
   token_type?: 'Basic';
 }
 
+export interface AuthInfoResponse {
+  auth_enabled: boolean;
+  message?: string;
+}
+
 let unauthorizedHandler: (() => void) | null = null;
 
 /** Register callback for 401 on protected routes (e.g. clear session and redirect to login). */
@@ -24,10 +31,12 @@ export function setApiUnauthorizedHandler(handler: (() => void) | null): void {
   unauthorizedHandler = handler;
 }
 
-function isAuthLoginRequest(endpoint: string, init?: RequestInit): boolean {
+function isAuthSkippedRequest(endpoint: string, init?: RequestInit): boolean {
   const path = endpoint.split('?')[0] ?? '';
   const method = (init?.method ?? 'GET').toUpperCase();
-  return path === '/auth/login' && method === 'POST';
+  if (path === '/auth/login' && method === 'POST') return true;
+  if (path === '/' && method === 'GET') return true;
+  return false;
 }
 
 export interface Cluster {
@@ -457,7 +466,7 @@ class ApiClient {
     options: RequestInit = {}
   ): Promise<T> {
     const url = `${this.baseUrl}${endpoint}`;
-    const skipAuth = isAuthLoginRequest(endpoint, options);
+    const skipAuth = isAuthSkippedRequest(endpoint, options);
 
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
@@ -506,13 +515,27 @@ class ApiClient {
 
   /** POST /api/auth/login → POST /api/v1/auth/login. No Authorization header. */
   async login(body: LoginRequest): Promise<LoginResponse> {
+    if (isDemoMode) {
+      return demoStore.demoLogin();
+    }
     return this.request<LoginResponse>('/auth/login', {
       method: 'POST',
       body: JSON.stringify(body),
     });
   }
 
+  /** GET /api/ -> GET /api/v1/ (unprotected). Returns server info including auth_enabled. */
+  async getAuthInfo(): Promise<AuthInfoResponse> {
+    if (isDemoMode) {
+      return demoStore.demoGetAuthInfo();
+    }
+    return this.request<AuthInfoResponse>('/');
+  }
+
   async getClusters(): Promise<ClustersResponse> {
+    if (isDemoMode) {
+      return demoStore.demoGetClusters();
+    }
     const data = await this.request<ClustersResponse | null>('/clusters');
     if (data == null) {
       return { clusters: [], count: 0, cluster_mode: '' };
@@ -524,16 +547,25 @@ class ApiClient {
   }
 
   async getWorkloadAnalysis(clusterID: string): Promise<WorkloadAnalysisItem[]> {
+    if (isDemoMode) {
+      return [];
+    }
     const data = await this.request<WorkloadAnalysisItem[] | null>(`/clusters/${clusterID}/workload-analysis`);
     return Array.isArray(data) ? data : [];
   }
 
   async getWorkloadsSummary(clusterID: string): Promise<WorkloadSummaryResponse> {
+    if (isDemoMode) {
+      return demoStore.demoGetWorkloadsSummary(clusterID);
+    }
     return this.request<WorkloadSummaryResponse>(`/clusters/${clusterID}/workloads/summary`);
   }
 
   /** GET /api/clusters/:clusterID/ui/overview — overview metrics for the Overview page. */
   async getOverview(clusterID: string): Promise<OverviewResponse> {
+    if (isDemoMode) {
+      return demoStore.demoGetOverview(clusterID);
+    }
     return this.request<OverviewResponse>(`/clusters/${clusterID}/ui/overview`);
   }
 
@@ -544,6 +576,9 @@ class ApiClient {
     startTime: string,
     endTime: string
   ): Promise<HistoricalTimelineResponse> {
+    if (isDemoMode) {
+      return demoStore.demoGetHistoricalTimeline(clusterID, metric, startTime, endTime);
+    }
     const params = new URLSearchParams({
       startTime,
       endTime,
@@ -558,6 +593,9 @@ class ApiClient {
     workloadID: string,
     overrides: Overrides
   ): Promise<Overrides> {
+    if (isDemoMode) {
+      return demoStore.demoUpdateWorkloadOverrides(clusterID, workloadID, overrides);
+    }
     return this.request<Overrides>(`/clusters/${clusterID}/workloads/${workloadID}/overrides`, {
       method: 'POST',
       body: JSON.stringify(overrides),
@@ -571,6 +609,9 @@ class ApiClient {
     overrides: Overrides
   ): Promise<void> {
     if (workloadIds.length === 0) throw new Error('workload_ids must not be empty');
+    if (isDemoMode) {
+      return demoStore.demoBatchWorkloadOverrides(clusterID, workloadIds, overrides);
+    }
     return this.request<void>(`/clusters/${clusterID}/workloads/overrides`, {
       method: 'POST',
       body: JSON.stringify({ workload_ids: workloadIds, overrides }),
@@ -583,6 +624,9 @@ class ApiClient {
     namespace: string,
     workloadName: string
   ): Promise<WorkloadDetailResponse> {
+    if (isDemoMode) {
+      return demoStore.demoGetWorkloadDetail(clusterID, namespace, workloadName);
+    }
     return this.request<WorkloadDetailResponse>(
       `/clusters/${encodeURIComponent(clusterID)}/workloads/${encodeURIComponent(namespace)}/${encodeURIComponent(workloadName)}/detail`
     );
@@ -590,16 +634,25 @@ class ApiClient {
 
   /** Fetches cluster config (Prometheus). Endpoint: GET /clusters/:clusterID/config */
   async getConfig(clusterID: string): Promise<PrometheusConfig> {
+    if (isDemoMode) {
+      return demoStore.demoGetConfig(clusterID);
+    }
     return this.request<PrometheusConfig>(`/clusters/${clusterID}/config`);
   }
 
   /** Fetches cluster cost settings. Endpoint: GET /clusters/:clusterID/settings */
   async getSettings(clusterID: string): Promise<ClusterSettings> {
+    if (isDemoMode) {
+      return demoStore.demoGetSettings(clusterID);
+    }
     return this.request<ClusterSettings>(`/clusters/${clusterID}/settings`);
   }
 
   /** Updates cluster cost settings. Endpoint: PUT /clusters/:clusterID/settings */
   async updateSettings(clusterID: string, settings: ClusterSettings): Promise<ClusterSettings> {
+    if (isDemoMode) {
+      return demoStore.demoUpdateSettings(clusterID, settings);
+    }
     return this.request<ClusterSettings>(`/clusters/${clusterID}/settings`, {
       method: 'PUT',
       body: JSON.stringify(settings),
@@ -612,6 +665,9 @@ class ApiClient {
    * workloadId format: TYPE:NAMESPACE:NAME (e.g. Deployment:my-ns:my-app).
    */
   async getAuditEvents(clusterID: string, minutes: number, workloadId?: string): Promise<AuditEventsResponse> {
+    if (isDemoMode) {
+      return demoStore.demoGetAuditEvents(clusterID, minutes, workloadId);
+    }
     const base = `/clusters/${encodeURIComponent(clusterID)}/audit-events`;
     const path = workloadId?.trim()
       ? `${base}/${encodeURIComponent(workloadId.trim())}?minutes=${encodeURIComponent(String(minutes))}`

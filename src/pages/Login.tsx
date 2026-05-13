@@ -12,9 +12,12 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { publicUrl } from "@/lib/public-asset";
+
+const logoMaskUrl = publicUrl("logo.svg");
 
 export default function Login() {
-  const { login, isAuthenticated, isSubmitting } = useAuth();
+  const { login, isAuthenticated, isSubmitting, authEnabled, authLoading } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const from =
@@ -25,6 +28,18 @@ export default function Login() {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
+
+  if (authLoading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center">
+        <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
+      </div>
+    );
+  }
+
+  if (!authEnabled) {
+    return <Navigate to={from === "/login" ? "/" : from} replace />;
+  }
 
   if (isAuthenticated) {
     return <Navigate to={from === "/login" ? "/" : from} replace />;
@@ -76,10 +91,10 @@ export default function Login() {
       <div className="relative z-10 flex w-full max-w-md flex-col items-center gap-8">
         <div className="flex flex-col items-center gap-3 text-center">
           <div
-            className="h-20 w-20 shrink-0 rounded-2xl bg-primary shadow-[0_8px_32px_-6px_hsl(var(--primary)/0.65)]"
+            className="h-20 w-20 shrink-0 rounded-2xl bg-[#f0f6fc] shadow-[0_8px_32px_-6px_hsl(var(--primary)/0.45)]"
             style={{
-              maskImage: "url(/logo.svg)",
-              WebkitMaskImage: "url(/logo.svg)",
+              maskImage: `url(${logoMaskUrl})`,
+              WebkitMaskImage: `url(${logoMaskUrl})`,
               maskSize: "contain",
               maskRepeat: "no-repeat",
               maskPosition: "center",
