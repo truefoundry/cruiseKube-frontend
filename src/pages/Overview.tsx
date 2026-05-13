@@ -741,12 +741,7 @@ export default function Overview() {
                     <div>
                       <div className="flex justify-between text-xs text-muted-foreground mb-1">
                         <span>CPU coverage</span>
-                        <span>
-                          {cpuCoveragePercent}% enabled{" "}
-                          <span className="text-muted-foreground/80">
-                            {100 - cpuCoveragePercent}% disabled
-                          </span>
-                        </span>
+                        <span>{cpuCoveragePercent}% enabled</span>
                       </div>
                       <div className="flex h-2 w-full overflow-hidden rounded-full bg-muted/60">
                         <div
@@ -762,12 +757,7 @@ export default function Overview() {
                     <div>
                       <div className="flex justify-between text-xs text-muted-foreground mb-1">
                         <span>Memory coverage</span>
-                        <span>
-                          {memCoveragePercent}% enabled{" "}
-                          <span className="text-muted-foreground/80">
-                            {100 - memCoveragePercent}% disabled
-                          </span>
-                        </span>
+                        <span>{memCoveragePercent}% enabled</span>
                       </div>
                       <div className="flex h-2 w-full overflow-hidden rounded-full bg-muted/60">
                         <div

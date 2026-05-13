@@ -5,7 +5,6 @@ const XC = {
   GPU_WORKLOAD: "GPU_WORKLOAD",
   MEMORY_HPA: "MEMORY_HPA",
   CPU_HPA: "CPU_HPA",
-  INCOMPLETE_STATS: "INCOMPLETE_STATS",
 } as const;
 
 const cons = (
@@ -65,25 +64,6 @@ function applyReliabilityExpenditureRule(w: WorkloadDetail): WorkloadDetail {
 /** Rows from production `GET .../workloads/summary` (cluster `default`). */
 const WORKLOADS_FROM_API: WorkloadDetail[] = [
   {
-    workloadID: "Deployment:gg-ws:gg-test-1",
-    kind: "Deployment",
-    namespace: "gg-ws",
-    name: "gg-test-1",
-    updatedAt: 1778647232,
-    podsCount: 1,
-    scaledDown: false,
-    constraints: cons(),
-    cpu: resCpu(1, { min: 1, avg: 1, max: 1, change: 0 }, 1),
-    memory: resMem(200, { min: 200, avg: 200, max: 200, change: 0 }, 200),
-    dollarSavingsPerMonth: 0,
-    dollarExpenditurePerMonth: 0,
-    config: cfg({
-      criticalityLevel: "medium",
-      cruiseEnabled: false,
-      excludedCodes: [XC.INCOMPLETE_STATS],
-    }),
-  },
-  {
     workloadID: "Deployment:pranjal-ws:tfy-llm-gateway-test-ask-user-qs",
     kind: "Deployment",
     namespace: "pranjal-ws",
@@ -127,44 +107,6 @@ const WORKLOADS_FROM_API: WorkloadDetail[] = [
     dollarSavingsPerMonth: 1.50858,
     dollarExpenditurePerMonth: 0,
     config: cfg({ criticalityLevel: "medium", cruiseEnabled: true }),
-  },
-  {
-    workloadID: "Deployment:truefoundry-frontend-pr:frontend-app-pr-7361",
-    kind: "Deployment",
-    namespace: "truefoundry-frontend-pr",
-    name: "frontend-app-pr-7361",
-    updatedAt: 1778646666,
-    podsCount: 0,
-    scaledDown: true,
-    constraints: cons({ affinity: true }),
-    cpu: resCpu(0.1, { min: 0.1, avg: 0.1, max: 0.1, change: 0 }, 0),
-    memory: resMem(200, { min: 200, avg: 200, max: 200, change: 0 }, 0),
-    dollarSavingsPerMonth: 0,
-    dollarExpenditurePerMonth: 0,
-    config: cfg({
-      criticalityLevel: "high",
-      cruiseEnabled: false,
-      excludedCodes: [XC.INCOMPLETE_STATS],
-    }),
-  },
-  {
-    workloadID: "Deployment:truefoundry-frontend-pr:frontend-app-pr-7136",
-    kind: "Deployment",
-    namespace: "truefoundry-frontend-pr",
-    name: "frontend-app-pr-7136",
-    updatedAt: 1778646666,
-    podsCount: 0,
-    scaledDown: true,
-    constraints: cons({ affinity: true }),
-    cpu: resCpu(0.1, { min: 0.1, avg: 0.1, max: 0.1, change: 0 }, 0),
-    memory: resMem(200, { min: 200, avg: 200, max: 200, change: 0 }, 0),
-    dollarSavingsPerMonth: 0,
-    dollarExpenditurePerMonth: 0,
-    config: cfg({
-      criticalityLevel: "high",
-      cruiseEnabled: false,
-      excludedCodes: [XC.INCOMPLETE_STATS],
-    }),
   },
 ];
 

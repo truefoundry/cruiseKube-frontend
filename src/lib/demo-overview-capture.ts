@@ -3,13 +3,13 @@ import { chartCostVars, chartSeriesVar, chartThresholdVar } from "@/theme";
 
 /**
  * Snapshot from GET .../ui/overview (cluster `default`) — used as demo seed.
- * Requested + original-requested values scaled by (currentSavings+possibleSavings) / baseline sum (3218+4783).
+ * Allocatable : requested : usage = 1 : 0.8 : 0.6 for CPU and memory headline stats.
  */
 export const DEMO_OVERVIEW_CAPTURE: OverviewResponse = {
   currentMonthlyCost: 4916,
   currentSavings: 7918,
   possibleSavings: 9783,
-  clusterUtilisation: 8,
+  clusterUtilisation: 60,
   nodeCount: 27,
   coverage: {
     adoption: {
@@ -28,18 +28,18 @@ export const DEMO_OVERVIEW_CAPTURE: OverviewResponse = {
     },
   },
   cpuStats: {
-    allocatable: 184.6599999999999,
-    requested: 284.868624296963,
-    workloadRequested: 535.766638045243,
-    usage: 14.746,
-    recommended: 76.81601957300374,
+    allocatable: 200,
+    requested: 160,
+    workloadRequested: 260,
+    usage: 120,
+    recommended: 144,
   },
   memoryStats: {
-    allocatable: 572.4646645759999,
-    requested: 787.913228201747,
-    workloadRequested: 1188.77776754616,
-    usage: 228.649,
-    recommended: 262.267809088,
+    allocatable: 600,
+    requested: 480,
+    workloadRequested: 720,
+    usage: 360,
+    recommended: 432,
   },
 };
 
@@ -57,7 +57,11 @@ export const DEMO_TIMELINE_TIMESTAMPS: readonly string[] = [
   "2026-05-12T22:54:18.590584Z",
 ] as const;
 
-/** Per timestamp: Allocatable, Requested, Original Requested, Usage, Recommended (from API memory timeline). */
+/** Memory timeline rows: [Allocatable, Requested, Original Requested, Usage, Recommended]; requested = 0.8×alloc, usage = 0.6×alloc. */
+function memoryOverviewRatioRow(alloc: number): readonly [number, number, number, number, number] {
+  return [alloc, 0.8 * alloc, 1.12 * alloc, 0.6 * alloc, 0.72 * alloc] as const;
+}
+
 export const DEMO_MEMORY_SERIES_ROWS: readonly (readonly [
   number,
   number,
@@ -65,23 +69,23 @@ export const DEMO_MEMORY_SERIES_ROWS: readonly (readonly [
   number,
   number,
 ])[] = [
-  [630.427, 763.22482, 1161.668777, 221.337, 252.068],
-  [630.427, 795.575991, 1195.389392, 227.702, 256.088],
-  [614.313, 785.677944, 1194.39826, 223.714, 256.347],
-  [614.313, 784.60938, 1191.115135, 225.705, 255.246],
-  [614.313, 782.576232, 1189.927104, 220.622, 254.709],
-  [614.313, 784.952294, 1192.303166, 226.806, 255.783],
-  [614.313, 782.576232, 1189.927104, 224.456, 253.903],
-  [614.313, 782.105002, 1189.927104, 226.695, 255.069],
-  [621.428, 782.175797, 1189.997899, 221.331, 255.1],
-  [606.002, 785.784137, 1192.303166, 226.622, 255.069],
+  memoryOverviewRatioRow(630.427),
+  memoryOverviewRatioRow(630.427),
+  memoryOverviewRatioRow(614.313),
+  memoryOverviewRatioRow(614.313),
+  memoryOverviewRatioRow(614.313),
+  memoryOverviewRatioRow(614.313),
+  memoryOverviewRatioRow(614.313),
+  memoryOverviewRatioRow(614.313),
+  memoryOverviewRatioRow(621.428),
+  memoryOverviewRatioRow(606.002),
 ] as const;
 
-/** First three rows from production CPU timeline; remaining rows lerped toward overview cpuStats. */
+/** First three CPU timeline rows; cols 0,1,3 follow alloc : requested : usage = 1 : 0.8 : 0.6; tail lerps to overview cpuStats. */
 const CPU_ANCHOR_ROWS: readonly (readonly [number, number, number, number, number])[] = [
-  [192.51, 276.802402, 524.41729, 14.849, 72.469],
-  [192.51, 285.111983, 537.094047, 17.894, 73.089],
-  [184.66, 282.094339, 536.209108, 15.2, 76.816],
+  [205, 164, 229.6, 123, 147.6],
+  [202, 161.6, 226.24, 121.2, 145.44],
+  [200, 160, 224, 120, 144],
 ] as const;
 
 const cs = DEMO_OVERVIEW_CAPTURE.cpuStats;

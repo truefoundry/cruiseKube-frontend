@@ -116,9 +116,9 @@ function seedAuditEvents(): AuditEvent[] {
       category: "CPU_RECOMMENDATION_APPLIED",
       payload: {
         message: "CPU request updated",
-        target: { kind: "Deployment", name: "gg-test-1", namespace: "gg-ws" },
+        target: { kind: "Deployment", name: "tfy-flyte-scheduler", namespace: "truefoundry" },
         details: {
-          workloadId: "Deployment:gg-ws:gg-test-1",
+          workloadId: "Deployment:truefoundry:tfy-flyte-scheduler",
           previousRequest: "1000m",
           newRequest: "1000m",
         },
@@ -263,8 +263,8 @@ function seedAuditEvents(): AuditEvent[] {
       category: "MEMORY_RECOMMENDATION_APPLIED",
       payload: {
         message: "No change applied (already right-sized)",
-        target: { kind: "Deployment", name: "gg-test-1", namespace: "gg-ws" },
-        details: { workloadId: "Deployment:gg-ws:gg-test-1", skipped: true },
+        target: { kind: "Deployment", name: "tfy-llm-gateway-test-approval", namespace: "truefoundry" },
+        details: { workloadId: "Deployment:truefoundry:tfy-llm-gateway-test-approval", skipped: true },
       },
       created_at: iso(320),
     },
