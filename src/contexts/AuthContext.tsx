@@ -12,6 +12,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { apiClient, setApiUnauthorizedHandler, type LoginRequest } from "@/lib/api";
 import {
   clearAuthSession,
+  migrateSessionStorage,
   readAuthSession,
   subscribeAuthChange,
   writeAuthSession,
@@ -33,6 +34,11 @@ interface AuthContextValue {
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 
 function initialAuthSession(): StoredAuthSession | null {
+  // Migrate any legacy per-tab sessionStorage auth data to localStorage
+  // before reading. This must happen exactly once during app init, not at
+  // module load time, so that the migration point is explicit and testable.
+  migrateSessionStorage();
+
   if (isDemoMode) {
     const existing = readAuthSession();
     if (existing) return existing;
@@ -87,8 +93,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setSession(newSession);
       } else {
         // Another tab logged out or cleared storage.
-        // Call clearAuthSession() to also remove any lingering legacy
-        // sessionStorage key in this tab (important during migration period).
+        // clearAuthSession() is called even though the localStorage key is
+        // already gone (that's what triggered this event). The call is needed
+        // to (a) remove any lingering legacy sessionStorage key in this tab
+        // (important during the migration period) and (b) set the logout
+        // marker that prevents future sessionStorage migration.
         clearAuthSession();
         setSession(null);
         queryClient.clear();

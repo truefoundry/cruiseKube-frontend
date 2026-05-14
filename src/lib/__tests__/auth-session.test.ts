@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import {
+  STORAGE_KEY,
   readAuthSession,
   writeAuthSession,
   clearAuthSession,
@@ -8,11 +9,19 @@ import {
   getBasicAuthorizationHeader,
 } from '../auth-session';
 
-const STORAGE_KEY = 'cruisekube-auth-session';
-
 beforeEach(() => {
   localStorage.clear();
   sessionStorage.clear();
+  vi.restoreAllMocks();
+});
+
+// ---------------------------------------------------------------------------
+// STORAGE_KEY export
+// ---------------------------------------------------------------------------
+describe('STORAGE_KEY', () => {
+  it('is the expected value used by all storage functions', () => {
+    expect(STORAGE_KEY).toBe('cruisekube-auth-session');
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -68,11 +77,35 @@ describe('readAuthSession', () => {
 // writeAuthSession / clearAuthSession
 // ---------------------------------------------------------------------------
 describe('writeAuthSession / clearAuthSession', () => {
-  it('writeAuthSession() stores session in localStorage under key cruisekube-auth-session', () => {
+  it('writeAuthSession() stores session in localStorage under the correct key', () => {
     writeAuthSession({ username: 'admin', basicToken: 'dG9rZW4=' });
     const raw = localStorage.getItem(STORAGE_KEY);
     expect(raw).not.toBeNull();
     expect(JSON.parse(raw!)).toEqual({ username: 'admin', basicToken: 'dG9rZW4=' });
+  });
+
+  it('writeAuthSession() clears the logout marker so future migration is allowed', () => {
+    // Simulate a previous logout that set the marker.
+    clearAuthSession();
+    expect(localStorage.getItem('cruisekube-auth-logged-out')).not.toBeNull();
+
+    writeAuthSession({ username: 'admin', basicToken: 'tok' });
+    expect(localStorage.getItem('cruisekube-auth-logged-out')).toBeNull();
+  });
+
+  it('writeAuthSession() throws and logs when localStorage.setItem fails (e.g. quota exceeded)', () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+      throw new DOMException('QuotaExceededError');
+    });
+
+    expect(() =>
+      writeAuthSession({ username: 'admin', basicToken: 'tok' }),
+    ).toThrow('QuotaExceededError');
+    expect(warnSpy).toHaveBeenCalledWith(
+      'writeAuthSession: failed to persist session',
+      expect.any(DOMException),
+    );
   });
 
   it('clearAuthSession() removes from localStorage', () => {
@@ -85,6 +118,25 @@ describe('writeAuthSession / clearAuthSession', () => {
     sessionStorage.setItem(STORAGE_KEY, JSON.stringify({ username: 'admin', basicToken: 'tok' }));
     clearAuthSession();
     expect(sessionStorage.getItem(STORAGE_KEY)).toBeNull();
+  });
+
+  it('clearAuthSession() sets a logout marker in localStorage', () => {
+    clearAuthSession();
+    const marker = localStorage.getItem('cruisekube-auth-logged-out');
+    expect(marker).not.toBeNull();
+    // Marker should be a numeric timestamp.
+    expect(Number(marker)).toBeGreaterThan(0);
+  });
+
+  it('clearAuthSession() logs a warning when localStorage.removeItem throws', () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    vi.spyOn(Storage.prototype, 'removeItem').mockImplementation(() => {
+      throw new DOMException('SecurityError');
+    });
+
+    // Should not throw — errors are caught and logged.
+    clearAuthSession();
+    expect(warnSpy).toHaveBeenCalled();
   });
 });
 
@@ -122,6 +174,22 @@ describe('migrateSessionStorage', () => {
     expect(localStorage.getItem(STORAGE_KEY)).toBeNull();
     expect(sessionStorage.getItem(STORAGE_KEY)).toBeNull();
   });
+
+  it('does NOT migrate when a logout marker exists (prevents session resurrection)', () => {
+    // Simulate: user logged out on a tab running new code, which sets the
+    // marker. Then an old tab refreshes and triggers migration with its stale
+    // sessionStorage token.
+    const staleSession = JSON.stringify({ username: 'stale', basicToken: 'old-token' });
+    sessionStorage.setItem(STORAGE_KEY, staleSession);
+    localStorage.setItem('cruisekube-auth-logged-out', String(Date.now()));
+
+    migrateSessionStorage();
+
+    // The stale session must NOT be copied to localStorage.
+    expect(localStorage.getItem(STORAGE_KEY)).toBeNull();
+    // But the sessionStorage key is still cleaned up.
+    expect(sessionStorage.getItem(STORAGE_KEY)).toBeNull();
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -154,6 +222,24 @@ describe('subscribeAuthChange', () => {
       new StorageEvent('storage', {
         key: STORAGE_KEY,
         newValue: null,
+        storageArea: localStorage,
+      }),
+    );
+
+    expect(callback).toHaveBeenCalledTimes(1);
+    expect(callback).toHaveBeenCalledWith(null);
+
+    unsub();
+  });
+
+  it('calls callback with null when newValue is malformed JSON (treats corruption as logout)', () => {
+    const callback = vi.fn();
+    const unsub = subscribeAuthChange(callback);
+
+    window.dispatchEvent(
+      new StorageEvent('storage', {
+        key: STORAGE_KEY,
+        newValue: '{not valid json',
         storageArea: localStorage,
       }),
     );
