@@ -54,7 +54,7 @@ const DAYS: { value: number; label: string }[] = [
   { value: 4, label: "Thu" },
   { value: 5, label: "Fri" },
   { value: 6, label: "Sat" },
-  { value: 7, label: "Sun" },
+  { value: 0, label: "Sun" },
 ];
 
 const HOURS_12 = Array.from({ length: 24 }, (_, i) => ({

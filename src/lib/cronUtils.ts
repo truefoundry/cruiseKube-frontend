@@ -3,9 +3,9 @@
  * All stored cron is in UTC; UI can show local time via timezone.
  */
 
-/** Day of week for cron: 1 = Monday, 7 = Sunday (cron standard). */
+/** Day of week for cron: 0 = Sunday, 1 = Monday, ..., 6 = Saturday (POSIX cron standard). */
 export const CRON_DOW_MON = 1;
-export const CRON_DOW_SUN = 7;
+export const CRON_DOW_SUN = 0;
 
 /** Convert local time (hour, minute) in a given IANA timezone to UTC (hour, minute). */
 export function localToUTC(
@@ -32,7 +32,7 @@ export function localToUTC(
   return { hour: localHour, minute: localMinute };
 }
 
-/** Build cron expression: minute hour * * dayOfWeek (day-of-week 1=Mon..7=Sun). */
+/** Build cron expression: minute hour * * dayOfWeek (day-of-week 0=Sun..6=Sat). */
 export function buildCron(
   minute: number,
   hour: number,
@@ -54,8 +54,8 @@ export function parseCron(cron: string): { minute: number; hour: number; days: n
   const dayPart = parts[4];
   const days =
     dayPart === "*"
-      ? [1, 2, 3, 4, 5, 6, 7]
-      : dayPart.split(",").map((d) => parseInt(d.trim(), 10)).filter((d) => d >= 1 && d <= 7);
+      ? [0, 1, 2, 3, 4, 5, 6]
+      : dayPart.split(",").map((d) => parseInt(d.trim(), 10)).map((d) => (d === 7 ? 0 : d)).filter((d) => d >= 0 && d <= 6);
   return { minute, hour, days };
 }
 
@@ -72,10 +72,10 @@ export function humanizeCron(
   return `${dayStr} at ${timeStr}${tzNote}`;
 }
 
-/** Day string for cron days array (1=Mon..7=Sun). */
+/** Day string for cron days array (0=Sun..6=Sat). */
 function formatCronDayString(days: number[]): string {
   const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-  const dayLabels = days.map((d) => dayNames[d === 7 ? 0 : d]);
+  const dayLabels = days.map((d) => dayNames[d]);
   if (dayLabels.length === 7) return "Every day";
   if (dayLabels.length === 0) return "No days";
   return dayLabels.join(", ");
