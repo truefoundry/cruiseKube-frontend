@@ -24,7 +24,10 @@ export function readAuthSession(): StoredAuthSession | null {
     };
     if (typeof parsed.username !== 'string' || !parsed.username.trim()) return null;
     if (typeof parsed.basicToken !== 'string' || !parsed.basicToken) return null;
-    if (typeof parsed.expiresAt === 'number' && Date.now() > parsed.expiresAt) return null;
+    if (typeof parsed.expiresAt === 'number' && Date.now() > parsed.expiresAt) {
+      clearAuthSession();
+      return null;
+    }
     return { username: parsed.username.trim(), basicToken: parsed.basicToken };
   } catch {
     return null;
