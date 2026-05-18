@@ -13,6 +13,7 @@ import { apiClient, setApiUnauthorizedHandler, type LoginRequest } from "@/lib/a
 import {
   clearAuthSession,
   readAuthSession,
+  subscribeAuthChange,
   writeAuthSession,
   type StoredAuthSession,
 } from "@/lib/auth-session";
@@ -73,6 +74,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     });
     return () => setApiUnauthorizedHandler(null);
   }, [authEnabled, navigate, queryClient]);
+
+  // Sync auth state across browser tabs via the storage event.
+  useEffect(() => {
+    const unsubscribe = subscribeAuthChange((newSession) => {
+      if (newSession) {
+        // Another tab logged in or changed credentials.
+        // Clear query cache unconditionally to avoid stale data from a
+        // previous session. Cross-tab login events are rare, so this is
+        // not a performance concern.
+        queryClient.clear();
+        setSession(newSession);
+      } else {
+        // Another tab logged out or cleared storage.
+        setSession(null);
+        queryClient.clear();
+        navigate("/login", { replace: true });
+      }
+    });
+    return unsubscribe;
+  }, [navigate, queryClient]);
 
   useEffect(() => {
     let cancelled = false;
