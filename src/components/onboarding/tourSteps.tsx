@@ -1,12 +1,6 @@
 import type { Step } from "react-joyride";
 import type { NavigateFunction } from "react-router-dom";
 
-/**
- * The index of the first step that lives on the /workloads page.
- * Used by `before` hooks to navigate between Overview ↔ Workloads.
- */
-export const FIRST_WORKLOADS_STEP = 3;
-
 export function createTourSteps(navigate: NavigateFunction): Step[] {
   /** Navigate to the Overview page (no-op if already there). */
   const ensureOverview = async () => {

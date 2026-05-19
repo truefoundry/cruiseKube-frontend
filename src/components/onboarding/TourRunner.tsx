@@ -48,7 +48,9 @@ export function TourRunner({ tourTrigger }: TourRunnerProps) {
     },
   });
 
-  // Listen for tour end to persist completion and restore sidebar state
+  // Listen for tour end to persist completion and restore sidebar state.
+  // In react-joyride v3, "tour:end" fires for both FINISHED and SKIPPED
+  // statuses (see useJoyride source: hasChangedTo("status", [FINISHED, SKIPPED])).
   useEffect(() => {
     const unsubscribe = on("tour:end", () => {
       markTourCompleted();
