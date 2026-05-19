@@ -8,7 +8,7 @@ export function createTourSteps(navigate: NavigateFunction): Step[] {
    *  Without this, joyride finds the target instantly and skips past
    *  the step in a single render cycle (same fix as ensureWorkloads). */
   const ensureOverview = async () => {
-    navigate("/");
+    navigate("/", { replace: true });
     await new Promise((resolve) => setTimeout(resolve, 300));
   };
 
@@ -18,7 +18,7 @@ export function createTourSteps(navigate: NavigateFunction): Step[] {
    *  Without this, joyride finds the target instantly and skips past
    *  the step in a single render cycle. */
   const ensureWorkloads = async () => {
-    navigate("/workloads");
+    navigate("/workloads", { replace: true });
     await new Promise((resolve) => setTimeout(resolve, 300));
   };
 
