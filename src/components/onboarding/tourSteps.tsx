@@ -2,9 +2,14 @@ import type { Step } from "react-joyride";
 import type { NavigateFunction } from "react-router-dom";
 
 export function createTourSteps(navigate: NavigateFunction): Step[] {
-  /** Navigate to the Overview page (no-op if already there). */
+  /** Navigate to the Overview page (no-op if already there).
+   *  A short delay after navigation gives joyride time to render the
+   *  current step before its target element appears in the DOM.
+   *  Without this, joyride finds the target instantly and skips past
+   *  the step in a single render cycle (same fix as ensureWorkloads). */
   const ensureOverview = async () => {
     navigate("/");
+    await new Promise((resolve) => setTimeout(resolve, 300));
   };
 
   /** Navigate to the Workloads page (no-op if already there).
