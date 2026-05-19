@@ -31,11 +31,11 @@ import { useConfig } from "@/contexts/ConfigContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { ClusterSelector } from "@/components/ClusterSelector";
 import { publicUrl } from "@/lib/public-asset";
-import { useOnboardingTour } from "@/components/onboarding";
+import { useOnboardingTour } from "@/components/onboarding/useOnboardingTour";
 import { useIsMobile } from "@/hooks/use-mobile";
 
 const navItems = [
-  { title: "Overview", url: "/", icon: LayoutDashboard, dataTour: "nav-overview" },
+  { title: "Overview", url: "/", icon: LayoutDashboard },
   { title: "Workloads", url: "/workloads", icon: Layers, dataTour: "nav-workloads" },
   { title: "Events", url: "/events", icon: Activity, dataTour: "nav-events" },
   { title: "Policies & Configuration", url: "/policies", icon: Settings },

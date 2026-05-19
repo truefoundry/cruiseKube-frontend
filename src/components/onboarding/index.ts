@@ -1,1 +1,2 @@
-export { OnboardingTourProvider, useOnboardingTour } from "./OnboardingTourContext";
+export { OnboardingTourProvider } from "./OnboardingTourProvider";
+export { useOnboardingTour } from "./useOnboardingTour";

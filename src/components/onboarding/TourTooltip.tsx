@@ -27,7 +27,7 @@ export function TourTooltip({
           {!isLastStep && (
             <button
               {...skipProps}
-              className="text-xs text-muted-foreground/70 transition-colors hover:text-muted-foreground"
+              className="rounded text-xs text-muted-foreground/70 transition-colors hover:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
               Skip tour
             </button>

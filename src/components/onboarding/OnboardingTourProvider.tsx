@@ -1,7 +1,5 @@
 import {
-  createContext,
   useCallback,
-  useContext,
   useEffect,
   useRef,
   type ReactNode,
@@ -17,10 +15,12 @@ import {
   markTourCompleted,
   clearTourCompleted,
 } from "./tour-storage";
+import { OnboardingTourContext } from "./OnboardingTourContext";
 
 // --- DOM target polling helper ---
 function waitForElement(
   selector: string,
+  signal?: AbortSignal,
   timeoutMs = 10000,
 ): Promise<boolean> {
   return new Promise((resolve) => {
@@ -30,6 +30,11 @@ function waitForElement(
     }
     const startedAt = Date.now();
     const interval = window.setInterval(() => {
+      if (signal?.aborted) {
+        window.clearInterval(interval);
+        resolve(false);
+        return;
+      }
       if (document.querySelector(selector)) {
         window.clearInterval(interval);
         resolve(true);
@@ -39,19 +44,6 @@ function waitForElement(
       }
     }, 200);
   });
-}
-
-// --- Context ---
-interface OnboardingTourContextType {
-  startTour: () => void;
-}
-
-const OnboardingTourContext = createContext<OnboardingTourContextType>({
-  startTour: () => {},
-});
-
-export function useOnboardingTour() {
-  return useContext(OnboardingTourContext);
 }
 
 // --- Provider ---
@@ -65,6 +57,18 @@ export function OnboardingTourProvider({ children }: { children: ReactNode }) {
   const autoStartAttempted = useRef(false);
   // Save sidebar state before tour to restore after
   const sidebarStateBeforeTour = useRef<boolean | null>(null);
+
+  // Refs for stable callback access to render-time values (fixes #1, #5)
+  const sidebarOpenRef = useRef(sidebarOpen);
+  sidebarOpenRef.current = sidebarOpen;
+
+  const locationRef = useRef(location.pathname);
+  locationRef.current = location.pathname;
+
+  // AbortController for in-flight waitForElement polling (fixes #2)
+  const waitAbortRef = useRef<AbortController | null>(null);
+  // Guard against concurrent scheduleTourStart calls (fixes review #1)
+  const startInFlightRef = useRef(false);
 
   const { controls, on, state, Tour } = useJoyride({
     steps: tourSteps,
@@ -91,6 +95,10 @@ export function OnboardingTourProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const unsubscribe = on("tour:end", () => {
       markTourCompleted();
+      startInFlightRef.current = false;
+      // Abort any lingering waitForElement polling
+      waitAbortRef.current?.abort();
+      waitAbortRef.current = null;
       // Restore sidebar to its previous state
       if (sidebarStateBeforeTour.current !== null) {
         setSidebarOpen(sidebarStateBeforeTour.current);
@@ -103,22 +111,42 @@ export function OnboardingTourProvider({ children }: { children: ReactNode }) {
   // Centralized tour start: navigate to /, open sidebar, wait for target, start
   const scheduleTourStart = useCallback(
     async (navigateFirst: boolean) => {
+      // Dedupe: if a start is already in-flight, bail out (fixes review #1)
+      if (startInFlightRef.current) return;
+      startInFlightRef.current = true;
+
       if (navigateFirst) {
         navigate("/");
       }
-      // Save current sidebar state and force open
-      sidebarStateBeforeTour.current = sidebarOpen;
+
+      // Save current sidebar state and force open (read from ref for freshness)
+      sidebarStateBeforeTour.current = sidebarOpenRef.current;
       setSidebarOpen(true);
+
+      // Abort any previous polling before starting a new one
+      waitAbortRef.current?.abort();
+      const abortController = new AbortController();
+      waitAbortRef.current = abortController;
+
       // Wait for the first Overview target to appear in the DOM
       const found = await waitForElement(
         '[data-tour="overview-metrics"]',
+        abortController.signal,
         10000,
       );
-      if (found) {
+
+      if (found && locationRef.current === "/") {
         controls.start(0);
+      } else {
+        // Tour didn't start — restore sidebar and allow retry (fixes review #2)
+        startInFlightRef.current = false;
+        if (sidebarStateBeforeTour.current !== null) {
+          setSidebarOpen(sidebarStateBeforeTour.current);
+          sidebarStateBeforeTour.current = null;
+        }
       }
     },
-    [navigate, sidebarOpen, setSidebarOpen, controls],
+    [navigate, setSidebarOpen, controls],
   );
 
   // Auto-start tour for first-time visitors on the Overview page (desktop only)
@@ -138,10 +166,19 @@ export function OnboardingTourProvider({ children }: { children: ReactNode }) {
   // Manual retake from sidebar
   const startTour = useCallback(() => {
     clearTourCompleted();
-    autoStartAttempted.current = false;
+    // Keep autoStartAttempted true to prevent the auto-start effect
+    // from racing with this manual start (fixes review #1)
+    autoStartAttempted.current = true;
     const needsNavigation = location.pathname !== "/";
     scheduleTourStart(needsNavigation);
   }, [location.pathname, scheduleTourStart]);
+
+  // Cleanup on unmount: abort any in-flight polling (fixes #2)
+  useEffect(() => {
+    return () => {
+      waitAbortRef.current?.abort();
+    };
+  }, []);
 
   return (
     <OnboardingTourContext.Provider value={{ startTour }}>
