@@ -34,7 +34,7 @@ import { publicUrl } from "@/lib/public-asset";
 
 const navItems = [
   { title: "Overview", url: "/", icon: LayoutDashboard },
-  { title: "Workloads", url: "/workloads", icon: Layers, dataTour: "nav-workloads" },
+  { title: "Workloads", url: "/workloads", icon: Layers },
   { title: "Events", url: "/events", icon: Activity, dataTour: "nav-events" },
   { title: "Policies & Configuration", url: "/policies", icon: Settings },
 ];
