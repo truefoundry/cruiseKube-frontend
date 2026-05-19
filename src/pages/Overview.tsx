@@ -496,7 +496,7 @@ export default function Overview() {
           </Alert>
         )}
         {/* Top row: 4 metric cards */}
-        <section aria-labelledby="overview-metrics-heading">
+        <section aria-labelledby="overview-metrics-heading" data-tour="overview-metrics">
           <h2 id="overview-metrics-heading" className="sr-only">
             Key metrics
           </h2>
@@ -676,7 +676,7 @@ export default function Overview() {
         </section>
 
         {/* Middle: CruiseKube Adoption + Untapped Savings */}
-        <section aria-labelledby="adoption-heading" className="grid gap-4 md:grid-cols-3">
+        <section aria-labelledby="adoption-heading" className="grid gap-4 md:grid-cols-3" data-tour="untapped-savings">
           <div
             id="adoption-heading"
             className="metric-card border-border md:col-span-2 flex flex-col sm:flex-row items-stretch gap-6"
