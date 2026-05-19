@@ -37,6 +37,8 @@ function waitForElement(
 
 interface TourRunnerProps {
   tourTrigger: number;
+  /** Sidebar open/closed state captured by the provider *before* forcing it open. */
+  sidebarStateBeforeTour: boolean | null;
 }
 
 /**
@@ -44,17 +46,17 @@ interface TourRunnerProps {
  * Lazy-loaded by OnboardingTourProvider — only downloaded when the tour
  * is actually triggered (first visit or retake).
  */
-export function TourRunner({ tourTrigger }: TourRunnerProps) {
+export function TourRunner({ tourTrigger, sidebarStateBeforeTour }: TourRunnerProps) {
   const location = useLocation();
-  const { open: sidebarOpen, setOpen: setSidebarOpen } = useSidebar();
-
-  const sidebarOpenRef = useRef(sidebarOpen);
-  sidebarOpenRef.current = sidebarOpen;
+  const { setOpen: setSidebarOpen } = useSidebar();
 
   const locationRef = useRef(location.pathname);
   locationRef.current = location.pathname;
 
-  const sidebarStateBeforeTour = useRef<boolean | null>(null);
+  // Store the prop in a ref so the tour:end handler always reads the latest value
+  const sidebarRestoreRef = useRef(sidebarStateBeforeTour);
+  sidebarRestoreRef.current = sidebarStateBeforeTour;
+
   const waitAbortRef = useRef<AbortController | null>(null);
   const lastProcessedTrigger = useRef(0);
 
@@ -84,9 +86,8 @@ export function TourRunner({ tourTrigger }: TourRunnerProps) {
       markTourCompleted();
       waitAbortRef.current?.abort();
       waitAbortRef.current = null;
-      if (sidebarStateBeforeTour.current !== null) {
-        setSidebarOpen(sidebarStateBeforeTour.current);
-        sidebarStateBeforeTour.current = null;
+      if (sidebarRestoreRef.current !== null) {
+        setSidebarOpen(sidebarRestoreRef.current);
       }
     });
     return unsubscribe;
@@ -100,9 +101,7 @@ export function TourRunner({ tourTrigger }: TourRunnerProps) {
     lastProcessedTrigger.current = tourTrigger;
 
     const startTour = async () => {
-      sidebarStateBeforeTour.current = sidebarOpenRef.current;
-      setSidebarOpen(true);
-
+      // Sidebar is already forced open by the provider; state was captured there.
       waitAbortRef.current?.abort();
       const abortController = new AbortController();
       waitAbortRef.current = abortController;
@@ -116,10 +115,9 @@ export function TourRunner({ tourTrigger }: TourRunnerProps) {
       if (found && locationRef.current === "/") {
         controls.start(0);
       } else {
-        // Tour didn't start — restore sidebar
-        if (sidebarStateBeforeTour.current !== null) {
-          setSidebarOpen(sidebarStateBeforeTour.current);
-          sidebarStateBeforeTour.current = null;
+        // Tour didn't start — restore sidebar to pre-tour state
+        if (sidebarRestoreRef.current !== null) {
+          setSidebarOpen(sidebarRestoreRef.current);
         }
       }
     };

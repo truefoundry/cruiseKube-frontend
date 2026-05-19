@@ -22,16 +22,20 @@ import { OnboardingTourContext } from "./OnboardingTourContext";
 export function OnboardingTourProvider({ children }: { children: ReactNode }) {
   const navigate = useNavigate();
   const location = useLocation();
-  const { setOpen: setSidebarOpen } = useSidebar();
+  const { open: sidebarOpen, setOpen: setSidebarOpen } = useSidebar();
   const isMobile = useIsMobile();
 
   // Shared state: when set to a positive number, the TourRunner starts the tour
   const [tourTrigger, setTourTrigger] = useState(0);
+  // Sidebar state captured *before* forcing it open, passed to TourRunner as a prop
+  const [sidebarStateBeforeTour, setSidebarStateBeforeTour] = useState<boolean | null>(null);
 
   // Manual retake from sidebar
   const startTour = useCallback(() => {
     clearTourCompleted();
     if (!isMobile) {
+      // Capture sidebar state before forcing it open
+      setSidebarStateBeforeTour(sidebarOpen);
       setSidebarOpen(true);
       if (location.pathname !== "/") {
         navigate("/");
@@ -39,7 +43,7 @@ export function OnboardingTourProvider({ children }: { children: ReactNode }) {
       // Increment trigger to signal TourRunner to start
       setTourTrigger((prev) => prev + 1);
     }
-  }, [isMobile, location.pathname, navigate, setSidebarOpen]);
+  }, [isMobile, sidebarOpen, location.pathname, navigate, setSidebarOpen]);
 
   // Auto-start for first-time visitors (desktop, on /, not completed)
   const autoStartAttempted = useRef(false);
@@ -51,15 +55,20 @@ export function OnboardingTourProvider({ children }: { children: ReactNode }) {
       location.pathname === "/"
     ) {
       autoStartAttempted.current = true;
+      // Capture sidebar state before forcing it open
+      setSidebarStateBeforeTour(sidebarOpen);
       setSidebarOpen(true);
       setTourTrigger((prev) => prev + 1);
     }
-  }, [isMobile, location.pathname, setSidebarOpen]);
+  }, [isMobile, sidebarOpen, location.pathname, setSidebarOpen]);
 
   return (
     <OnboardingTourContext.Provider value={{ startTour }}>
       {children}
-      <LazyTourRunner tourTrigger={tourTrigger} />
+      <LazyTourRunner
+        tourTrigger={tourTrigger}
+        sidebarStateBeforeTour={sidebarStateBeforeTour}
+      />
     </OnboardingTourContext.Provider>
   );
 }
@@ -71,12 +80,21 @@ const TourRunnerImpl = lazy(() =>
   import("./TourRunner").then((m) => ({ default: m.TourRunner })),
 );
 
-function LazyTourRunner({ tourTrigger }: { tourTrigger: number }) {
+function LazyTourRunner({
+  tourTrigger,
+  sidebarStateBeforeTour,
+}: {
+  tourTrigger: number;
+  sidebarStateBeforeTour: boolean | null;
+}) {
   // Don't even load the chunk until the tour is triggered
   if (tourTrigger === 0) return null;
   return (
     <Suspense fallback={null}>
-      <TourRunnerImpl tourTrigger={tourTrigger} />
+      <TourRunnerImpl
+        tourTrigger={tourTrigger}
+        sidebarStateBeforeTour={sidebarStateBeforeTour}
+      />
     </Suspense>
   );
 }
