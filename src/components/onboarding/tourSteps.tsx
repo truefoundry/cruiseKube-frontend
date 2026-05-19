@@ -116,6 +116,7 @@ export function createTourSteps(navigate: NavigateFunction): Step[] {
           </ul>
         </div>
       ),
+      before: ensureWorkloads,
     },
     {
       target: '[data-tour="nav-events"]',
