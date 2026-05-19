@@ -22,7 +22,7 @@ const DEFAULT_CPU = 0.0145;
 const DEFAULT_MEMORY = 0.00724;
 
 export default function Policies() {
-  const { startTour } = useOnboardingTour();
+  const { startTour, isMobile } = useOnboardingTour();
   const { selectedClusterId } = useCluster();
   const { config: prometheusConfig, isLoading: prometheusConfigLoading, refetch: refetchPrometheusConfig } = useConfig();
   const queryClient = useQueryClient();
@@ -122,22 +122,24 @@ export default function Policies() {
       {/* Header */}
       <div className="flex items-start justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-foreground">
+          <h1 className="text-2xl font-semibold text-foreground">
             Policies &amp; Configuration
           </h1>
           <p className="text-sm text-muted-foreground">
             Configure CruiseKube behavior and workload settings
           </p>
         </div>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => startTour()}
-          className="shrink-0 gap-2"
-        >
-          <RotateCcw className="h-4 w-4" />
-          Retake tour
-        </Button>
+        {!isMobile && (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => startTour()}
+            className="shrink-0 gap-2"
+          >
+            <RotateCcw className="h-4 w-4" />
+            Retake tour
+          </Button>
+        )}
       </div>
 
       <Tabs defaultValue="pricing" className="space-y-6">

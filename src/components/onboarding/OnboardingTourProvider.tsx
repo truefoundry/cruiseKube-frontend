@@ -1,4 +1,6 @@
 import {
+  lazy,
+  Suspense,
   useCallback,
   useEffect,
   useRef,
@@ -26,26 +28,34 @@ export function OnboardingTourProvider({ children }: { children: ReactNode }) {
   const { open: sidebarOpen, setOpen: setSidebarOpen } = useSidebar();
   const isMobile = useIsMobile();
 
+  // Track sidebar state in a ref so we always capture the latest value
+  // without stale closures or dependency-array issues.
+  const sidebarOpenRef = useRef(sidebarOpen);
+  useEffect(() => {
+    sidebarOpenRef.current = sidebarOpen;
+  }, [sidebarOpen]);
+
   // Shared state: when set to a positive number, the TourRunner starts the tour
   const [tourTrigger, setTourTrigger] = useState(0);
 
   // Manual retake from sidebar
   const startTour = useCallback(() => {
+    if (isMobile) return;
     clearTourCompleted();
-    if (!isMobile) {
-      // Persist sidebar state to localStorage before forcing it open
-      saveSidebarState(sidebarOpen);
-      setSidebarOpen(true);
-      if (location.pathname !== "/") {
-        navigate("/");
-      }
-      // Increment trigger to signal TourRunner to start
-      setTourTrigger((prev) => prev + 1);
+    // Persist sidebar state to localStorage before forcing it open
+    saveSidebarState(sidebarOpenRef.current);
+    setSidebarOpen(true);
+    if (location.pathname !== "/") {
+      navigate("/");
     }
-  }, [isMobile, sidebarOpen, location.pathname, navigate, setSidebarOpen]);
+    // Increment trigger to signal TourRunner to start
+    setTourTrigger((prev) => prev + 1);
+  }, [isMobile, location.pathname, navigate, setSidebarOpen]);
 
   // Auto-start for first-time visitors (desktop, on /, not completed)
   const autoStartAttempted = useRef(false);
+  // Capture the initial sidebar state on mount for auto-start
+  const initialSidebarOpen = useRef(sidebarOpen);
   useEffect(() => {
     if (
       !isMobile &&
@@ -55,14 +65,14 @@ export function OnboardingTourProvider({ children }: { children: ReactNode }) {
     ) {
       autoStartAttempted.current = true;
       // Persist sidebar state to localStorage before forcing it open
-      saveSidebarState(sidebarOpen);
+      saveSidebarState(initialSidebarOpen.current);
       setSidebarOpen(true);
       setTourTrigger((prev) => prev + 1);
     }
-  }, [isMobile, sidebarOpen, location.pathname, setSidebarOpen]);
+  }, [isMobile, location.pathname, setSidebarOpen]);
 
   return (
-    <OnboardingTourContext.Provider value={{ startTour }}>
+    <OnboardingTourContext.Provider value={{ startTour, isMobile }}>
       {children}
       <LazyTourRunner tourTrigger={tourTrigger} />
     </OnboardingTourContext.Provider>
@@ -70,7 +80,6 @@ export function OnboardingTourProvider({ children }: { children: ReactNode }) {
 }
 
 // --- Lazy-loaded TourRunner ---
-import { lazy, Suspense } from "react";
 
 const TourRunnerImpl = lazy(() =>
   import("./TourRunner").then((m) => ({ default: m.TourRunner })),

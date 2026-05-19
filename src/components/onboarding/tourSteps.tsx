@@ -1,7 +1,28 @@
 import type { Step } from "react-joyride";
 import type { NavigateFunction } from "react-router-dom";
 
+/**
+ * The index of the first step that lives on the /workloads page.
+ * Used by `before` hooks to navigate between Overview ↔ Workloads.
+ */
+export const FIRST_WORKLOADS_STEP = 3;
+
 export function createTourSteps(navigate: NavigateFunction): Step[] {
+  /** Navigate to the Overview page (no-op if already there). */
+  const ensureOverview = async () => {
+    navigate("/");
+  };
+
+  /** Navigate to the Workloads page (no-op if already there).
+   *  A short delay after navigation gives joyride time to render the
+   *  current step before its target element appears in the DOM.
+   *  Without this, joyride finds the target instantly and skips past
+   *  the step in a single render cycle. */
+  const ensureWorkloads = async () => {
+    navigate("/workloads");
+    await new Promise((resolve) => setTimeout(resolve, 300));
+  };
+
   return [
     {
       target: "body",
@@ -38,6 +59,7 @@ export function createTourSteps(navigate: NavigateFunction): Step[] {
           </ul>
         </div>
       ),
+      before: ensureOverview,
     },
     {
       target: '[data-tour="untapped-savings"]',
@@ -54,8 +76,10 @@ export function createTourSteps(navigate: NavigateFunction): Step[] {
           <p>Click <strong>&quot;View Workloads&quot;</strong> to start optimizing the rest! 🚀</p>
         </div>
       ),
+      before: ensureOverview,
     },
     {
+      // Step index 3 — first Workloads step
       target: '[data-tour="workload-summary"]',
       placement: "bottom" as const,
       title: "📋 Workloads in scope",
@@ -70,17 +94,12 @@ export function createTourSteps(navigate: NavigateFunction): Step[] {
           <p>CruiseKube supports <strong>Deployments, StatefulSets, DaemonSets, Jobs, CronJobs</strong>, and more.</p>
         </div>
       ),
-      before: () => {
-        if (window.location.pathname !== "/workloads") {
-          navigate("/workloads");
-          return new Promise<void>((resolve) => setTimeout(resolve, 500));
-        }
-      },
+      before: ensureWorkloads,
     },
     {
       target: '[data-tour="workload-table"]',
       placement: "top" as const,
-      title: "🚀 Cruise Mode & Recommendations",
+      title: "🚀 Cruise Mode, Recommendations & Disruption Windows",
       content: (
         <div className="space-y-2">
           <p>Each row shows a workload with its resource usage and savings potential:</p>
@@ -90,18 +109,7 @@ export function createTourSteps(navigate: NavigateFunction): Step[] {
             <li>💵 <strong>Net Savings</strong> — estimated monthly savings per workload</li>
             <li>🛡️ <strong>Criticality</strong> — controls eviction priority (Low → Very High)</li>
           </ul>
-          <p>Toggle any workload on/off with the <strong>Mode</strong> switch! ⚡</p>
-        </div>
-      ),
-    },
-    {
-      target: '[data-tour="workload-table"]',
-      placement: "top" as const,
-      title: "🕐 Disruption Windows",
-      content: (
-        <div className="space-y-2">
-          <p>Some workloads have protections (PDBs or do-not-disrupt annotations) that block node consolidation.</p>
-          <p><strong>Disruption Windows</strong> let you schedule safe time slots when these protections are temporarily relaxed — allowing CruiseKube to consolidate nodes and save costs.</p>
+          <p><strong>Disruption Windows</strong> let you schedule safe time slots when PDB protections are temporarily relaxed — allowing node consolidation.</p>
           <ul className="list-disc space-y-1 pl-4 text-left">
             <li>⏰ Set start/end times and days of the week</li>
             <li>🔒 Protections are <strong>automatically restored</strong> when the window ends</li>
