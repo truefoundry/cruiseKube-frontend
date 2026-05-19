@@ -14,7 +14,7 @@ export function TourTooltip({
   return (
     <div
       {...tooltipProps}
-      className="z-[10001] max-w-sm rounded-lg border border-border bg-card p-5 shadow-xl"
+      className="z-[10001] max-w-md rounded-lg border border-border bg-card p-5 shadow-xl"
     >
       {step.title && (
         <h2 className="mb-2 text-base font-semibold text-foreground">

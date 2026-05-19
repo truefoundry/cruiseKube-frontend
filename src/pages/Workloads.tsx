@@ -1051,9 +1051,9 @@ export default function Workloads() {
             </div>
           </div>
 
-          <div className="rounded-xl border border-border bg-card/50 overflow-hidden shadow-sm">
+          <div data-tour="workload-table" className="rounded-xl border border-border bg-card/50 overflow-hidden shadow-sm">
             {/* Workload summary — integrated bar above table */}
-            <div className="border-b border-border bg-muted/30 px-4 py-3">
+            <div data-tour="workload-summary" className="border-b border-border bg-muted/30 px-4 py-3">
               {isLoadingMetrics ? (
                 <div className="flex flex-wrap items-center gap-6">
                   <Skeleton className="h-4 w-16" />

@@ -1,44 +1,17 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { useJoyride, STATUS } from "react-joyride";
-import { useLocation } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { useSidebar } from "@/components/ui/sidebar";
-import { tourSteps } from "./tourSteps";
+import { createTourSteps } from "./tourSteps";
 import { TourTooltip } from "./TourTooltip";
-import { markTourCompleted } from "./tour-storage";
-
-// --- DOM target polling helper ---
-function waitForElement(
-  selector: string,
-  signal?: AbortSignal,
-  timeoutMs = 10000,
-): Promise<boolean> {
-  return new Promise((resolve) => {
-    if (document.querySelector(selector)) {
-      resolve(true);
-      return;
-    }
-    const startedAt = Date.now();
-    const interval = window.setInterval(() => {
-      if (signal?.aborted) {
-        window.clearInterval(interval);
-        resolve(false);
-        return;
-      }
-      if (document.querySelector(selector)) {
-        window.clearInterval(interval);
-        resolve(true);
-      } else if (Date.now() - startedAt >= timeoutMs) {
-        window.clearInterval(interval);
-        resolve(false);
-      }
-    }, 200);
-  });
-}
+import {
+  markTourCompleted,
+  getSavedSidebarState,
+  clearSavedSidebarState,
+} from "./tour-storage";
 
 interface TourRunnerProps {
   tourTrigger: number;
-  /** Sidebar open/closed state captured by the provider *before* forcing it open. */
-  sidebarStateBeforeTour: boolean | null;
 }
 
 /**
@@ -46,22 +19,17 @@ interface TourRunnerProps {
  * Lazy-loaded by OnboardingTourProvider — only downloaded when the tour
  * is actually triggered (first visit or retake).
  */
-export function TourRunner({ tourTrigger, sidebarStateBeforeTour }: TourRunnerProps) {
-  const location = useLocation();
+export function TourRunner({ tourTrigger }: TourRunnerProps) {
+  const navigate = useNavigate();
   const { setOpen: setSidebarOpen } = useSidebar();
 
-  const locationRef = useRef(location.pathname);
-  locationRef.current = location.pathname;
-
-  // Store the prop in a ref so the tour:end handler always reads the latest value
-  const sidebarRestoreRef = useRef(sidebarStateBeforeTour);
-  sidebarRestoreRef.current = sidebarStateBeforeTour;
+  const steps = useMemo(() => createTourSteps(navigate), [navigate]);
 
   const waitAbortRef = useRef<AbortController | null>(null);
   const lastProcessedTrigger = useRef(0);
 
   const { controls, on, state, Tour } = useJoyride({
-    steps: tourSteps,
+    steps,
     continuous: true,
     tooltipComponent: TourTooltip,
     locale: {
@@ -86,8 +54,10 @@ export function TourRunner({ tourTrigger, sidebarStateBeforeTour }: TourRunnerPr
       markTourCompleted();
       waitAbortRef.current?.abort();
       waitAbortRef.current = null;
-      if (sidebarRestoreRef.current !== null) {
-        setSidebarOpen(sidebarRestoreRef.current);
+      const savedState = getSavedSidebarState();
+      if (savedState !== null) {
+        setSidebarOpen(savedState);
+        clearSavedSidebarState();
       }
     });
     return unsubscribe;
@@ -101,23 +71,21 @@ export function TourRunner({ tourTrigger, sidebarStateBeforeTour }: TourRunnerPr
     lastProcessedTrigger.current = tourTrigger;
 
     const startTour = async () => {
-      // Sidebar is already forced open by the provider; state was captured there.
       waitAbortRef.current?.abort();
       const abortController = new AbortController();
       waitAbortRef.current = abortController;
 
-      const found = await waitForElement(
-        '[data-tour="overview-metrics"]',
-        abortController.signal,
-        10000,
-      );
+      // Step 1 targets body (centered welcome), so just a small delay for render
+      await new Promise((resolve) => setTimeout(resolve, 300));
 
-      if (found && locationRef.current === "/") {
+      if (!abortController.signal.aborted) {
         controls.start(0);
       } else {
         // Tour didn't start — restore sidebar to pre-tour state
-        if (sidebarRestoreRef.current !== null) {
-          setSidebarOpen(sidebarRestoreRef.current);
+        const savedState = getSavedSidebarState();
+        if (savedState !== null) {
+          setSidebarOpen(savedState);
+          clearSavedSidebarState();
         }
       }
     };

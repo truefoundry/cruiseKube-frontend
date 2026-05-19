@@ -23,3 +23,25 @@ export function clearTourCompleted(): void {
     // Ignore
   }
 }
+
+const SIDEBAR_STATE_KEY = "cruisekube-tour-sidebar-state";
+
+export function saveSidebarState(isOpen: boolean): void {
+  try {
+    window.localStorage.setItem(SIDEBAR_STATE_KEY, JSON.stringify(isOpen));
+  } catch { /* ignore */ }
+}
+
+export function getSavedSidebarState(): boolean | null {
+  try {
+    const value = window.localStorage.getItem(SIDEBAR_STATE_KEY);
+    if (value !== null) return JSON.parse(value);
+  } catch { /* ignore */ }
+  return null;
+}
+
+export function clearSavedSidebarState(): void {
+  try {
+    window.localStorage.removeItem(SIDEBAR_STATE_KEY);
+  } catch { /* ignore */ }
+}

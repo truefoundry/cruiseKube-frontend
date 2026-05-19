@@ -9,7 +9,6 @@ import {
   BookOpen,
   Calendar,
   LogOut,
-  RotateCcw,
 } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import { cn } from "@/lib/utils";
@@ -31,8 +30,7 @@ import { useConfig } from "@/contexts/ConfigContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { ClusterSelector } from "@/components/ClusterSelector";
 import { publicUrl } from "@/lib/public-asset";
-import { useOnboardingTour } from "@/components/onboarding/useOnboardingTour";
-import { useIsMobile } from "@/hooks/use-mobile";
+
 
 const navItems = [
   { title: "Overview", url: "/", icon: LayoutDashboard },
@@ -71,9 +69,6 @@ export function AppSidebar() {
   const isCollapsed = state === "collapsed";
   const { config } = useConfig();
   const { username, logout, authEnabled } = useAuth();
-  const { startTour } = useOnboardingTour();
-  const isMobile = useIsMobile();
-
   return (
     <Sidebar collapsible="icon" className="border-r border-sidebar-border">
       <SidebarHeader className="border-b border-sidebar-border p-4">
@@ -202,23 +197,7 @@ export function AppSidebar() {
                   </SidebarMenuButton>
                 </SidebarMenuItem>
               ))}
-              {!isMobile && (
-                <SidebarMenuItem>
-                  <SidebarMenuButton asChild tooltip="Retake tour">
-                    <button
-                      type="button"
-                      onClick={() => startTour()}
-                      className={cn(
-                        "flex items-center gap-3 rounded-md px-3 py-2 text-sidebar-foreground transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
-                        isCollapsed && "justify-center"
-                      )}
-                    >
-                      <RotateCcw className="h-4 w-4 shrink-0" />
-                      {!isCollapsed && <span>Retake tour</span>}
-                    </button>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              )}
+
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>

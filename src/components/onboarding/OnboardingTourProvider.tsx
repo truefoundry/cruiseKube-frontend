@@ -11,6 +11,7 @@ import { useIsMobile } from "@/hooks/use-mobile";
 import {
   isTourCompleted,
   clearTourCompleted,
+  saveSidebarState,
 } from "./tour-storage";
 import { OnboardingTourContext } from "./OnboardingTourContext";
 
@@ -27,15 +28,13 @@ export function OnboardingTourProvider({ children }: { children: ReactNode }) {
 
   // Shared state: when set to a positive number, the TourRunner starts the tour
   const [tourTrigger, setTourTrigger] = useState(0);
-  // Sidebar state captured *before* forcing it open, passed to TourRunner as a prop
-  const [sidebarStateBeforeTour, setSidebarStateBeforeTour] = useState<boolean | null>(null);
 
   // Manual retake from sidebar
   const startTour = useCallback(() => {
     clearTourCompleted();
     if (!isMobile) {
-      // Capture sidebar state before forcing it open
-      setSidebarStateBeforeTour(sidebarOpen);
+      // Persist sidebar state to localStorage before forcing it open
+      saveSidebarState(sidebarOpen);
       setSidebarOpen(true);
       if (location.pathname !== "/") {
         navigate("/");
@@ -55,8 +54,8 @@ export function OnboardingTourProvider({ children }: { children: ReactNode }) {
       location.pathname === "/"
     ) {
       autoStartAttempted.current = true;
-      // Capture sidebar state before forcing it open
-      setSidebarStateBeforeTour(sidebarOpen);
+      // Persist sidebar state to localStorage before forcing it open
+      saveSidebarState(sidebarOpen);
       setSidebarOpen(true);
       setTourTrigger((prev) => prev + 1);
     }
@@ -65,10 +64,7 @@ export function OnboardingTourProvider({ children }: { children: ReactNode }) {
   return (
     <OnboardingTourContext.Provider value={{ startTour }}>
       {children}
-      <LazyTourRunner
-        tourTrigger={tourTrigger}
-        sidebarStateBeforeTour={sidebarStateBeforeTour}
-      />
+      <LazyTourRunner tourTrigger={tourTrigger} />
     </OnboardingTourContext.Provider>
   );
 }
@@ -82,19 +78,14 @@ const TourRunnerImpl = lazy(() =>
 
 function LazyTourRunner({
   tourTrigger,
-  sidebarStateBeforeTour,
 }: {
   tourTrigger: number;
-  sidebarStateBeforeTour: boolean | null;
 }) {
   // Don't even load the chunk until the tour is triggered
   if (tourTrigger === 0) return null;
   return (
     <Suspense fallback={null}>
-      <TourRunnerImpl
-        tourTrigger={tourTrigger}
-        sidebarStateBeforeTour={sidebarStateBeforeTour}
-      />
+      <TourRunnerImpl tourTrigger={tourTrigger} />
     </Suspense>
   );
 }
