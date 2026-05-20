@@ -1403,6 +1403,8 @@ export default function Workloads() {
               {asArray(sortedWorkloads).map((workload, index) => (
                 <tr
                   key={workload.id}
+                  id={`workload-row-${index + 1}`}
+                  data-tour={index === 4 ? "workload-row-5" : undefined}
                   className={`group transition-colors ${
                     isWorkloadDisabled(workload)
                       ? "opacity-60 bg-muted/40 border-l-2 border-l-muted-foreground/40 hover:bg-muted/50"

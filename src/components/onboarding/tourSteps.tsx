@@ -214,7 +214,7 @@ export function createTourSteps(navigate: NavigateFunction): Step[] {
       before: ensureWorkloads,
     },
     {
-      target: '[data-tour="workload-table"]',
+      target: "#workload-row-5",
       placement: "top" as const,
       title: (
         <StepTitle icon={Rocket}>
