@@ -9,7 +9,7 @@ import {
   BookOpen,
   Calendar,
   LogOut,
-  Sparkles,
+  CircleDollarSign,
 } from "lucide-react";
 import { Alert, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -190,9 +190,9 @@ export function AppSidebar() {
                     target="_blank"
                     rel="noopener noreferrer"
                     className="flex justify-center rounded-md p-2 text-primary transition-colors hover:bg-sidebar-accent"
-                    aria-label="Demo mode — Get started with CruiseKube"
+                    aria-label="Demo mode — Start saving with CruiseKube"
                   >
-                    <Sparkles className="h-4 w-4 shrink-0" />
+                    <CircleDollarSign className="h-4 w-4 shrink-0" />
                   </a>
                 </TooltipTrigger>
                 <TooltipContent side="right" className="max-w-xs">
@@ -223,8 +223,10 @@ export function AppSidebar() {
                       href={CRUISEKUBE_INSTALL_URL}
                       target="_blank"
                       rel="noopener noreferrer"
+                      className="inline-flex items-center justify-center gap-1.5"
                     >
-                      Get started
+                      <CircleDollarSign className="h-3.5 w-3.5 shrink-0" aria-hidden />
+                      Start Saving
                     </a>
                   </Button>
                 </Alert>

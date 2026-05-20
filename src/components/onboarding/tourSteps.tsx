@@ -1,5 +1,73 @@
+import type { LucideIcon } from "lucide-react";
+import {
+  AlertTriangle,
+  Ban,
+  BarChart3,
+  BookOpen,
+  Calendar,
+  CircleCheck,
+  CircleDollarSign,
+  CircleDot,
+  Clock,
+  Hand,
+  LayoutList,
+  Lock,
+  MessagesSquare,
+  Pause,
+  RefreshCw,
+  Rocket,
+  RotateCcw,
+  ScrollText,
+  Search,
+  Settings,
+  Shield,
+  Sparkles,
+  Target,
+  TrendingUp,
+  Wrench,
+} from "lucide-react";
 import type { Step } from "react-joyride";
 import type { NavigateFunction } from "react-router-dom";
+import type { ReactNode } from "react";
+import { Button } from "@/components/ui/button";
+
+const CRUISEKUBE_INSTALL_URL =
+  "https://cruisekube.com/install/gs-installation/";
+
+function StepTitle({
+  icon: Icon,
+  children,
+}: {
+  icon: LucideIcon;
+  children: ReactNode;
+}) {
+  return (
+    <span className="flex items-center gap-2">
+      <Icon className="h-5 w-5 shrink-0 text-primary" aria-hidden />
+      <span>{children}</span>
+    </span>
+  );
+}
+
+function IconListItem({
+  icon: Icon,
+  iconClassName,
+  children,
+}: {
+  icon: LucideIcon;
+  iconClassName?: string;
+  children: ReactNode;
+}) {
+  return (
+    <li className="flex items-start gap-2">
+      <Icon
+        className={`mt-0.5 h-4 w-4 shrink-0 text-muted-foreground ${iconClassName ?? ""}`}
+        aria-hidden
+      />
+      <span>{children}</span>
+    </li>
+  );
+}
 
 export function createTourSteps(navigate: NavigateFunction): Step[] {
   /** Navigate to the Overview page (no-op if already there).
@@ -26,33 +94,57 @@ export function createTourSteps(navigate: NavigateFunction): Step[] {
     {
       target: "body",
       placement: "center" as const,
-      title: "👋 Welcome to CruiseKube!",
+      title: <StepTitle icon={Hand}>Welcome to CruiseKube!</StepTitle>,
       content: (
         <div className="space-y-2">
-          <p>CruiseKube automatically right-sizes your Kubernetes workloads to save cloud costs — without sacrificing reliability.</p>
+          <p>
+            CruiseKube automatically right-sizes your Kubernetes workloads to save
+            cloud costs — without sacrificing reliability.
+          </p>
           <p className="font-medium">Here&apos;s what you can do:</p>
           <ul className="list-disc space-y-1 pl-4 text-left">
-            <li><strong>Monitor</strong> cluster costs, savings, and utilization at a glance</li>
-            <li><strong>Cruise Mode</strong> — auto-optimize workloads with one toggle</li>
-            <li><strong>Disruption Windows</strong> — schedule safe optimization</li>
-            <li><strong>Full Audit Trail</strong> — every action logged and filterable</li>
+            <li>
+              <strong>Monitor</strong> cluster costs, savings, and utilization at a
+              glance
+            </li>
+            <li>
+              <strong>Cruise Mode</strong> — auto-optimize workloads with one toggle
+            </li>
+            <li>
+              <strong>Disruption Windows</strong> — schedule safe optimization
+            </li>
+            <li>
+              <strong>Full Audit Trail</strong> — every action logged and filterable
+            </li>
           </ul>
-          <p>Let&apos;s take a quick tour! 🎯</p>
+          <p className="flex items-center gap-2">
+            <Target className="h-4 w-4 shrink-0 text-primary" aria-hidden />
+            <span>Let&apos;s take a quick tour!</span>
+          </p>
         </div>
       ),
     },
     {
       target: '[data-tour="overview-metrics"]',
       placement: "bottom" as const,
-      title: "📊 Your cluster at a glance",
+      title: <StepTitle icon={BarChart3}>Your cluster at a glance</StepTitle>,
       content: (
         <div className="space-y-2">
           <p>These cards give you a real-time snapshot of your cluster:</p>
           <ul className="list-disc space-y-1 pl-4 text-left">
-            <li><strong>Monthly Cost</strong> — your current run-rate</li>
-            <li><strong>Current Savings</strong> — what CruiseKube has saved so far</li>
-            <li><strong>Cluster Utilization</strong> — how efficiently resources are used</li>
-            <li><strong>Node Count</strong> — active nodes in your cluster</li>
+            <li>
+              <strong>Monthly Cost</strong> — your current run-rate
+            </li>
+            <li>
+              <strong>Current Savings</strong> — what CruiseKube has saved so far
+            </li>
+            <li>
+              <strong>Cluster Utilization</strong> — how efficiently resources are
+              used
+            </li>
+            <li>
+              <strong>Node Count</strong> — active nodes in your cluster
+            </li>
           </ul>
         </div>
       ),
@@ -61,56 +153,110 @@ export function createTourSteps(navigate: NavigateFunction): Step[] {
     {
       target: '[data-tour="untapped-savings"]',
       placement: "bottom" as const,
-      title: "💰 Discover untapped savings",
+      title: (
+        <StepTitle icon={CircleDollarSign}>Discover untapped savings</StepTitle>
+      ),
       content: (
         <div className="space-y-2">
           <p>This section shows your optimization progress:</p>
           <ul className="list-disc space-y-1 pl-4 text-left">
-            <li><strong>Adoption</strong> — percentage of workloads with Cruise mode enabled</li>
-            <li><strong>CPU &amp; Memory coverage</strong> — percentage of resources optimized</li>
-            <li><strong>Untapped savings</strong> — how much more you could save</li>
+            <li>
+              <strong>Adoption</strong> — percentage of workloads with Cruise mode
+              enabled
+            </li>
+            <li>
+              <strong>CPU &amp; Memory coverage</strong> — percentage of resources
+              optimized
+            </li>
+            <li>
+              <strong>Untapped savings</strong> — how much more you could save
+            </li>
           </ul>
-          <p>Click <strong>&quot;View Workloads&quot;</strong> to start optimizing the rest! 🚀</p>
+          <p className="flex items-center gap-2">
+            <Rocket className="h-4 w-4 shrink-0 text-primary" aria-hidden />
+            <span>
+              Click <strong>&quot;View Workloads&quot;</strong> to start optimizing
+              the rest!
+            </span>
+          </p>
         </div>
       ),
       before: ensureOverview,
     },
     {
-      // Step index 3 — first Workloads step
       target: '[data-tour="workload-summary"]',
       placement: "bottom" as const,
-      title: "📋 Workloads in scope",
+      title: <StepTitle icon={LayoutList}>Workloads in scope</StepTitle>,
       content: (
         <div className="space-y-2">
           <p>This bar shows a breakdown of all your workloads:</p>
-          <ul className="list-disc space-y-1 pl-4 text-left">
-            <li>✅ <strong>Enabled</strong> — actively optimized by CruiseKube</li>
-            <li>⏸️ <strong>Disabled</strong> — recommendations only, no auto-changes</li>
-            <li>🚫 <strong>Non-optimizable</strong> — GPU workloads, HPA-managed, or excluded</li>
+          <ul className="space-y-1.5 text-left">
+            <IconListItem icon={CircleCheck} iconClassName="text-success">
+              <strong>Enabled</strong> — actively optimized by CruiseKube
+            </IconListItem>
+            <IconListItem icon={Pause}>
+              <strong>Disabled</strong> — recommendations only, no auto-changes
+            </IconListItem>
+            <IconListItem icon={Ban}>
+              <strong>Non-optimizable</strong> — GPU workloads, HPA-managed, or
+              excluded
+            </IconListItem>
           </ul>
-          <p>CruiseKube supports <strong>Deployments, StatefulSets, DaemonSets, Jobs, CronJobs</strong>, and more.</p>
+          <p>
+            CruiseKube supports{" "}
+            <strong>
+              Deployments, StatefulSets, DaemonSets, Jobs, CronJobs
+            </strong>
+            , and more.
+          </p>
         </div>
       ),
       before: ensureWorkloads,
     },
     {
-      target: '[data-tour="workload-table"]',
+      target: "#workload-row-5",
       placement: "top" as const,
-      title: "🚀 Cruise Mode, Recommendations & Disruption Windows",
+      title: (
+        <StepTitle icon={Rocket}>
+          Cruise Mode, Recommendations &amp; Disruption Windows
+        </StepTitle>
+      ),
       content: (
         <div className="space-y-2">
-          <p>Each row shows a workload with its resource usage and savings potential:</p>
-          <ul className="list-disc space-y-1 pl-4 text-left">
-            <li>🟢 <strong>Cruise (On)</strong> — CruiseKube auto-applies optimizations</li>
-            <li>🔵 <strong>Recommend (Off)</strong> — view suggestions without applying</li>
-            <li>💵 <strong>Net Savings</strong> — estimated monthly savings per workload</li>
-            <li>🛡️ <strong>Criticality</strong> — controls eviction priority (Low → Very High)</li>
+          <p>
+            Each row shows a workload with its resource usage and savings potential:
+          </p>
+          <ul className="space-y-1.5 text-left">
+            <IconListItem icon={CircleCheck} iconClassName="text-success">
+              <strong>Cruise (On)</strong> — CruiseKube auto-applies optimizations
+            </IconListItem>
+            <IconListItem icon={CircleDot} iconClassName="text-primary">
+              <strong>Recommend (Off)</strong> — view suggestions without applying
+            </IconListItem>
+            <IconListItem icon={CircleDollarSign}>
+              <strong>Net Savings</strong> — estimated monthly savings per workload
+            </IconListItem>
+            <IconListItem icon={Shield}>
+              <strong>Criticality</strong> — controls eviction priority (Low → Very
+              High)
+            </IconListItem>
           </ul>
-          <p><strong>Disruption Windows</strong> let you schedule safe time slots when PDB protections are temporarily relaxed — allowing node consolidation.</p>
-          <ul className="list-disc space-y-1 pl-4 text-left">
-            <li>⏰ Set start/end times and days of the week</li>
-            <li>🔒 Protections are <strong>automatically restored</strong> when the window ends</li>
-            <li>⚙️ Configure per workload via the <strong>row menu → Edit CruiseConfig</strong></li>
+          <p>
+            <strong>Disruption Windows</strong> let you schedule safe time slots when
+            PDB protections are temporarily relaxed — allowing node consolidation.
+          </p>
+          <ul className="space-y-1.5 text-left">
+            <IconListItem icon={Clock}>
+              Set start/end times and days of the week
+            </IconListItem>
+            <IconListItem icon={Lock}>
+              Protections are <strong>automatically restored</strong> when the window
+              ends
+            </IconListItem>
+            <IconListItem icon={Settings}>
+              Configure per workload via the{" "}
+              <strong>row menu → Edit CruiseConfig</strong>
+            </IconListItem>
           </ul>
         </div>
       ),
@@ -119,33 +265,86 @@ export function createTourSteps(navigate: NavigateFunction): Step[] {
     {
       target: '[data-tour="nav-events"]',
       placement: "right" as const,
-      title: "📋 Full audit trail",
+      title: <StepTitle icon={ScrollText}>Full audit trail</StepTitle>,
       content: (
         <div className="space-y-2">
           <p>Every action CruiseKube takes is logged here:</p>
-          <ul className="list-disc space-y-1 pl-4 text-left">
-            <li>📈 CPU &amp; memory recommendation changes</li>
-            <li>🔄 Pod evictions and PDB adjustments</li>
-            <li>⚠️ OOM events and node overload taints</li>
-            <li>🔧 Webhook mutations</li>
+          <ul className="space-y-1.5 text-left">
+            <IconListItem icon={TrendingUp}>
+              CPU &amp; memory recommendation changes
+            </IconListItem>
+            <IconListItem icon={RefreshCw}>
+              Pod evictions and PDB adjustments
+            </IconListItem>
+            <IconListItem icon={AlertTriangle} iconClassName="text-amber-500">
+              OOM events and node overload taints
+            </IconListItem>
+            <IconListItem icon={Wrench}>Webhook mutations</IconListItem>
           </ul>
-          <p>Filter by time range, category, or workload to find exactly what you need. 🔍</p>
+          <p className="flex items-center gap-2">
+            <Search className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
+            <span>
+              Filter by time range, category, or workload to find exactly what you
+              need.
+            </span>
+          </p>
         </div>
       ),
     },
     {
       target: '[data-tour="sidebar-help"]',
       placement: "right" as const,
-      title: "🤝 Need help? We're here!",
+      title: <StepTitle icon={Hand}>Need help? We&apos;re here!</StepTitle>,
       content: (
         <div className="space-y-2">
-          <p>You&apos;re all set! Here&apos;s where to go next:</p>
-          <ul className="list-disc space-y-1 pl-4 text-left">
-            <li>📖 <strong>Documentation</strong> — detailed guides and references</li>
-            <li>💬 <strong>Community Discord</strong> — chat with other users</li>
-            <li>📅 <strong>Talk to team</strong> — book a call with us</li>
+          <p>When you need support, these links are always in the sidebar:</p>
+          <ul className="space-y-1.5 text-left">
+            <IconListItem icon={BookOpen}>
+              <strong>Documentation</strong> — detailed guides and references
+            </IconListItem>
+            <IconListItem icon={MessagesSquare}>
+              <strong>Community Discord</strong> — chat with other users
+            </IconListItem>
+            <IconListItem icon={Calendar}>
+              <strong>Talk to team</strong> — book a call with us
+            </IconListItem>
           </ul>
-          <p>You can retake this tour anytime from <strong>Policies &amp; Configuration</strong>. 🔄</p>
+          <p className="flex items-center gap-2">
+            <RotateCcw className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
+            <span>
+              You can retake this tour anytime from{" "}
+              <strong>Policies &amp; Configuration</strong>.
+            </span>
+          </p>
+        </div>
+      ),
+    },
+    {
+      target: "body",
+      placement: "center" as const,
+      title: (
+        <StepTitle icon={Sparkles}>
+          You&apos;re ready to save on Kubernetes
+        </StepTitle>
+      ),
+      content: (
+        <div className="space-y-3">
+          <p>
+            You&apos;ve seen how CruiseKube monitors costs, optimizes workloads, and
+            keeps a full audit trail. Install it on your cluster to start realizing
+            savings in production.
+          </p>
+          <Button asChild size="sm" className="w-full sm:w-auto">
+            <a
+              href={CRUISEKUBE_INSTALL_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center justify-center gap-1.5"
+            >
+              <CircleDollarSign className="h-3.5 w-3.5 shrink-0" aria-hidden />
+              Start Saving
+            </a>
+          </Button>
         </div>
       ),
     },
