@@ -32,12 +32,10 @@ export function createTourSteps(navigate: NavigateFunction): Step[] {
           <p>CruiseKube automatically right-sizes your Kubernetes workloads to save cloud costs — without sacrificing reliability.</p>
           <p className="font-medium">Here&apos;s what you can do:</p>
           <ul className="list-disc space-y-1 pl-4 text-left">
-            <li>📊 <strong>Monitor</strong> cluster costs, savings, and utilization at a glance</li>
-            <li>🚀 <strong>Cruise Mode</strong> — auto-optimize workloads with one toggle</li>
-            <li>🔍 <strong>Recommend Mode</strong> — view suggestions before applying</li>
-            <li>🕐 <strong>Disruption Windows</strong> — schedule safe optimization windows</li>
-            <li>📋 <strong>Full Audit Trail</strong> — every action logged and filterable</li>
-            <li>⚙️ <strong>Criticality Levels</strong> — control eviction priority per workload</li>
+            <li><strong>Monitor</strong> cluster costs, savings, and utilization at a glance</li>
+            <li><strong>Cruise Mode</strong> — auto-optimize workloads with one toggle</li>
+            <li><strong>Disruption Windows</strong> — schedule safe optimization</li>
+            <li><strong>Full Audit Trail</strong> — every action logged and filterable</li>
           </ul>
           <p>Let&apos;s take a quick tour! 🎯</p>
         </div>
@@ -68,8 +66,8 @@ export function createTourSteps(navigate: NavigateFunction): Step[] {
         <div className="space-y-2">
           <p>This section shows your optimization progress:</p>
           <ul className="list-disc space-y-1 pl-4 text-left">
-            <li><strong>Adoption ring</strong> — percentage of workloads with CruiseKube enabled</li>
-            <li><strong>CPU &amp; Memory coverage</strong> — how much of your resources are optimized</li>
+            <li><strong>Adoption</strong> — percentage of workloads with Cruise mode enabled</li>
+            <li><strong>CPU &amp; Memory coverage</strong> — percentage of resources optimized</li>
             <li><strong>Untapped savings</strong> — how much more you could save</li>
           </ul>
           <p>Click <strong>&quot;View Workloads&quot;</strong> to start optimizing the rest! 🚀</p>

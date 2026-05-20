@@ -9,7 +9,11 @@ import {
   BookOpen,
   Calendar,
   LogOut,
+  Sparkles,
 } from "lucide-react";
+import { Alert, AlertTitle } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
+import { isDemoMode } from "@/lib/demo-mode";
 import { NavLink } from "@/components/NavLink";
 import { cn } from "@/lib/utils";
 import {
@@ -63,6 +67,7 @@ const helpLinks = [
 ] as const;
 
 const logoMaskUrl = publicUrl("logo.svg");
+const CRUISEKUBE_INSTALL_URL = "https://cruisekube.com/install/gs-installation/";
 
 export function AppSidebar() {
   const { state } = useSidebar();
@@ -172,6 +177,59 @@ export function AppSidebar() {
                 </SidebarMenuItem>
               </SidebarMenu>
             </SidebarGroupContent>
+          </SidebarGroup>
+        )}
+
+        {isDemoMode && (
+          <SidebarGroup className="p-0">
+            {isCollapsed ? (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <a
+                    href={CRUISEKUBE_INSTALL_URL}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex justify-center rounded-md p-2 text-primary transition-colors hover:bg-sidebar-accent"
+                    aria-label="Demo mode — Get started with CruiseKube"
+                  >
+                    <Sparkles className="h-4 w-4 shrink-0" />
+                  </a>
+                </TooltipTrigger>
+                <TooltipContent side="right" className="max-w-xs">
+                  <p className="font-semibold">Demo mode</p>
+                  <p className="text-xs text-muted-foreground">
+                    Start saving with your cluster.
+                  </p>
+                </TooltipContent>
+              </Tooltip>
+            ) : (
+              <SidebarGroupContent className="px-1">
+                <Alert
+                  variant="default"
+                  className="border-primary/50 bg-primary/15 py-2.5 pl-3 pr-3"
+                >
+                  <AlertTitle className="mb-0 text-sm font-semibold tracking-tight text-sidebar-accent-foreground">
+                    Demo mode
+                  </AlertTitle>
+                  <p className="mt-1 text-xs text-sidebar-foreground/80">
+                    Start saving with your cluster.
+                  </p>
+                  <Button
+                    asChild
+                    size="sm"
+                    className="mt-2 h-7 w-full px-3 text-xs"
+                  >
+                    <a
+                      href={CRUISEKUBE_INSTALL_URL}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      Get started
+                    </a>
+                  </Button>
+                </Alert>
+              </SidebarGroupContent>
+            )}
           </SidebarGroup>
         )}
 

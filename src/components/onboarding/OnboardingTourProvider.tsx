@@ -10,6 +10,7 @@ import {
 import { useNavigate, useLocation } from "react-router-dom";
 import { useSidebar } from "@/components/ui/sidebar";
 import { useIsMobile } from "@/hooks/use-mobile";
+import { isDemoMode } from "@/lib/demo-mode";
 import {
   isTourCompleted,
   clearTourCompleted,
@@ -58,6 +59,7 @@ export function OnboardingTourProvider({ children }: { children: ReactNode }) {
   const initialSidebarOpen = useRef(sidebarOpen);
   useEffect(() => {
     if (
+      isDemoMode &&
       !isMobile &&
       !autoStartAttempted.current &&
       !isTourCompleted() &&
