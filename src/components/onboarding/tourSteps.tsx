@@ -11,6 +11,7 @@ import {
   Clock,
   Hand,
   LayoutList,
+  Layers,
   Lock,
   MessagesSquare,
   Pause,
@@ -167,6 +168,26 @@ export function createTourSteps(navigate: NavigateFunction): Step[] {
             </li>
           </ul>
 
+        </div>
+      ),
+      before: ensureOverview,
+    },
+    {
+      target: '[data-tour="nav-workloads"]',
+      placement: "right" as const,
+      title: <StepTitle icon={Layers}>Workloads tab</StepTitle>,
+      content: (
+        <div className="space-y-2">
+          <p>
+            Open <strong>Workloads</strong> in the sidebar to manage optimization for
+            every Deployment, StatefulSet, and DaemonSet in your cluster.
+          </p>
+          <ul className="list-disc space-y-1 pl-4 text-left">
+            <li>Browse and filter workloads by namespace, mode, and criticality</li>
+            <li>Turn Cruise mode on or off per workload</li>
+            <li>Review savings, resource usage, and disruption windows</li>
+          </ul>
+          <p>We&apos;ll walk through this page next.</p>
         </div>
       ),
       before: ensureOverview,
