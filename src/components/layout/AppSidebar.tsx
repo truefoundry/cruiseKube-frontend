@@ -9,7 +9,13 @@ import {
   BookOpen,
   Calendar,
   LogOut,
+  CircleDollarSign,
+  Compass,
 } from "lucide-react";
+import { useOnboardingTour } from "@/components/onboarding/useOnboardingTour";
+import { Alert, AlertTitle } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
+import { isDemoMode } from "@/lib/demo-mode";
 import { NavLink } from "@/components/NavLink";
 import { cn } from "@/lib/utils";
 import {
@@ -31,10 +37,11 @@ import { useAuth } from "@/contexts/AuthContext";
 import { ClusterSelector } from "@/components/ClusterSelector";
 import { publicUrl } from "@/lib/public-asset";
 
+
 const navItems = [
   { title: "Overview", url: "/", icon: LayoutDashboard },
-  { title: "Workloads", url: "/workloads", icon: Layers },
-  { title: "Events", url: "/events", icon: Activity },
+  { title: "Workloads", url: "/workloads", icon: Layers, dataTour: "nav-workloads" },
+  { title: "Events", url: "/events", icon: Activity, dataTour: "nav-events" },
   { title: "Policies & Configuration", url: "/policies", icon: Settings },
 ];
 
@@ -62,13 +69,14 @@ const helpLinks = [
 ] as const;
 
 const logoMaskUrl = publicUrl("logo.svg");
+const CRUISEKUBE_INSTALL_URL = "https://cruisekube.com/install/gs-installation/";
 
 export function AppSidebar() {
   const { state } = useSidebar();
   const isCollapsed = state === "collapsed";
   const { config } = useConfig();
   const { username, logout, authEnabled } = useAuth();
-
+  const { startTour, isMobile } = useOnboardingTour();
   return (
     <Sidebar collapsible="icon" className="border-r border-sidebar-border">
       <SidebarHeader className="border-b border-sidebar-border p-4">
@@ -120,6 +128,7 @@ export function AppSidebar() {
                     <NavLink
                       to={item.url}
                       end={item.url === "/"}
+                      data-tour={item.dataTour}
                       className={cn(
                         "flex items-center gap-3 rounded-md px-3 py-2 text-sidebar-foreground transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
                         isCollapsed && "justify-center"
@@ -174,7 +183,62 @@ export function AppSidebar() {
           </SidebarGroup>
         )}
 
-        <SidebarGroup className="p-0">
+        {isDemoMode && (
+          <SidebarGroup className="p-0">
+            {isCollapsed ? (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <a
+                    href={CRUISEKUBE_INSTALL_URL}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex justify-center rounded-md p-2 text-primary transition-colors hover:bg-sidebar-accent"
+                    aria-label="Demo mode — Start saving with CruiseKube"
+                  >
+                    <CircleDollarSign className="h-4 w-4 shrink-0" />
+                  </a>
+                </TooltipTrigger>
+                <TooltipContent side="right" className="max-w-xs">
+                  <p className="font-semibold">Demo mode</p>
+                  <p className="text-xs text-muted-foreground">
+                    Start saving with your cluster.
+                  </p>
+                </TooltipContent>
+              </Tooltip>
+            ) : (
+              <SidebarGroupContent className="px-1">
+                <Alert
+                  variant="default"
+                  className="border-primary/50 bg-primary/15 py-2.5 pl-3 pr-3"
+                >
+                  <AlertTitle className="mb-0 text-sm font-semibold tracking-tight text-sidebar-accent-foreground">
+                    Demo mode
+                  </AlertTitle>
+                  <p className="mt-1 text-xs text-sidebar-foreground/80">
+                    Start saving with your cluster.
+                  </p>
+                  <Button
+                    asChild
+                    size="sm"
+                    className="mt-2 h-7 w-full px-3 text-xs"
+                  >
+                    <a
+                      href={CRUISEKUBE_INSTALL_URL}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center justify-center gap-1.5"
+                    >
+                      <CircleDollarSign className="h-3.5 w-3.5 shrink-0" aria-hidden />
+                      Start Saving
+                    </a>
+                  </Button>
+                </Alert>
+              </SidebarGroupContent>
+            )}
+          </SidebarGroup>
+        )}
+
+        <SidebarGroup className="p-0" data-tour="sidebar-help">
           <SidebarGroupLabel>Get help</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
@@ -196,9 +260,29 @@ export function AppSidebar() {
                   </SidebarMenuButton>
                 </SidebarMenuItem>
               ))}
+
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
+
+        {isDemoMode && !isMobile && (
+          <SidebarGroup className="p-0">
+            <SidebarGroupContent>
+              <SidebarMenu>
+                <SidebarMenuItem>
+                  <SidebarMenuButton
+                    tooltip={isCollapsed ? "Take tour" : undefined}
+                    onClick={() => startTour()}
+                    className={cn(isCollapsed && "justify-center")}
+                  >
+                    <Compass className="h-4 w-4 shrink-0" />
+                    {!isCollapsed && <span>Take tour</span>}
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        )}
 
         <div className="space-y-2 border-t border-sidebar-border pt-3">
           {config?.version ? (

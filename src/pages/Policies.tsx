@@ -118,8 +118,12 @@ export default function Policies() {
     <div className="p-6 space-y-6 animate-fade-in">
       {/* Header */}
       <div>
-        <h1 className="text-2xl font-semibold text-foreground">Policies & Configuration</h1>
-        <p className="text-sm text-muted-foreground">Configure CruiseKube behavior and workload settings</p>
+        <h1 className="text-2xl font-semibold text-foreground">
+          Policies &amp; Configuration
+        </h1>
+        <p className="text-sm text-muted-foreground">
+          Configure CruiseKube behavior and workload settings
+        </p>
       </div>
 
       <Tabs defaultValue="pricing" className="space-y-6">

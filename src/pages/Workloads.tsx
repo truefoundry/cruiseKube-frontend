@@ -304,6 +304,19 @@ function getCriticalColor(critical: string): string {
   }
 }
 
+function formatCriticalLabel(critical: string): string {
+  switch (critical) {
+    case "very-high":
+      return "Very High";
+    case "low":
+    case "medium":
+    case "high":
+      return critical.charAt(0).toUpperCase() + critical.slice(1);
+    default:
+      return critical.replace(/-/g, " ");
+  }
+}
+
 /** API expects workload ID with colons; stats may use slashes. */
 function workloadIdForApi(id: string): string {
   return id.includes("/") ? id.replace(/\//g, ":") : id;
@@ -1051,9 +1064,9 @@ export default function Workloads() {
             </div>
           </div>
 
-          <div className="rounded-xl border border-border bg-card/50 overflow-hidden shadow-sm">
+          <div data-tour="workload-table" className="rounded-xl border border-border bg-card/50 overflow-hidden shadow-sm">
             {/* Workload summary — integrated bar above table */}
-            <div className="border-b border-border bg-muted/30 px-4 py-3">
+            <div data-tour="workload-summary" className="border-b border-border bg-muted/30 px-4 py-3">
               {isLoadingMetrics ? (
                 <div className="flex flex-wrap items-center gap-6">
                   <Skeleton className="h-4 w-16" />
@@ -1403,6 +1416,8 @@ export default function Workloads() {
               {asArray(sortedWorkloads).map((workload, index) => (
                 <tr
                   key={workload.id}
+                  id={`workload-row-${index + 1}`}
+                  data-tour={index === 4 ? "workload-row-5" : undefined}
                   className={`group transition-colors ${
                     isWorkloadDisabled(workload)
                       ? "opacity-60 bg-muted/40 border-l-2 border-l-muted-foreground/40 hover:bg-muted/50"
@@ -1539,8 +1554,8 @@ export default function Workloads() {
                   <td className={`border-r border-b border-border min-w-0 overflow-hidden ${index === 0 ? "border-t" : ""} align-middle`}>
                     <div className="flex flex-col gap-0.5 justify-center min-w-0">
                       <div className="flex items-center gap-1 flex-wrap min-w-0">
-                        <span className={`text-xs font-medium capitalize ${getCriticalColor(isWorkloadDisabled(workload) ? "nonOptimizable" : workload.critical)}`}>
-                          {isWorkloadDisabled(workload) ? "Non-optimizable" : workload.critical}
+                        <span className={`text-xs font-medium ${getCriticalColor(isWorkloadDisabled(workload) ? "nonOptimizable" : workload.critical)}`}>
+                          {isWorkloadDisabled(workload) ? "Non-optimizable" : formatCriticalLabel(workload.critical)}
                         </span>
                         {!isWorkloadDisabled(workload) && asArray(workload.disruptionWindows).length > 0 && (
                           <TooltipProvider>
@@ -1661,7 +1676,7 @@ export default function Workloads() {
                       <SelectItem value="low">Low</SelectItem>
                       <SelectItem value="medium">Medium</SelectItem>
                       <SelectItem value="high">High</SelectItem>
-                      <SelectItem value="very-high">very-high</SelectItem>
+                      <SelectItem value="very-high">Very High</SelectItem>
                     </SelectContent>
                   </Select>
                   <p className="text-xs text-muted-foreground">
