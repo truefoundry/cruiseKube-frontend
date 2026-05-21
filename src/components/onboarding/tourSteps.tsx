@@ -9,6 +9,7 @@ import {
   CircleDollarSign,
   CircleDot,
   Clock,
+  Compass,
   Hand,
   LayoutList,
   Lock,
@@ -16,7 +17,6 @@ import {
   Pause,
   RefreshCw,
   Rocket,
-  RotateCcw,
   ScrollText,
   Search,
   Settings,
@@ -94,12 +94,12 @@ export function createTourSteps(navigate: NavigateFunction): Step[] {
     {
       target: "body",
       placement: "center" as const,
-      title: <StepTitle icon={Hand}>Welcome to CruiseKube!</StepTitle>,
+      title: "Welcome to CruiseKube",
       content: (
         <div className="space-y-2">
           <p>
             CruiseKube automatically right-sizes your Kubernetes workloads to save
-            cloud costs — without sacrificing reliability.
+            cloud costs.
           </p>
           <p className="font-medium">Here&apos;s what you can do:</p>
           <ul className="list-disc space-y-1 pl-4 text-left">
@@ -113,13 +113,10 @@ export function createTourSteps(navigate: NavigateFunction): Step[] {
             <li>
               <strong>Disruption Windows</strong> — schedule safe optimization
             </li>
-            <li>
-              <strong>Full Audit Trail</strong> — every action logged and filterable
-            </li>
           </ul>
-          <p className="flex items-center gap-2">
-            <Target className="h-4 w-4 shrink-0 text-primary" aria-hidden />
-            <span>Let&apos;s take a quick tour!</span>
+          <p className="flex items-center gap-2 text-center justify-center pt-4">
+            
+            <span>Let&apos;s take 60 seconds to get you started!</span>
           </p>
         </div>
       ),
@@ -172,13 +169,7 @@ export function createTourSteps(navigate: NavigateFunction): Step[] {
               <strong>Untapped savings</strong> — how much more you could save
             </li>
           </ul>
-          <p className="flex items-center gap-2">
-            <Rocket className="h-4 w-4 shrink-0 text-primary" aria-hidden />
-            <span>
-              Click <strong>&quot;View Workloads&quot;</strong> to start optimizing
-              the rest!
-            </span>
-          </p>
+
         </div>
       ),
       before: ensureOverview,
@@ -205,9 +196,8 @@ export function createTourSteps(navigate: NavigateFunction): Step[] {
           <p>
             CruiseKube supports{" "}
             <strong>
-              Deployments, StatefulSets, DaemonSets, Jobs, CronJobs
+              Deployments, StatefulSets and DaemonSets
             </strong>
-            , and more.
           </p>
         </div>
       ),
@@ -218,7 +208,7 @@ export function createTourSteps(navigate: NavigateFunction): Step[] {
       placement: "top" as const,
       title: (
         <StepTitle icon={Rocket}>
-          Cruise Mode, Recommendations &amp; Disruption Windows
+          Workload level controls
         </StepTitle>
       ),
       content: (
@@ -226,7 +216,7 @@ export function createTourSteps(navigate: NavigateFunction): Step[] {
           <p>
             Each row shows a workload with its resource usage and savings potential:
           </p>
-          <ul className="space-y-1.5 text-left">
+          <ul className="space-y-1.5 text-left list-disc pl-4">
             <IconListItem icon={CircleCheck} iconClassName="text-success">
               <strong>Cruise (On)</strong> — CruiseKube auto-applies optimizations
             </IconListItem>
@@ -241,11 +231,11 @@ export function createTourSteps(navigate: NavigateFunction): Step[] {
               High)
             </IconListItem>
           </ul>
-          <p>
+          <p className="text-left pt-2">
             <strong>Disruption Windows</strong> let you schedule safe time slots when
             PDB protections are temporarily relaxed — allowing node consolidation.
           </p>
-          <ul className="space-y-1.5 text-left">
+          <ul className="space-y-1.5 text-left list-disc pl-4">
             <IconListItem icon={Clock}>
               Set start/end times and days of the week
             </IconListItem>
@@ -279,15 +269,11 @@ export function createTourSteps(navigate: NavigateFunction): Step[] {
             <IconListItem icon={AlertTriangle} iconClassName="text-amber-500">
               OOM events and node overload taints
             </IconListItem>
-            <IconListItem icon={Wrench}>Webhook mutations</IconListItem>
+            <IconListItem icon={Wrench}>
+              Webhook mutations
+              </IconListItem>
           </ul>
-          <p className="flex items-center gap-2">
-            <Search className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
-            <span>
-              Filter by time range, category, or workload to find exactly what you
-              need.
-            </span>
-          </p>
+
         </div>
       ),
     },
@@ -309,13 +295,7 @@ export function createTourSteps(navigate: NavigateFunction): Step[] {
               <strong>Talk to team</strong> — book a call with us
             </IconListItem>
           </ul>
-          <p className="flex items-center gap-2">
-            <RotateCcw className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
-            <span>
-              You can retake this tour anytime from{" "}
-              <strong>Policies &amp; Configuration</strong>.
-            </span>
-          </p>
+
         </div>
       ),
     },
@@ -334,17 +314,19 @@ export function createTourSteps(navigate: NavigateFunction): Step[] {
             keeps a full audit trail. Install it on your cluster to start realizing
             savings in production.
           </p>
-          <Button asChild size="sm" className="w-full sm:w-auto">
-            <a
-              href={CRUISEKUBE_INSTALL_URL}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center justify-center gap-1.5"
-            >
-              <CircleDollarSign className="h-3.5 w-3.5 shrink-0" aria-hidden />
-              Start Saving
-            </a>
-          </Button>
+          <div className="mx-2 my-4 flex justify-center p-4">
+            <Button asChild size="sm">
+              <a
+                href={CRUISEKUBE_INSTALL_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center justify-center gap-1.5"
+              >
+                <CircleDollarSign className="h-3.5 w-3.5 shrink-0" aria-hidden />
+                Start Saving
+              </a>
+            </Button>
+          </div>
         </div>
       ),
     },

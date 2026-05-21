@@ -39,7 +39,7 @@ export function OnboardingTourProvider({ children }: { children: ReactNode }) {
   // Shared state: when set to a positive number, the TourRunner starts the tour
   const [tourTrigger, setTourTrigger] = useState(0);
 
-  // Manual retake from sidebar
+  // Manual start from sidebar "Take tour"
   const startTour = useCallback(() => {
     if (isMobile) return;
     clearTourCompleted();

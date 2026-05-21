@@ -4,10 +4,8 @@ import {
   XCircle,
   Loader2,
   DollarSign,
-  RotateCcw,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { useOnboardingTour } from "@/components/onboarding/useOnboardingTour";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useState, useEffect } from "react";
@@ -22,7 +20,6 @@ const DEFAULT_CPU = 0.0145;
 const DEFAULT_MEMORY = 0.00724;
 
 export default function Policies() {
-  const { startTour, isMobile } = useOnboardingTour();
   const { selectedClusterId } = useCluster();
   const { config: prometheusConfig, isLoading: prometheusConfigLoading, refetch: refetchPrometheusConfig } = useConfig();
   const queryClient = useQueryClient();
@@ -120,26 +117,13 @@ export default function Policies() {
   return (
     <div className="p-6 space-y-6 animate-fade-in">
       {/* Header */}
-      <div className="flex items-start justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold text-foreground">
-            Policies &amp; Configuration
-          </h1>
-          <p className="text-sm text-muted-foreground">
-            Configure CruiseKube behavior and workload settings
-          </p>
-        </div>
-        {!isMobile && (
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => startTour()}
-            className="shrink-0 gap-2"
-          >
-            <RotateCcw className="h-4 w-4" />
-            Retake tour
-          </Button>
-        )}
+      <div>
+        <h1 className="text-2xl font-semibold text-foreground">
+          Policies &amp; Configuration
+        </h1>
+        <p className="text-sm text-muted-foreground">
+          Configure CruiseKube behavior and workload settings
+        </p>
       </div>
 
       <Tabs defaultValue="pricing" className="space-y-6">

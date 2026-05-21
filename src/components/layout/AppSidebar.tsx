@@ -10,7 +10,9 @@ import {
   Calendar,
   LogOut,
   CircleDollarSign,
+  Compass,
 } from "lucide-react";
+import { useOnboardingTour } from "@/components/onboarding/useOnboardingTour";
 import { Alert, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { isDemoMode } from "@/lib/demo-mode";
@@ -74,6 +76,7 @@ export function AppSidebar() {
   const isCollapsed = state === "collapsed";
   const { config } = useConfig();
   const { username, logout, authEnabled } = useAuth();
+  const { startTour, isMobile } = useOnboardingTour();
   return (
     <Sidebar collapsible="icon" className="border-r border-sidebar-border">
       <SidebarHeader className="border-b border-sidebar-border p-4">
@@ -261,6 +264,25 @@ export function AppSidebar() {
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
+
+        {isDemoMode && !isMobile && (
+          <SidebarGroup className="p-0">
+            <SidebarGroupContent>
+              <SidebarMenu>
+                <SidebarMenuItem>
+                  <SidebarMenuButton
+                    tooltip={isCollapsed ? "Take tour" : undefined}
+                    onClick={() => startTour()}
+                    className={cn(isCollapsed && "justify-center")}
+                  >
+                    <Compass className="h-4 w-4 shrink-0" />
+                    {!isCollapsed && <span>Take tour</span>}
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        )}
 
         <div className="space-y-2 border-t border-sidebar-border pt-3">
           {config?.version ? (
