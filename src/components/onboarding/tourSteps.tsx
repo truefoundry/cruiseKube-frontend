@@ -9,7 +9,6 @@ import {
   CircleDollarSign,
   CircleDot,
   Clock,
-  Compass,
   Hand,
   LayoutList,
   Lock,
@@ -18,11 +17,9 @@ import {
   RefreshCw,
   Rocket,
   ScrollText,
-  Search,
   Settings,
   Shield,
   Sparkles,
-  Target,
   TrendingUp,
   Wrench,
 } from "lucide-react";
@@ -216,7 +213,7 @@ export function createTourSteps(navigate: NavigateFunction): Step[] {
           <p>
             Each row shows a workload with its resource usage and savings potential:
           </p>
-          <ul className="space-y-1.5 text-left list-disc pl-4">
+          <ul className="space-y-1.5 text-left">
             <IconListItem icon={CircleCheck} iconClassName="text-success">
               <strong>Cruise (On)</strong> — CruiseKube auto-applies optimizations
             </IconListItem>
@@ -235,7 +232,7 @@ export function createTourSteps(navigate: NavigateFunction): Step[] {
             <strong>Disruption Windows</strong> let you schedule safe time slots when
             PDB protections are temporarily relaxed — allowing node consolidation.
           </p>
-          <ul className="space-y-1.5 text-left list-disc pl-4">
+          <ul className="space-y-1.5 text-left">
             <IconListItem icon={Clock}>
               Set start/end times and days of the week
             </IconListItem>
