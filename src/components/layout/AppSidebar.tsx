@@ -81,7 +81,7 @@ export function AppSidebar() {
     <Sidebar collapsible="icon" className="border-r border-sidebar-border/80">
       <SidebarHeader className="border-b border-sidebar-border/80 p-3.5">
         <div className={cn("flex items-center gap-3", isCollapsed && "justify-center")}>
-          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-sidebar-border/80 bg-sidebar-accent/65 shadow-sm ring-1 ring-sidebar-ring/10">
+          <div className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-lg">
             <div
               className="h-7 w-7 shrink-0 bg-sidebar-primary opacity-95"
               style={{
@@ -133,7 +133,7 @@ export function AppSidebar() {
                         "relative flex items-center gap-3 rounded-lg px-3 py-2 text-sidebar-foreground transition-colors hover:bg-sidebar-accent/70 hover:text-sidebar-accent-foreground focus-visible:ring-2 focus-visible:ring-sidebar-ring",
                         isCollapsed && "justify-center"
                       )}
-                      activeClassName="bg-sidebar-primary/10 text-sidebar-accent-foreground shadow-[inset_3px_0_0_hsl(var(--sidebar-primary))] hover:bg-sidebar-primary/15 [&>svg]:text-sidebar-primary"
+                      activeClassName="bg-sidebar-primary/10 text-sidebar-accent-foreground hover:bg-sidebar-primary/15 [&>svg]:text-sidebar-primary"
                     >
                       <item.icon className="h-4 w-4 shrink-0 transition-colors" />
                       {!isCollapsed && <span>{item.title}</span>}

@@ -125,6 +125,29 @@ function WorkloadTypeIcon({ type }: { type: string }) {
   );
 }
 
+function FilterSelect({
+  value,
+  onValueChange,
+  placeholder,
+  triggerClassName,
+  children,
+}: {
+  value: string;
+  onValueChange: (value: string) => void;
+  placeholder: string;
+  triggerClassName: string;
+  children: ReactNode;
+}) {
+  return (
+    <Select value={value} onValueChange={onValueChange}>
+      <SelectTrigger className={triggerClassName}>
+        <SelectValue placeholder={placeholder} />
+      </SelectTrigger>
+      <SelectContent>{children}</SelectContent>
+    </Select>
+  );
+}
+
 function StatusIconWithTooltip({
   title,
   description,
@@ -468,7 +491,6 @@ export default function Workloads() {
     "all" | "excluded" | "blocking-consolidation" | "gpu" | "hpa-enabled" | "scaled-down"
   >("all");
   const [typeFilter, setTypeFilter] = useState<string>("all");
-  const [hasRecommendations, setHasRecommendations] = useState("all");
   const [sortColumn, setSortColumn] = useState<string | null>("potentialDollars");
   const [sortDirection, setSortDirection] = useState<"asc" | "desc" | null>("desc");
   const [editWorkload, setEditWorkload] = useState<FrontendWorkload | null>(null);
@@ -832,10 +854,7 @@ export default function Workloads() {
       (statusFilter === "hpa-enabled" && w.hpaEnabled === true) ||
       (statusFilter === "scaled-down" && w.scaledDown === true);
     const matchesType = typeFilter === "all" || w.type === typeFilter;
-    const matchesRecommendations = hasRecommendations === "all" || 
-      (hasRecommendations === "yes" && w.hasRecommendations) ||
-      (hasRecommendations === "no" && !w.hasRecommendations);
-    return matchesSearch && matchesNamespace && matchesMode && matchesCritical && matchesStatus && matchesType && matchesRecommendations;
+    return matchesSearch && matchesNamespace && matchesMode && matchesCritical && matchesStatus && matchesType;
   });
 
   const sortedWorkloads = sortWorkloads(filteredWorkloads);
@@ -855,14 +874,13 @@ export default function Workloads() {
   const clearSelection = () => setSelectedWorkloadIds(new Set());
   const allSelectableSelected = selectableWorkloads.length > 0 && selectableWorkloads.every((w) => selectedWorkloadIds.has(w.id));
   const someSelected = selectedWorkloadIds.size > 0;
-  const tableWidthPx = columnWidths.reduce((total, width) => total + width, 0);
+  const columnWidthTotal = columnWidths.reduce((total, width) => total + width, 0);
   const activeFilterCount = [
     namespaceFilter !== "all",
     modeFilter !== "all",
     criticalFilter !== "all",
     statusFilter !== "all",
     typeFilter !== "all",
-    hasRecommendations !== "all",
     search.trim().length > 0,
   ].filter(Boolean).length;
 
@@ -1063,7 +1081,6 @@ export default function Workloads() {
                   setCriticalFilter("all");
                   setStatusFilter("all");
                   setTypeFilter("all");
-                  setHasRecommendations("all");
                 }}
               >
                 Clear {activeFilterCount} filter{activeFilterCount === 1 ? "" : "s"}
@@ -1073,85 +1090,73 @@ export default function Workloads() {
         />
 
         <Panel padding="sm" variant="subtle" className="space-y-3">
-          <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
-            <div className="relative min-w-0 flex-1 xl:max-w-sm">
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="relative w-56 sm:w-64">
               <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
               <Input
-                placeholder="Search workload or namespace..."
+                placeholder="Search..."
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 className="h-9 bg-surface pl-8 text-sm"
               />
             </div>
-            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:flex xl:flex-wrap xl:justify-end">
-              <Select value={namespaceFilter} onValueChange={setNamespaceFilter}>
-                <SelectTrigger className="h-9 min-w-[180px] bg-surface text-sm">
-                  <SelectValue placeholder="Namespace" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All namespaces</SelectItem>
-                  {asArray(namespaces).map((ns) => (
-                    <SelectItem key={ns} value={ns}>{ns}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <Select value={modeFilter} onValueChange={setModeFilter}>
-                <SelectTrigger className="h-9 min-w-[130px] bg-surface text-sm">
-                  <SelectValue placeholder="Mode" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All modes</SelectItem>
-                  <SelectItem value="enabled">Cruise</SelectItem>
-                  <SelectItem value="recommend-only">Recommend</SelectItem>
-                </SelectContent>
-              </Select>
-              <Select value={criticalFilter} onValueChange={setCriticalFilter}>
-                <SelectTrigger className="h-9 min-w-[150px] bg-surface text-sm">
-                  <SelectValue placeholder="Critical" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All criticalities</SelectItem>
-                  <SelectItem value="low">Low</SelectItem>
-                  <SelectItem value="medium">Medium</SelectItem>
-                  <SelectItem value="high">High</SelectItem>
-                  <SelectItem value="very-high">Very High</SelectItem>
-                </SelectContent>
-              </Select>
-              <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v as typeof statusFilter)}>
-                <SelectTrigger className="h-9 min-w-[210px] bg-surface text-sm">
-                  <SelectValue placeholder="Status" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All workload states</SelectItem>
-                  <SelectItem value="excluded">Non-optimizable</SelectItem>
-                  <SelectItem value="blocking-consolidation">Blocking consolidation</SelectItem>
-                  <SelectItem value="gpu">GPU workload</SelectItem>
-                  <SelectItem value="hpa-enabled">HPA enabled</SelectItem>
-                  <SelectItem value="scaled-down">Scaled down</SelectItem>
-                </SelectContent>
-              </Select>
-              <Select value={typeFilter} onValueChange={setTypeFilter}>
-                <SelectTrigger className="h-9 min-w-[140px] bg-surface text-sm">
-                  <SelectValue placeholder="Type" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All types</SelectItem>
-                  {workloadTypesInData.map((t) => (
-                    <SelectItem key={t} value={t}>{t}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <Select value={hasRecommendations} onValueChange={setHasRecommendations}>
-                <SelectTrigger className="h-9 min-w-[170px] bg-surface text-sm">
-                  <SelectValue placeholder="Recommendations" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All recommendations</SelectItem>
-                  <SelectItem value="yes">With recommendations</SelectItem>
-                  <SelectItem value="no">No recommendations</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
+            <FilterSelect
+              value={namespaceFilter}
+              onValueChange={setNamespaceFilter}
+              placeholder="Namespace"
+              triggerClassName="h-9 min-w-[180px] flex-1 max-w-[280px] bg-surface text-sm"
+            >
+              <SelectItem value="all">All namespaces</SelectItem>
+              {asArray(namespaces).map((ns) => (
+                <SelectItem key={ns} value={ns}>{ns}</SelectItem>
+              ))}
+            </FilterSelect>
+            <FilterSelect
+              value={modeFilter}
+              onValueChange={setModeFilter}
+              placeholder="Mode"
+              triggerClassName="h-9 w-[120px] bg-surface text-sm"
+            >
+              <SelectItem value="all">All modes</SelectItem>
+              <SelectItem value="enabled">Cruise</SelectItem>
+              <SelectItem value="recommend-only">Recommend</SelectItem>
+            </FilterSelect>
+            <FilterSelect
+              value={criticalFilter}
+              onValueChange={setCriticalFilter}
+              placeholder="Critical"
+              triggerClassName="h-9 w-[130px] bg-surface text-sm"
+            >
+              <SelectItem value="all">All criticalities</SelectItem>
+              <SelectItem value="low">Low</SelectItem>
+              <SelectItem value="medium">Medium</SelectItem>
+              <SelectItem value="high">High</SelectItem>
+              <SelectItem value="very-high">Very High</SelectItem>
+            </FilterSelect>
+            <FilterSelect
+              value={statusFilter}
+              onValueChange={(v) => setStatusFilter(v as typeof statusFilter)}
+              placeholder="Status"
+              triggerClassName="h-9 w-[200px] bg-surface text-sm"
+            >
+              <SelectItem value="all">All workload states</SelectItem>
+              <SelectItem value="excluded">Non-optimizable</SelectItem>
+              <SelectItem value="blocking-consolidation">Blocking consolidation</SelectItem>
+              <SelectItem value="gpu">GPU workload</SelectItem>
+              <SelectItem value="hpa-enabled">HPA enabled</SelectItem>
+              <SelectItem value="scaled-down">Scaled down</SelectItem>
+            </FilterSelect>
+            <FilterSelect
+              value={typeFilter}
+              onValueChange={setTypeFilter}
+              placeholder="Type"
+              triggerClassName="h-9 w-[140px] bg-surface text-sm"
+            >
+              <SelectItem value="all">All types</SelectItem>
+              {workloadTypesInData.map((t) => (
+                <SelectItem key={t} value={t}>{t}</SelectItem>
+              ))}
+            </FilterSelect>
           </div>
         </Panel>
 
@@ -1266,12 +1271,18 @@ export default function Workloads() {
                 />
               ) : (
               <table
-                className="data-table data-table-compact min-w-full border-collapse"
-                style={{ tableLayout: "fixed", minWidth: `${tableWidthPx}px`, width: `max(100%, ${tableWidthPx}px)` }}
+                className="data-table data-table-compact w-full min-w-full border-collapse"
+                style={{ tableLayout: "fixed", width: "100%" }}
               >
             <colgroup>
               {columnWidths.map((w, i) => (
-                <col key={i} style={{ width: `${w}px`, minWidth: MIN_COLUMN_WIDTH }} />
+                <col
+                  key={i}
+                  style={{
+                    width: `${(w / columnWidthTotal) * 100}%`,
+                    minWidth: MIN_COLUMN_WIDTH,
+                  }}
+                />
               ))}
             </colgroup>
             <thead className="sticky top-0 z-10 border-b border-border bg-surface-elevated/95 text-muted-foreground shadow-sm backdrop-blur supports-[backdrop-filter]:bg-surface-elevated/85">
