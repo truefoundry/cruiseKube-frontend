@@ -88,7 +88,7 @@ export function MetricCard({
         </div>
         {Icon && (
           <div className={cn(
-            "rounded-lg bg-muted/50 p-2",
+            "rounded-lg border border-border/60 bg-surface-subtle p-2 shadow-sm",
             iconStyles[variant]
           )}>
             <Icon className="h-5 w-5" />

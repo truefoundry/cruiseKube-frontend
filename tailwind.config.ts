@@ -43,6 +43,10 @@ export default {
           DEFAULT: "hsl(var(--success))",
           foreground: "hsl(var(--success-foreground))",
         },
+        info: {
+          DEFAULT: "hsl(var(--info))",
+          foreground: "hsl(var(--info-foreground))",
+        },
         muted: {
           DEFAULT: "hsl(var(--muted))",
           foreground: "hsl(var(--muted-foreground))",
@@ -59,6 +63,26 @@ export default {
           DEFAULT: "hsl(var(--card))",
           foreground: "hsl(var(--card-foreground))",
         },
+        surface: {
+          DEFAULT: "hsl(var(--surface))",
+          subtle: "hsl(var(--surface-subtle))",
+          elevated: "hsl(var(--surface-elevated))",
+        },
+        chart: {
+          "series-1": "var(--cruisekube-chart-series-1)",
+          "series-2": "var(--cruisekube-chart-series-2)",
+          "series-3": "var(--cruisekube-chart-series-3)",
+          "series-4": "var(--cruisekube-chart-series-4)",
+          "series-5": "var(--cruisekube-chart-series-5)",
+          "cost-hourly": "var(--cruisekube-chart-cost-hourly)",
+          "cost-without-cruisekube": "var(--cruisekube-chart-cost-without-cruisekube)",
+          "cost-with-cruisekube": "var(--cruisekube-chart-cost-with-cruisekube)",
+          threshold: "var(--cruisekube-chart-threshold)",
+          grid: "var(--cruisekube-chart-grid)",
+          axis: "var(--cruisekube-chart-axis)",
+          tooltip: "var(--cruisekube-chart-tooltip)",
+          "tooltip-foreground": "var(--cruisekube-chart-tooltip-foreground)",
+        },
         sidebar: {
           DEFAULT: "hsl(var(--sidebar-background))",
           foreground: "hsl(var(--sidebar-foreground))",
@@ -74,6 +98,11 @@ export default {
         lg: "var(--radius)",
         md: "calc(var(--radius) - 2px)",
         sm: "calc(var(--radius) - 4px)",
+      },
+      boxShadow: {
+        card: "var(--shadow-card)",
+        popover: "var(--shadow-popover)",
+        dialog: "var(--shadow-dialog)",
       },
       keyframes: {
         "accordion-down": {

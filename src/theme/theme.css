@@ -1,10 +1,100 @@
 /**
- * Cool dark editor theme — blue-black canvas, subdued panels, cyan-blue accents.
- * Tuned for long sessions (low contrast chrome, readable semantics).
+ * CruiseKube design tokens.
+ *
+ * Light mode is the default dashboard experience; `.dark` mirrors the same
+ * semantic surface/status/chart contract for next-themes class switching.
  */
 @layer base {
   :root {
-    /* Canvas & surfaces — editor-style blue-black + raised panels */
+    /* Canvas & surfaces — soft neutral app canvas with near-white raised UI. */
+    --background: 220 33% 97%;
+    --foreground: 222 47% 11%;
+
+    --card: 210 40% 99%;
+    --card-foreground: 222 47% 11%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 222 47% 11%;
+
+    --surface: 210 40% 99%;
+    --surface-subtle: 215 32% 95%;
+    --surface-elevated: 0 0% 100%;
+
+    /* Brand & interactive accents. */
+    --primary: 214 84% 50%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 214 32% 92%;
+    --secondary-foreground: 222 47% 13%;
+
+    --muted: 215 25% 93%;
+    --muted-foreground: 215 16% 42%;
+
+    --accent: 210 40% 94%;
+    --accent-foreground: 222 47% 13%;
+
+    /* Semantics. */
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 100%;
+
+    --warning: 38 92% 50%;
+    --warning-foreground: 24 90% 10%;
+
+    --success: 151 65% 35%;
+    --success-foreground: 151 100% 5%;
+
+    --info: 204 85% 40%;
+    --info-foreground: 0 0% 100%;
+
+    --border: 214 32% 86%;
+    --input: 214 32% 86%;
+    --ring: 214 84% 56%;
+    --focus-ring: hsl(214 84% 56% / 0.34);
+
+    --radius: 0.5rem;
+
+    /* Sidebar — quiet enterprise navigation surface. */
+    --sidebar-background: 220 43% 98%;
+    --sidebar-foreground: 216 18% 34%;
+    --sidebar-primary: 214 84% 50%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 214 32% 92%;
+    --sidebar-accent-foreground: 222 47% 13%;
+    --sidebar-border: 214 32% 87%;
+    --sidebar-ring: 214 84% 56%;
+
+    --glow-primary: 0 0 22px hsl(214 84% 56% / 0.14);
+    --glow-warning: 0 0 20px hsl(38 92% 50% / 0.16);
+    --glow-destructive: 0 0 20px hsl(0 72% 51% / 0.13);
+
+    --shadow-card: 0 1px 2px hsl(222 47% 11% / 0.05), 0 10px 30px hsl(222 47% 11% / 0.06);
+    --shadow-popover: 0 12px 36px hsl(222 47% 11% / 0.14);
+    --shadow-dialog: 0 22px 70px hsl(222 47% 11% / 0.20);
+
+    --gradient-card: linear-gradient(180deg, hsl(0 0% 100%) 0%, hsl(210 40% 99%) 100%);
+    --gradient-primary: linear-gradient(180deg, hsl(214 84% 56%) 0%, hsl(214 84% 46%) 100%);
+    --gradient-accent: linear-gradient(180deg, hsl(214 32% 96%) 0%, hsl(214 32% 92%) 100%);
+
+    /* Charts — token-backed defaults/fallbacks; API-provided colours remain authoritative. */
+    --cruisekube-chart-series-1: hsl(214 84% 50%);
+    --cruisekube-chart-series-2: hsl(151 65% 35%);
+    --cruisekube-chart-series-3: hsl(38 92% 50%);
+    --cruisekube-chart-series-4: hsl(262 74% 60%);
+    --cruisekube-chart-series-5: hsl(190 76% 42%);
+
+    --cruisekube-chart-cost-hourly: hsl(214 84% 50%);
+    --cruisekube-chart-cost-without-cruisekube: hsl(215 16% 47%);
+    --cruisekube-chart-cost-with-cruisekube: hsl(151 65% 35%);
+
+    --cruisekube-chart-threshold: hsl(0 72% 51%);
+    --cruisekube-chart-grid: hsl(214 32% 86% / 0.72);
+    --cruisekube-chart-axis: hsl(215 16% 42%);
+    --cruisekube-chart-tooltip: hsl(0 0% 100%);
+    --cruisekube-chart-tooltip-foreground: hsl(222 47% 11%);
+  }
+
+  .dark {
+    /* Canvas & surfaces — complete dark contract matching the light tokens. */
     --background: 222 42% 4.5%;
     --foreground: 210 22% 96%;
 
@@ -14,7 +104,10 @@
     --popover: 222 26% 9%;
     --popover-foreground: 210 22% 96%;
 
-    /* Accent — cool cyan-blue (editor selection / links) */
+    --surface: 222 26% 8%;
+    --surface-subtle: 222 18% 12%;
+    --surface-elevated: 222 24% 10%;
+
     --primary: 199 86% 56%;
     --primary-foreground: 222 42% 5%;
 
@@ -22,30 +115,30 @@
     --secondary-foreground: 210 22% 94%;
 
     --muted: 222 16% 12%;
-    --muted-foreground: 220 11% 58%;
+    --muted-foreground: 220 11% 62%;
 
     --accent: 222 20% 15%;
     --accent-foreground: 210 22% 94%;
 
-    /* Semantics — readable on cool canvas */
-    --destructive: 0 72% 58%;
+    --destructive: 0 62% 48%;
     --destructive-foreground: 210 22% 98%;
 
     --warning: 38 78% 52%;
     --warning-foreground: 222 42% 6%;
 
     --success: 152 52% 46%;
-    --success-foreground: 210 22% 98%;
+    --success-foreground: 222 42% 5%;
+
+    --info: 199 86% 56%;
+    --info-foreground: 222 42% 5%;
 
     --border: 222 14% 17%;
     --input: 222 14% 17%;
     --ring: 199 86% 56%;
+    --focus-ring: hsl(199 86% 56% / 0.35);
 
-    --radius: 0.5rem;
-
-    /* Sidebar — inset strip, slightly deeper than main canvas */
     --sidebar-background: 222 44% 3.2%;
-    --sidebar-foreground: 220 11% 58%;
+    --sidebar-foreground: 220 11% 62%;
     --sidebar-primary: 199 86% 56%;
     --sidebar-primary-foreground: 222 42% 5%;
     --sidebar-accent: 222 26% 9%;
@@ -57,26 +150,28 @@
     --glow-warning: 0 0 20px hsl(38 78% 52% / 0.12);
     --glow-destructive: 0 0 20px hsl(0 72% 58% / 0.14);
 
+    --shadow-card: 0 1px 2px hsl(222 42% 2% / 0.34), 0 16px 44px hsl(222 42% 2% / 0.30);
+    --shadow-popover: 0 18px 48px hsl(222 42% 2% / 0.46);
+    --shadow-dialog: 0 24px 80px hsl(222 42% 2% / 0.58);
+
     --gradient-card: linear-gradient(180deg, hsl(222 26% 8.5%) 0%, hsl(222 26% 7.5%) 100%);
     --gradient-primary: linear-gradient(180deg, hsl(199 86% 58%) 0%, hsl(199 78% 48%) 100%);
     --gradient-accent: linear-gradient(180deg, hsl(222 20% 16%) 0%, hsl(222 20% 13%) 100%);
 
-    /* Charts — cool neutrals + cyan / amber accents */
-    --cruisekube-chart-series-1: #9ca8b9;
-    --cruisekube-chart-series-2: #6b7a8f;
-    --cruisekube-chart-series-3: #e5c07b;
-    --cruisekube-chart-series-4: #61afef;
-    --cruisekube-chart-series-5: #56b6c2;
+    --cruisekube-chart-series-1: hsl(208 88% 66%);
+    --cruisekube-chart-series-2: hsl(164 58% 58%);
+    --cruisekube-chart-series-3: hsl(39 78% 62%);
+    --cruisekube-chart-series-4: hsl(264 82% 72%);
+    --cruisekube-chart-series-5: hsl(186 58% 58%);
 
-    --cruisekube-chart-cost-hourly: #61afef;
-    --cruisekube-chart-cost-without-cruisekube: #8b9aaf;
-    --cruisekube-chart-cost-with-cruisekube: #56c2a0;
+    --cruisekube-chart-cost-hourly: hsl(208 88% 66%);
+    --cruisekube-chart-cost-without-cruisekube: hsl(215 16% 67%);
+    --cruisekube-chart-cost-with-cruisekube: hsl(164 58% 58%);
 
-    --cruisekube-chart-threshold: #e06c75;
-  }
-
-  .dark {
-    --background: 222 42% 4.5%;
-    --foreground: 210 22% 96%;
+    --cruisekube-chart-threshold: hsl(0 72% 64%);
+    --cruisekube-chart-grid: hsl(222 14% 22% / 0.78);
+    --cruisekube-chart-axis: hsl(220 11% 64%);
+    --cruisekube-chart-tooltip: hsl(222 26% 9%);
+    --cruisekube-chart-tooltip-foreground: hsl(210 22% 96%);
   }
 }

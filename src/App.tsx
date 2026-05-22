@@ -5,6 +5,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, useLocation } from "react-router-dom";
 import { useEffect } from "react";
+import { ThemeProvider } from "next-themes";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { ProtectedLayout } from "@/components/layout/ProtectedLayout";
 import { AuthProvider } from "@/contexts/AuthContext";
@@ -46,38 +47,40 @@ const AnalyticsPageTracker = () => {
 
 const App = () => (
  <Sentry.ErrorBoundary fallback={<p>An unexpected error has occurred.</p>} showDialog>
-  <QueryClientProvider client={queryClient}>
-    <TooltipProvider>
-      <Toaster />
-      <Sonner />
-      <BrowserRouter basename={import.meta.env.BASE_URL.replace(/\/$/, "") || undefined}>
-        <AuthProvider>
-          <AnalyticsPageTracker />
-          <SentryRoutes>
-            <Route path="/login" element={<Login />} />
-            <Route element={<ProtectedLayout />}>
-              <Route
-                element={
-                  <ClusterProvider>
-                    <ConfigProvider>
-                      <AppLayout />
-                    </ConfigProvider>
-                  </ClusterProvider>
-                }
-              >
-                <Route path="/" element={<Overview />} />
-                <Route path="/workloads" element={<Workloads />} />
-                <Route path="/workloads/:namespace/:workloadName" element={<WorkloadDetail />} />
-                <Route path="/policies" element={<Policies />} />
-                <Route path="/events" element={<Events />} />
-                <Route path="*" element={<NotFound />} />
+  <ThemeProvider attribute="class" defaultTheme="system" enableSystem={true}>
+    <QueryClientProvider client={queryClient}>
+      <TooltipProvider>
+        <Toaster />
+        <Sonner />
+        <BrowserRouter basename={import.meta.env.BASE_URL.replace(/\/$/, "") || undefined}>
+          <AuthProvider>
+            <AnalyticsPageTracker />
+            <SentryRoutes>
+              <Route path="/login" element={<Login />} />
+              <Route element={<ProtectedLayout />}>
+                <Route
+                  element={
+                    <ClusterProvider>
+                      <ConfigProvider>
+                        <AppLayout />
+                      </ConfigProvider>
+                    </ClusterProvider>
+                  }
+                >
+                  <Route path="/" element={<Overview />} />
+                  <Route path="/workloads" element={<Workloads />} />
+                  <Route path="/workloads/:namespace/:workloadName" element={<WorkloadDetail />} />
+                  <Route path="/policies" element={<Policies />} />
+                  <Route path="/events" element={<Events />} />
+                  <Route path="*" element={<NotFound />} />
+                </Route>
               </Route>
-            </Route>
-          </SentryRoutes>
-        </AuthProvider>
-      </BrowserRouter>
-    </TooltipProvider>
-  </QueryClientProvider>
+            </SentryRoutes>
+          </AuthProvider>
+        </BrowserRouter>
+      </TooltipProvider>
+    </QueryClientProvider>
+  </ThemeProvider>
  </Sentry.ErrorBoundary>
 );
 

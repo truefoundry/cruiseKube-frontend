@@ -1,4 +1,4 @@
-import { useMemo, useState, type Dispatch, type SetStateAction } from "react";
+import { useMemo, useState, type Dispatch, type ReactNode, type SetStateAction } from "react";
 import {
   DollarSign,
   TrendingDown,
@@ -11,6 +11,7 @@ import {
   HardDrive,
   Info,
   AlertTriangle,
+  type LucideIcon,
 } from "lucide-react";
 import { useQueries } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
@@ -32,7 +33,13 @@ import {
   type HistoricalTimelineResponse,
 } from "@/lib/api";
 import { Skeleton } from "@/components/ui/skeleton";
+import { MetricCard } from "@/components/ui/metric-card";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { PageHeader } from "@/components/layout/PageHeader";
+import { PageShell } from "@/components/layout/PageShell";
+import { SectionHeader } from "@/components/layout/SectionHeader";
+import { Panel } from "@/components/ui/panel";
+import { EmptyState } from "@/components/ui/state";
 import {
   ChartContainer,
   ChartTooltip,
@@ -44,12 +51,57 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
+import { chartSeriesVar } from "@/theme";
 
 /** Min 1 hour, max 30 days (for timeline range). */
 const TIMELINE_MIN_MS = 1 * 60 * 60 * 1000;
 const TIMELINE_MAX_MS = 30 * 24 * 60 * 60 * 1000;
 
 type TimeRangePreset = "6h" | "24h" | "7d" | "30d" | "custom";
+
+function OverviewMetricCard({
+  isLoading,
+  icon: Icon,
+  title,
+  value,
+  subtitle,
+  titleTooltip,
+}: {
+  isLoading: boolean;
+  icon: LucideIcon;
+  title: string;
+  value: string | number;
+  subtitle?: string;
+  titleTooltip?: ReactNode;
+}) {
+  if (isLoading) {
+    return (
+      <div className="metric-card border-border">
+        <div className="flex items-start justify-between">
+          <div className="space-y-1">
+            <Skeleton className="h-3 w-28" />
+            <Skeleton className="h-8 w-24" />
+            <Skeleton className="h-4 w-36" />
+          </div>
+          <div className="rounded-lg bg-muted/50 p-2 text-muted-foreground">
+            <Icon className="h-5 w-5" />
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <MetricCard
+      className="border-border"
+      title={title}
+      value={value}
+      subtitle={subtitle}
+      icon={Icon}
+      titleTooltip={titleTooltip}
+    />
+  );
+}
 
 function presetToMs(preset: TimeRangePreset): number | null {
   switch (preset) {
@@ -218,7 +270,10 @@ function transformHistoricalTimelineResponse(raw: HistoricalTimelineResponse | n
     const key = sanitizeChartKey(legend);
     if (!byTime.has(ts)) byTime.set(ts, {});
     byTime.get(ts)![key] = value;
-    if (!legendMeta.has(key)) legendMeta.set(key, { label: legend, color: item.color ?? "#888" });
+    if (!legendMeta.has(key)) {
+      const fallbackColor = chartSeriesVar[legendMeta.size % chartSeriesVar.length];
+      legendMeta.set(key, { label: legend, color: item.color ?? fallbackColor });
+    }
   }
   const sortedTimes = [...byTime.keys()].sort();
   const data: Record<string, unknown>[] = sortedTimes.map((ts) => {
@@ -237,6 +292,8 @@ function transformHistoricalTimelineResponse(raw: HistoricalTimelineResponse | n
 }
 
 const TIMELINE_RANGE_PRESETS: Exclude<TimeRangePreset, "custom">[] = ["6h", "24h", "7d", "30d"];
+const chartGridColor = "var(--cruisekube-chart-grid)";
+const chartAxisColor = "var(--cruisekube-chart-axis)";
 
 function OverviewTimelineRangePresets({
   timeRangePreset,
@@ -445,26 +502,23 @@ export default function Overview() {
 
   if (!selectedClusterId) {
     return (
-      <div className="p-6">
-        <div className="text-center text-muted-foreground">
-          Please select a cluster to view the overview.
-        </div>
-      </div>
+      <PageShell className="animate-fade-in">
+        <EmptyState
+          icon={LayoutDashboard}
+          title="Select a cluster"
+          description="Please select a cluster to view cost, savings, adoption, and resource usage."
+        />
+      </PageShell>
     );
   }
 
   return (
-    <div className="min-w-0 w-full max-w-full animate-fade-in">
-      <div className="mx-auto max-w-[1600px] px-4 py-6 sm:px-6 lg:px-8 space-y-8">
-        <div>
-          <h1 className="flex items-center gap-2 text-2xl font-semibold text-foreground">
-            <LayoutDashboard className="h-6 w-6 shrink-0 text-muted-foreground" />
-            Overview
-          </h1>
-          <p className="text-sm text-muted-foreground">
-            Cluster cost, savings, adoption, and resource usage with CPU, memory, and cost timelines.
-          </p>
-        </div>
+    <PageShell className="animate-fade-in gap-8">
+        <PageHeader
+          icon={<LayoutDashboard className="h-5 w-5" />}
+          title="Overview"
+          description="Cluster cost, savings, adoption, and resource usage with CPU, memory, and cost timelines."
+        />
         {error && (
           <Alert variant="destructive">
             <AlertTriangle className="h-4 w-4" />
@@ -478,7 +532,7 @@ export default function Overview() {
           !error &&
           d.cpuStats.recommended === 0 &&
           d.memoryStats.recommended === 0 && (
-          <Alert className="border-primary/30 bg-primary/5">
+          <Alert variant="info">
             <Activity className="h-4 w-4" />
             <AlertTitle>Recommendations are being generated</AlertTitle>
             <AlertDescription>
@@ -487,7 +541,7 @@ export default function Overview() {
           </Alert>
         )}
         {hasNoWorkloads && (
-          <Alert className="border-muted-foreground/30 bg-muted/30">
+          <Alert variant="neutral">
             <Activity className="h-4 w-4" />
             <AlertTitle>Stats are still updating</AlertTitle>
             <AlertDescription>
@@ -501,185 +555,53 @@ export default function Overview() {
             Key metrics
           </h2>
           <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 xl:grid-cols-4">
-            <div className="metric-card border-border">
-              {isLoading ? (
-                <div className="flex items-start justify-between">
-                  <div className="space-y-1">
-                    <Skeleton className="h-3 w-28" />
-                    <Skeleton className="h-8 w-24" />
-                    <Skeleton className="h-4 w-36" />
-                  </div>
-                  <div className="rounded-lg bg-muted/50 p-2 text-muted-foreground">
-                    <DollarSign className="h-5 w-5" />
-                  </div>
-                </div>
-              ) : (
-                <div className="flex items-start justify-between">
-                  <div className="space-y-1">
-                    <div className="flex items-center gap-1.5">
-                      <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                        Monthly cost
-                      </p>
-                      <TooltipProvider>
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <button type="button" className="inline-flex text-muted-foreground hover:text-foreground focus:outline-none" onClick={(e) => e.stopPropagation()} aria-label="How monthly cost is calculated">
-                              <Info className="h-3.5 w-3.5" />
-                            </button>
-                          </TooltipTrigger>
-                          <TooltipContent side="bottom" className="max-w-sm p-4 text-left">
-                            <p>
-                              Monthly cost is computed from cluster allocatable resources (CPU cores and memory) and your configured cost per core/hour and per GB/hour. It represents the monthly run-rate if all allocatable capacity were billed at those rates.
-                            </p>
-                          </TooltipContent>
-                        </Tooltip>
-                      </TooltipProvider>
-                    </div>
-                    <p className="font-mono text-2xl font-semibold tracking-tight text-foreground">
-                      ${d.currentMonthlyCost.toLocaleString()}
-                    </p>
-                    <p className="text-sm text-muted-foreground">/month run-rate</p>
-                  </div>
-                  <div className="rounded-lg bg-muted/50 p-2 text-muted-foreground">
-                    <DollarSign className="h-5 w-5" />
-                  </div>
-                </div>
-              )}
-            </div>
-
-            <div className="metric-card border-border">
-              {isLoading ? (
-                <div className="flex items-start justify-between">
-                  <div className="space-y-1">
-                    <Skeleton className="h-3 w-28" />
-                    <Skeleton className="h-8 w-24" />
-                    <Skeleton className="h-4 w-36" />
-                  </div>
-                  <div className="rounded-lg bg-muted/50 p-2 text-muted-foreground">
-                    <TrendingDown className="h-5 w-5" />
-                  </div>
-                </div>
-              ) : (
-                <div className="flex items-start justify-between">
-                  <div className="space-y-1">
-                    <div className="flex items-center gap-1.5">
-                      <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                        Current savings
-                      </p>
-                      <TooltipProvider>
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <button type="button" className="inline-flex text-muted-foreground hover:text-foreground focus:outline-none" onClick={(e) => e.stopPropagation()} aria-label="How current savings is calculated">
-                              <Info className="h-3.5 w-3.5" />
-                            </button>
-                          </TooltipTrigger>
-                          <TooltipContent side="bottom" className="max-w-sm p-4 text-left">
-                            <p>
-                              Savings already realized from CruiseKube optimizations (resources right-sized on workloads in Cruise mode). The percentage is reduction relative to cost before optimization.
-                            </p>
-                          </TooltipContent>
-                        </Tooltip>
-                      </TooltipProvider>
-                    </div>
-                    <p className="font-mono text-2xl font-semibold tracking-tight text-foreground">
-                      ${d.currentSavings.toLocaleString()}
-                    </p>
-                    <p className="text-sm text-muted-foreground">
-                      ${savingsPercent}% reduction
-                    </p>
-                  </div>
-                  <div className="rounded-lg bg-muted/50 p-2 text-muted-foreground">
-                    <TrendingDown className="h-5 w-5" />
-                  </div>
-                </div>
-              )}
-            </div>
-
-            <div className="metric-card border-border">
-              {isLoading ? (
-                <div className="flex items-start justify-between">
-                  <div className="space-y-1">
-                    <Skeleton className="h-3 w-28" />
-                    <Skeleton className="h-8 w-24" />
-                    <Skeleton className="h-4 w-36" />
-                  </div>
-                  <div className="rounded-lg bg-muted/50 p-2 text-muted-foreground">
-                    <Activity className="h-5 w-5" />
-                  </div>
-                </div>
-              ) : (
-                <div className="flex items-start justify-between">
-                  <div className="space-y-1">
-                    <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                      Cluster utilization
-                    </p>
-                    <p className="font-mono text-2xl font-semibold tracking-tight text-foreground">
-                      {d.clusterUtilisation}%
-                    </p>
-                    <p className="text-sm text-muted-foreground">
-                      usage / allocatable
-                    </p>
-                  </div>
-                  <div className="rounded-lg bg-muted/50 p-2 text-muted-foreground">
-                    <Activity className="h-5 w-5" />
-                  </div>
-                </div>
-              )}
-            </div>
-
-            <div className="metric-card border-border">
-              {isLoading ? (
-                <div className="flex items-start justify-between">
-                  <div className="space-y-1">
-                    <Skeleton className="h-3 w-28" />
-                    <Skeleton className="h-8 w-24" />
-                    <Skeleton className="h-4 w-36" />
-                  </div>
-                  <div className="rounded-lg bg-muted/50 p-2 text-muted-foreground">
-                    <Server className="h-5 w-5" />
-                  </div>
-                </div>
-              ) : (
-                <div className="flex items-start justify-between">
-                  <div className="space-y-1">
-                    <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                      Node count
-                    </p>
-                    <p className="font-mono text-2xl font-semibold tracking-tight text-foreground">
-                      {d.nodeCount > 0 ? d.nodeCount : "—"}
-                    </p>
-                    <p className="text-sm text-muted-foreground">active nodes</p>
-                  </div>
-                  {d.nodeCount === 0 && (
-                    <TooltipProvider>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <div className="rounded-lg bg-muted/50 p-2 text-muted-foreground cursor-help">
-                            <Server className="h-5 w-5" />
-                          </div>
-                        </TooltipTrigger>
-                        <TooltipContent>
-                          <p>Node count not available or zero.</p>
-                        </TooltipContent>
-                      </Tooltip>
-                    </TooltipProvider>
-                  )}
-                  {d.nodeCount > 0 && (
-                    <div className="rounded-lg bg-muted/50 p-2 text-muted-foreground">
-                      <Server className="h-5 w-5" />
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
+            <OverviewMetricCard
+              isLoading={isLoading}
+              icon={DollarSign}
+              title="Monthly cost"
+              value={`$${d.currentMonthlyCost.toLocaleString()}`}
+              subtitle="/month run-rate"
+              titleTooltip={
+                <p>
+                  Monthly cost is computed from cluster allocatable resources (CPU cores and memory) and your configured cost per core/hour and per GB/hour. It represents the monthly run-rate if all allocatable capacity were billed at those rates.
+                </p>
+              }
+            />
+            <OverviewMetricCard
+              isLoading={isLoading}
+              icon={TrendingDown}
+              title="Current savings"
+              value={`$${d.currentSavings.toLocaleString()}`}
+              subtitle={`${savingsPercent}% reduction`}
+              titleTooltip={
+                <p>
+                  Savings already realized from CruiseKube optimizations (resources right-sized on workloads in Cruise mode). The percentage is reduction relative to cost before optimization.
+                </p>
+              }
+            />
+            <OverviewMetricCard
+              isLoading={isLoading}
+              icon={Activity}
+              title="Cluster utilization"
+              value={`${d.clusterUtilisation}%`}
+              subtitle="usage / allocatable"
+            />
+            <OverviewMetricCard
+              isLoading={isLoading}
+              icon={Server}
+              title="Node count"
+              value={d.nodeCount > 0 ? d.nodeCount : "—"}
+              subtitle="active nodes"
+              titleTooltip={d.nodeCount === 0 ? <p>Node count not available or zero.</p> : undefined}
+            />
           </div>
         </section>
 
         {/* Middle: CruiseKube Adoption + Untapped Savings */}
         <section aria-labelledby="adoption-heading" className="grid gap-4 md:grid-cols-3" data-tour="untapped-savings">
-          <div
+          <Panel
             id="adoption-heading"
-            className="metric-card border-border md:col-span-2 flex flex-col sm:flex-row items-stretch gap-6"
+            className="md:col-span-2 flex flex-col sm:flex-row items-stretch gap-6"
           >
             {isLoading ? (
               <div className="flex-1 flex items-center gap-6">
@@ -774,9 +696,9 @@ export default function Overview() {
                 </div>
               </>
             )}
-          </div>
+          </Panel>
 
-          <div className="metric-card border border-warning/50 bg-warning/5">
+          <Panel className="border-warning/50 bg-warning/5">
             {isLoading ? (
               <div className="space-y-2">
                 <Skeleton className="h-4 w-32" />
@@ -822,45 +744,31 @@ export default function Overview() {
                 </Button>
               </div>
             )}
-          </div>
+          </Panel>
         </section>
 
 
 
         {/* Bottom: CPU & Memory efficiency */}
         <section aria-labelledby="efficiency-heading">
-          <div className="mb-4 flex items-center gap-2">
-            <h2
-              id="efficiency-heading"
-              className="text-sm font-semibold uppercase tracking-wider text-muted-foreground"
-            >
-              Resource efficiency
-            </h2>
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <button
-                    type="button"
-                    className="inline-flex text-muted-foreground hover:text-foreground focus:outline-none"
-                    onClick={(e) => e.stopPropagation()}
-                    aria-label="Resource efficiency metrics explained"
-                  >
-                    <Info className="h-3.5 w-3.5" />
-                  </button>
-                </TooltipTrigger>
-                <TooltipContent side="bottom" className="max-w-sm p-4 text-left text-xs">
-                  <p className="font-medium mb-2">Cluster-wide CPU and memory metrics (Kubernetes):</p>
-                  <ul className="space-y-1.5 list-none">
-                    <li><strong>Allocatable</strong> — Total capacity the scheduler can assign to pods (node capacity minus system/kube-reserved).</li>
-                    <li><strong>Requested</strong> — Sum of resource requests from all pods in the cluster.</li>
-                    <li><strong>Original Requested</strong> — Total CPU/memory requested by workloads from manifests (cluster-wide).</li>
-                    <li><strong>Recommended</strong> — CruiseKube’s recommended total after applying right-sizing suggestions cluster-wide.</li>
-                    <li><strong>Usage</strong> — Actual current usage from cluster metrics.</li>
-                  </ul>
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-          </div>
+          <SectionHeader
+            id="efficiency-heading"
+            className="mb-4"
+            title="Resource efficiency"
+            description="Cluster-wide CPU and memory capacity, requests, recommendations, and observed usage."
+            helpText={(
+              <div className="space-y-2 text-xs">
+                <p className="font-medium text-foreground">Cluster-wide CPU and memory metrics (Kubernetes):</p>
+                <ul className="space-y-1.5 list-none">
+                  <li><strong>Allocatable</strong> — Total capacity the scheduler can assign to pods (node capacity minus system/kube-reserved).</li>
+                  <li><strong>Requested</strong> — Sum of resource requests from all pods in the cluster.</li>
+                  <li><strong>Original Requested</strong> — Total CPU/memory requested by workloads from manifests (cluster-wide).</li>
+                  <li><strong>Recommended</strong> — CruiseKube’s recommended total after applying right-sizing suggestions cluster-wide.</li>
+                  <li><strong>Usage</strong> — Actual current usage from cluster metrics.</li>
+                </ul>
+              </div>
+            )}
+          />
           <div className="grid gap-4 md:grid-cols-2">
             <div className="metric-card border-border space-y-4">
               {isLoading ? (
@@ -1097,31 +1005,33 @@ export default function Overview() {
               </div>
             )}
           </div>
-          <div className="metric-card border-border overflow-hidden">
+          <Panel padding="none" className="overflow-hidden">
             {isLoading || isLoadingCostHistorical ? (
               <Skeleton className="h-[320px] w-full" />
             ) : costTimelineData.length === 0 ? (
-              <div className="flex h-[320px] items-center justify-center text-sm text-muted-foreground">
-                No cost data for this period
-              </div>
+              <EmptyState
+                className="min-h-[320px] rounded-none border-0 shadow-none"
+                title="No cost data"
+                description="No cost data is available for this period. Try a broader time range."
+              />
             ) : (
               <ChartContainer
                 config={costChartConfig}
                 className="h-[320px] w-full"
               >
                 <ComposedChart data={costTimelineData} margin={{ top: 8, right: 8, left: 8, bottom: 8 }}>
-                  <CartesianGrid strokeDasharray="3 3" className="stroke-border/50" />
+                  <CartesianGrid strokeDasharray="3 3" stroke={chartGridColor} />
                   <XAxis
                     dataKey="time"
-                    tick={{ fill: "hsl(var(--muted-foreground))" }}
-                    axisLine={{ stroke: "hsl(var(--border))" }}
-                    tickLine={{ stroke: "hsl(var(--border))" }}
+                    tick={{ fill: chartAxisColor }}
+                    axisLine={{ stroke: chartGridColor }}
+                    tickLine={{ stroke: chartGridColor }}
                   />
                   <YAxis
                     tickFormatter={(v) => `$${v}`}
-                    tick={{ fill: "hsl(var(--muted-foreground))" }}
-                    axisLine={{ stroke: "hsl(var(--border))" }}
-                    tickLine={{ stroke: "hsl(var(--border))" }}
+                    tick={{ fill: chartAxisColor }}
+                    axisLine={{ stroke: chartGridColor }}
+                    tickLine={{ stroke: chartGridColor }}
                   />
                   <ChartTooltip
                     content={({ active, payload }) => {
@@ -1130,7 +1040,7 @@ export default function Overview() {
                         (a, b) => (Number(b.value) || 0) - (Number(a.value) || 0)
                       );
                       return (
-                        <div className="grid min-w-[8rem] items-start gap-1.5 rounded-lg border border-border/50 bg-background px-2.5 py-1.5 text-xs shadow-xl">
+                        <div className="grid min-w-[10rem] items-start gap-1.5 rounded-lg border border-border/70 bg-[var(--cruisekube-chart-tooltip)] px-2.5 py-1.5 text-xs text-[var(--cruisekube-chart-tooltip-foreground)] shadow-popover">
                           <div className="grid gap-1.5">
                             {sorted.map((item) => (
                               <div
@@ -1179,7 +1089,7 @@ export default function Overview() {
                 </ComposedChart>
               </ChartContainer>
             )}
-          </div>
+          </Panel>
         </section>
 
     {/* Resource timeline (CPU / memory) */}
@@ -1282,31 +1192,33 @@ export default function Overview() {
               </div>
             )}
           </div>
-          <div className="metric-card border-border overflow-hidden">
+          <Panel padding="none" className="overflow-hidden">
             {isLoading || isLoadingHistorical ? (
               <Skeleton className="h-[320px] w-full" />
             ) : historicalTimelineData.length === 0 ? (
-              <div className="flex h-[320px] items-center justify-center text-sm text-muted-foreground">
-                No resource data for this period
-              </div>
+              <EmptyState
+                className="min-h-[320px] rounded-none border-0 shadow-none"
+                title="No resource data"
+                description="No resource data is available for this period. Try a broader time range."
+              />
             ) : (
               <ChartContainer
                 config={historicalChartConfig}
                 className="h-[320px] w-full"
               >
                 <ComposedChart data={historicalTimelineData} margin={{ top: 8, right: 8, left: 8, bottom: 8 }}>
-                  <CartesianGrid strokeDasharray="3 3" className="stroke-border/50" />
+                  <CartesianGrid strokeDasharray="3 3" stroke={chartGridColor} />
                   <XAxis
                     dataKey="time"
-                    tick={{ fill: "hsl(var(--muted-foreground))" }}
-                    axisLine={{ stroke: "hsl(var(--border))" }}
-                    tickLine={{ stroke: "hsl(var(--border))" }}
+                    tick={{ fill: chartAxisColor }}
+                    axisLine={{ stroke: chartGridColor }}
+                    tickLine={{ stroke: chartGridColor }}
                   />
                   <YAxis
                     unit={historicalMetric === "cpu" ? " cores" : " GB"}
-                    tick={{ fill: "hsl(var(--muted-foreground))" }}
-                    axisLine={{ stroke: "hsl(var(--border))" }}
-                    tickLine={{ stroke: "hsl(var(--border))" }}
+                    tick={{ fill: chartAxisColor }}
+                    axisLine={{ stroke: chartGridColor }}
+                    tickLine={{ stroke: chartGridColor }}
                   />
                   <ChartTooltip
                     content={({ active, payload }) => {
@@ -1315,7 +1227,7 @@ export default function Overview() {
                         (a, b) => (Number(b.value) || 0) - (Number(a.value) || 0)
                       );
                       return (
-                        <div className="grid min-w-[8rem] items-start gap-1.5 rounded-lg border border-border/50 bg-background px-2.5 py-1.5 text-xs shadow-xl">
+                        <div className="grid min-w-[10rem] items-start gap-1.5 rounded-lg border border-border/70 bg-[var(--cruisekube-chart-tooltip)] px-2.5 py-1.5 text-xs text-[var(--cruisekube-chart-tooltip-foreground)] shadow-popover">
                           <div className="grid gap-1.5">
                             {sorted.map((item) => (
                               <div
@@ -1366,11 +1278,9 @@ export default function Overview() {
                 </ComposedChart>
               </ChartContainer>
             )}
-          </div>
+          </Panel>
         </section>
 
-
-      </div>
-    </div>
+    </PageShell>
   );
 }

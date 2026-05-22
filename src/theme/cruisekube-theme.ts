@@ -1,6 +1,7 @@
 /**
  * TypeScript-facing theme — chart CSS variable names and event UI accents.
- * HSL / hex for app chrome live in `theme.css` (:root); keep chart hex in sync with those vars.
+ * Keep chart values token-backed so defaults/fallbacks follow the active theme;
+ * explicit API-provided chart colours should continue to pass through unchanged.
  */
 export const chartSeriesVar = [
   "var(--cruisekube-chart-series-1)",
@@ -18,19 +19,19 @@ export const chartCostVars = {
 
 export const chartThresholdVar = "var(--cruisekube-chart-threshold)";
 
-/** Event category icon colours — muted, professional (Tailwind JIT literals). */
+/** Event category icon colours — semantic, balanced light/dark Tailwind literals. */
 export const eventCategoryIconColor = {
-  CPU_RECOMMENDATION_APPLIED: "text-slate-400 dark:text-slate-300",
-  MEMORY_RECOMMENDATION_APPLIED: "text-slate-500 dark:text-slate-400",
-  POD_DISRUPTION_BLOCK_REMOVED: "text-stone-500 dark:text-stone-400",
-  POD_DISRUPTION_BLOCK_RESTORED: "text-slate-400 dark:text-slate-300",
-  PDB_RELAXED: "text-stone-500 dark:text-stone-400",
-  PDB_RESTORED: "text-slate-500 dark:text-slate-400",
-  WEBHOOK_MUTATION: "text-zinc-500 dark:text-zinc-400",
-  POD_EVICTION: "text-red-700/90 dark:text-red-500/85",
-  OOM_EVENT: "text-red-700/90 dark:text-red-500/85",
-  NODE_OVERLOAD_TAINT_ADDED: "text-amber-800/85 dark:text-amber-600/75",
-  NODE_OVERLOAD_TAINT_REMOVED: "text-slate-500 dark:text-slate-400",
+  CPU_RECOMMENDATION_APPLIED: "text-blue-600 dark:text-blue-400",
+  MEMORY_RECOMMENDATION_APPLIED: "text-emerald-600 dark:text-emerald-400",
+  POD_DISRUPTION_BLOCK_REMOVED: "text-amber-700 dark:text-amber-400",
+  POD_DISRUPTION_BLOCK_RESTORED: "text-indigo-600 dark:text-indigo-400",
+  PDB_RELAXED: "text-amber-700 dark:text-amber-400",
+  PDB_RESTORED: "text-indigo-600 dark:text-indigo-400",
+  WEBHOOK_MUTATION: "text-cyan-700 dark:text-cyan-400",
+  POD_EVICTION: "text-red-700 dark:text-red-400",
+  OOM_EVENT: "text-red-700 dark:text-red-400",
+  NODE_OVERLOAD_TAINT_ADDED: "text-orange-700 dark:text-orange-400",
+  NODE_OVERLOAD_TAINT_REMOVED: "text-sky-700 dark:text-sky-400",
 } as const;
 
 export type EventCategoryKey = keyof typeof eventCategoryIconColor;
