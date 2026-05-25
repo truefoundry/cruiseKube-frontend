@@ -1,7 +1,8 @@
 import { useParams, Link } from "react-router-dom";
-import { Fragment } from "react";
+import { Fragment, type ReactNode } from "react";
 import {
   ArrowLeft,
+  Box,
   ChevronRight,
   Cpu,
   HardDrive,
@@ -9,6 +10,12 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Panel } from "@/components/ui/panel";
+import { EmptyState, ErrorState, LoadingState } from "@/components/ui/state";
+import { PageHeader } from "@/components/layout/PageHeader";
+import { PageShell } from "@/components/layout/PageShell";
+import { SectionHeader } from "@/components/layout/SectionHeader";
 import {
   Tooltip,
   TooltipContent,
@@ -25,6 +32,60 @@ const WORKLOAD_COLUMN_TOOLTIP =
   "Represents the resource set in the configuration of workload.";
 const CURRENT_COLUMN_TOOLTIP = "Current pod resource.";
 const RECOMMENDED_COLUMN_TOOLTIP = "What cruiseKube recommends.";
+
+function BackToWorkloadsAction() {
+  return (
+    <Button variant="outline" asChild>
+      <Link to="/workloads">
+        <ArrowLeft className="h-4 w-4" />
+        Back to workloads
+      </Link>
+    </Button>
+  );
+}
+
+function WorkloadDetailHeader({
+  title = "Workload detail",
+  description = "Inspect workload-level recommendations and container resource targets.",
+  icon = <Box className="h-5 w-5" />,
+}: {
+  title?: ReactNode;
+  description?: ReactNode;
+  icon?: ReactNode;
+}) {
+  return (
+    <PageHeader
+      icon={icon}
+      title={title}
+      description={description}
+      actions={<BackToWorkloadsAction />}
+    />
+  );
+}
+
+function ResourceGroupHeader({ icon: Icon, label }: { icon: typeof Cpu; label: string }) {
+  return (
+    <th
+      colSpan={3}
+      className="select-none border-t border-l border-r border-b-0 border-border bg-muted/40 font-medium align-middle text-center normal-case py-2 px-0 transition-colors hover:bg-muted/50"
+    >
+      <div className="flex items-center justify-center">
+        <span className="inline-flex items-center gap-1.5 text-xs text-foreground">
+          <Icon className="h-4 w-4" />
+          {label}
+        </span>
+      </div>
+    </th>
+  );
+}
+
+function ResourceSubHeader({ label, description, edge }: { label: string; description: string; edge?: "left" | "right" }) {
+  return (
+    <th className={`select-none border-b ${edge === "left" ? "border-l" : ""} ${edge === "right" ? "border-r" : ""} border-border bg-muted/30 align-middle normal-case text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/40 !text-right`}>
+      <SubHeaderWithTooltip label={label} description={description} />
+    </th>
+  );
+}
 
 function SubHeaderWithTooltip({ label, description }: { label: string; description: string }) {
   return (
@@ -54,32 +115,37 @@ export default function WorkloadDetail() {
 
   if (!selectedClusterId) {
     return (
-      <div className="p-6 text-center">
-        <p className="text-muted-foreground">Please select a cluster to view workload details.</p>
-        <Link to="/workloads">
-          <Button variant="link" className="mt-2">Back to workloads</Button>
-        </Link>
-      </div>
+      <PageShell className="animate-fade-in">
+<WorkloadDetailHeader />
+        <EmptyState
+          title="Select a cluster"
+          description="Please select a cluster to view workload details."
+        />
+      </PageShell>
     );
   }
 
   if (isLoading) {
     return (
-      <div className="p-6 space-y-6 animate-fade-in">
+      <PageShell className="animate-fade-in">
         <div className="flex items-center gap-2 text-sm text-muted-foreground">
           <Skeleton className="h-4 w-32" />
         </div>
         
-        <div className="flex items-start gap-4">
-          <Skeleton className="h-10 w-10 shrink-0" />
-          <div className="space-y-2">
-            <Skeleton className="h-8 w-48" />
-            <Skeleton className="h-4 w-32" />
-          </div>
-        </div>
+        <WorkloadDetailHeader
+          icon={<Skeleton className="h-5 w-5" />}
+          title={<Skeleton className="h-8 w-48" />}
+          description={<Skeleton className="h-4 w-72 max-w-full" />}
+        />
+
+        <LoadingState
+          className="min-h-[160px]"
+          title="Loading workload details"
+          description="Fetching pods, containers, and recommendations for this workload."
+        />
 
         <div className="grid gap-4 md:grid-cols-2">
-          <div className="metric-card">
+          <Panel>
             <div className="flex items-center gap-3">
               <Skeleton className="h-9 w-9 rounded-lg" />
               <div className="space-y-2">
@@ -87,8 +153,8 @@ export default function WorkloadDetail() {
                 <Skeleton className="h-6 w-20" />
               </div>
             </div>
-          </div>
-          <div className="metric-card">
+          </Panel>
+          <Panel>
             <div className="flex items-center gap-3">
               <Skeleton className="h-9 w-9 rounded-lg" />
               <div className="space-y-2">
@@ -96,10 +162,10 @@ export default function WorkloadDetail() {
                 <Skeleton className="h-6 w-20" />
               </div>
             </div>
-          </div>
+          </Panel>
         </div>
 
-        <div className="metric-card overflow-hidden">
+        <Panel className="overflow-hidden">
           <Skeleton className="h-4 w-32 mb-4" />
           <div className="space-y-2">
             <Skeleton className="h-10 w-full" />
@@ -107,72 +173,73 @@ export default function WorkloadDetail() {
             <Skeleton className="h-12 w-full" />
             <Skeleton className="h-12 w-full" />
           </div>
-        </div>
-      </div>
+        </Panel>
+      </PageShell>
     );
   }
 
   if (error) {
     return (
-      <div className="p-6 text-center">
-        <p className="text-destructive">
-          Error loading workload data: {error instanceof Error ? error.message : 'Unknown error'}
-        </p>
-        <Link to="/workloads">
-          <Button variant="link" className="mt-2">Back to workloads</Button>
-        </Link>
-      </div>
+      <PageShell className="animate-fade-in">
+<WorkloadDetailHeader />
+        <ErrorState
+          title="Error loading workload data"
+          description={error instanceof Error ? error.message : 'Unknown error'}
+        />
+      </PageShell>
     );
   }
 
   if (!detail) {
     return (
-      <div className="p-6 text-center">
-        <p className="text-muted-foreground">Workload not found</p>
-        <Link to="/workloads">
-          <Button variant="link" className="mt-2">Back to workloads</Button>
-        </Link>
-      </div>
+      <PageShell className="animate-fade-in">
+<WorkloadDetailHeader />
+        <EmptyState
+          title="Workload not found"
+          description="The requested workload was not returned for the selected cluster."
+        />
+      </PageShell>
     );
   }
 
   const pods = asArray(detail.pods);
 
   return (
-    <div className="p-6 space-y-6 animate-fade-in">
+    <PageShell className="animate-fade-in">
       {/* Breadcrumb */}
-      <div className="flex items-center gap-2 text-sm text-muted-foreground">
+      <nav className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground" aria-label="Breadcrumb">
         <Link to="/workloads" className="hover:text-foreground transition-colors">
           Workloads & Recommendations
         </Link>
         <ChevronRight className="h-4 w-4" />
         <span className="font-mono">{detail.namespace}</span>
         <ChevronRight className="h-4 w-4" />
-        <span className="text-foreground">{detail.workload}</span>
-      </div>
+        <span className="min-w-0 truncate text-foreground">{detail.workload}</span>
+      </nav>
 
       {/* Header */}
-      <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
-        <div className="flex items-start gap-4">
-          <Link to="/workloads">
-            <Button variant="ghost" size="icon" className="shrink-0">
-              <ArrowLeft className="h-4 w-4" />
-            </Button>
-          </Link>
-          <div>
-            <h1 className="text-2xl font-semibold text-foreground">{detail.workload}</h1>
-            <div className="flex flex-wrap items-center gap-3 mt-2">
-              <span className="font-mono text-sm text-muted-foreground">{detail.namespace}</span>
-              <span className="text-muted-foreground">•</span>
-              <span className="text-sm text-muted-foreground">{detail.type}</span>
-            </div>
-          </div>
-        </div>
-      </div>
+      <WorkloadDetailHeader
+        title={detail.workload}
+        description={
+          <span className="flex flex-wrap items-center gap-3">
+            <span className="font-mono">{detail.namespace}</span>
+            <span aria-hidden className="text-muted-foreground/70">•</span>
+            <span>{detail.type}</span>
+          </span>
+        }
+      />
+
+      <Alert variant="info">
+        <Info className="h-4 w-4" />
+        <AlertTitle>Recommendation comparison</AlertTitle>
+        <AlertDescription>
+          Workload values are from the configured manifest, current values are observed pod resources, and recommended values are CruiseKube targets.
+        </AlertDescription>
+      </Alert>
 
       {/* Savings Summary */}
       <div className="grid gap-4 md:grid-cols-2">
-        <div className="metric-card">
+        <Panel>
           <div className="flex items-center gap-3">
             <div className="rounded-lg bg-primary/10 p-2">
               <Cpu className="h-5 w-5 text-primary" />
@@ -189,8 +256,8 @@ export default function WorkloadDetail() {
               </p>
             </div>
           </div>
-        </div>
-        <div className="metric-card">
+        </Panel>
+        <Panel>
           <div className="flex items-center gap-3">
             <div className="rounded-lg bg-primary/10 p-2">
               <HardDrive className="h-5 w-5 text-primary" />
@@ -207,17 +274,21 @@ export default function WorkloadDetail() {
               </p>
             </div>
           </div>
-        </div>
+        </Panel>
       </div>
 
       {/* Pods & Containers Table */}
-      <div className="metric-card overflow-hidden">
-        <h3 className="text-xs font-medium uppercase tracking-wider text-muted-foreground mb-4">
-          Pods & Containers
-        </h3>
+      <Panel className="overflow-hidden" padding="none">
+        <div className="p-5 pb-4">
+          <SectionHeader
+            title="Pods & Containers"
+            description="Review configured, current, and recommended CPU and memory requests for each container."
+            helpText="Positive deltas indicate recommended increases; negative deltas indicate potential resource reductions."
+          />
+        </div>
         <div className="overflow-x-auto">
           <TooltipProvider delayDuration={300}>
-            <table className="data-table data-table-compact w-full border-collapse">
+            <table className="data-table data-table-compact w-full min-w-[980px] border-collapse">
             <thead>
               <tr>
                 <th
@@ -240,72 +311,44 @@ export default function WorkloadDetail() {
                     Container Name
                   </div>
                 </th>
-                <th
-                  colSpan={3}
-                  className="select-none border-t border-l border-r border-b-0 border-border bg-muted/40 font-medium align-middle text-center normal-case py-2 px-0 transition-colors hover:bg-muted/50"
-                >
-                  <div className="flex items-center justify-center">
-                    <span className="inline-flex items-center gap-1.5 text-xs text-foreground">
-                      <Cpu className="h-4 w-4" />
-                      CPU
-                    </span>
-                  </div>
-                </th>
-                <th
-                  colSpan={3}
-                  className="select-none border-t border-l border-r border-b-0 border-border bg-muted/40 font-medium align-middle text-center normal-case py-2 px-0 transition-colors hover:bg-muted/50"
-                >
-                  <div className="flex items-center justify-center">
-                    <span className="inline-flex items-center gap-1.5 text-xs text-foreground">
-                      <HardDrive className="h-4 w-4" />
-                      Memory
-                    </span>
-                  </div>
-                </th>
+                <ResourceGroupHeader icon={Cpu} label="CPU" />
+                <ResourceGroupHeader icon={HardDrive} label="Memory" />
               </tr>
               <tr>
-                <th className="select-none border-b border-l border-border bg-muted/30 align-middle normal-case text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/40 !text-right">
-                  <SubHeaderWithTooltip label="Workload" description={WORKLOAD_COLUMN_TOOLTIP} />
-                </th>
-                <th className="select-none border-b border-border bg-muted/30 align-middle normal-case text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/40 !text-right">
-                  <SubHeaderWithTooltip label="Current" description={CURRENT_COLUMN_TOOLTIP} />
-                </th>
-                <th className="select-none border-b border-r border-border bg-muted/30 align-middle normal-case text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/40 !text-right">
-                  <SubHeaderWithTooltip label="Rec" description={RECOMMENDED_COLUMN_TOOLTIP} />
-                </th>
-                <th className="select-none border-b border-l border-border bg-muted/30 align-middle normal-case text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/40 !text-right">
-                  <SubHeaderWithTooltip label="Workload" description={WORKLOAD_COLUMN_TOOLTIP} />
-                </th>
-                <th className="select-none border-b border-border bg-muted/30 align-middle normal-case text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/40 !text-right">
-                  <SubHeaderWithTooltip label="Current" description={CURRENT_COLUMN_TOOLTIP} />
-                </th>
-                <th className="select-none border-b border-r border-border bg-muted/30 align-middle normal-case text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/40 !text-right">
-                  <SubHeaderWithTooltip label="Rec" description={RECOMMENDED_COLUMN_TOOLTIP} />
-                </th>
+                <ResourceSubHeader edge="left" label="Workload" description={WORKLOAD_COLUMN_TOOLTIP} />
+                <ResourceSubHeader label="Current" description={CURRENT_COLUMN_TOOLTIP} />
+                <ResourceSubHeader edge="right" label="Rec" description={RECOMMENDED_COLUMN_TOOLTIP} />
+                <ResourceSubHeader edge="left" label="Workload" description={WORKLOAD_COLUMN_TOOLTIP} />
+                <ResourceSubHeader label="Current" description={CURRENT_COLUMN_TOOLTIP} />
+                <ResourceSubHeader edge="right" label="Rec" description={RECOMMENDED_COLUMN_TOOLTIP} />
               </tr>
             </thead>
             <tbody>
               {pods.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="text-center text-muted-foreground py-8">
-                    No pods found for this workload
+                  <td colSpan={9} className="px-4 py-8">
+                    <EmptyState
+                      className="min-h-[180px] border-dashed shadow-none"
+                      title="No pods found"
+                      description="No pods were returned for this workload."
+                    />
                   </td>
                 </tr>
               ) : (
                 pods.map((pod) => (
                   <Fragment key={pod.pod_name}>
-                    <tr className="bg-muted/50">
+                    <tr className="bg-surface-subtle/70">
                       <td className="font-mono text-sm font-medium py-2 px-4">{pod.pod_name}</td>
                       <td className="font-mono text-xs text-muted-foreground py-2 px-4">
                         {pod.node_name ?? "—"}
                       </td>
-                      <td className="border-b border-border bg-muted/50 py-2" aria-hidden />
-                      <td className="border-b border-l border-border bg-muted/40 py-2" aria-hidden />
-                      <td className="border-b border-border bg-muted/40 py-2" aria-hidden />
-                      <td className="border-b border-r border-border bg-muted/40 py-2" aria-hidden />
-                      <td className="border-b border-l border-border bg-muted/40 py-2" aria-hidden />
-                      <td className="border-b border-border bg-muted/40 py-2" aria-hidden />
-                      <td className="border-b border-r border-border bg-muted/40 py-2" aria-hidden />
+                      <td className="border-b border-border bg-surface-subtle/70 py-2" aria-hidden />
+                      <td className="border-b border-l border-border bg-surface-subtle/60 py-2" aria-hidden />
+                      <td className="border-b border-border bg-surface-subtle/60 py-2" aria-hidden />
+                      <td className="border-b border-r border-border bg-surface-subtle/60 py-2" aria-hidden />
+                      <td className="border-b border-l border-border bg-surface-subtle/60 py-2" aria-hidden />
+                      <td className="border-b border-border bg-surface-subtle/60 py-2" aria-hidden />
+                      <td className="border-b border-r border-border bg-surface-subtle/60 py-2" aria-hidden />
                     </tr>
                     {asArray(pod.containers).length > 0 ? (
                       asArray(pod.containers).map((container) => {
@@ -321,7 +364,7 @@ export default function WorkloadDetail() {
                         const showCpuDelta = Math.abs(deltaCpu) > 1e-9;
                         const showMemDelta = Math.abs(deltaMem) > 1e-9;
                         const resTd =
-                          "font-mono text-sm tabular-nums text-right bg-muted/20 border-b border-border align-middle px-2 py-2";
+                          "font-mono text-sm tabular-nums text-right bg-surface-subtle/35 border-b border-border align-middle px-2 py-2";
                         return (
                           <tr key={`${pod.pod_name}-${container.container_name}`}>
                             <td />
@@ -336,9 +379,9 @@ export default function WorkloadDetail() {
                             <td className={`${resTd} border-r text-primary`}>
                               {formatCpu(container.cpu_rec_request)}
                               {showCpuDelta && (
-                                <span className={deltaCpu > 0 ? "text-amber-500 dark:text-amber-400" : ""}>
+                                <span className={deltaCpu > 0 ? "text-warning" : "text-success"}>
                                   <br />
-                                  <span className="opacity-40">({formatCpuSigned(deltaCpu)})</span>
+                                  <span className="opacity-70">({formatCpuSigned(deltaCpu)})</span>
                                 </span>
                               )}
                             </td>
@@ -349,9 +392,9 @@ export default function WorkloadDetail() {
                             <td className={`${resTd} border-r text-primary`}>
                               {formatMemory(container.mem_rec_request)}
                               {showMemDelta && (
-                                <span className={deltaMem > 0 ? "text-amber-500 dark:text-amber-400 opacity-100" : ""}>
+                                <span className={deltaMem > 0 ? "text-warning" : "text-success"}>
                                   <br />
-                                  <span className="opacity-40">({formatMemorySigned(deltaMem)})</span>
+                                  <span className="opacity-70">({formatMemorySigned(deltaMem)})</span>
                                 </span>
                               )}
                             </td>
@@ -360,7 +403,7 @@ export default function WorkloadDetail() {
                       })
                     ) : (
                       <tr key={`${pod.pod_name}-empty`}>
-                        <td colSpan={9} className="text-muted-foreground text-sm py-2 px-4">
+                        <td colSpan={9} className="text-muted-foreground text-sm py-3 px-4">
                           No containers found
                         </td>
                       </tr>
@@ -372,7 +415,7 @@ export default function WorkloadDetail() {
           </table>
           </TooltipProvider>
         </div>
-      </div>
-    </div>
+      </Panel>
+    </PageShell>
   );
 }

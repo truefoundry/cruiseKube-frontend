@@ -11,7 +11,7 @@ export function StatusBadge({ status, children, className }: StatusBadgeProps) {
     success: "status-badge-success",
     warning: "status-badge-warning",
     destructive: "status-badge-destructive",
-    default: "bg-muted text-muted-foreground",
+    default: "bg-surface-subtle text-muted-foreground",
   };
 
   return (

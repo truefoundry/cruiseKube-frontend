@@ -2,6 +2,7 @@ import { ReactNode, useEffect, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import { 
   Search,
+  X,
   ChevronUp,
   ChevronDown,
   AlertTriangle,
@@ -52,6 +53,11 @@ import {
   moneySignedClass,
   mapCriticalToEvictionRanking,
 } from "@/lib/transformers";
+import { PageShell } from "@/components/layout/PageShell";
+import { PageHeader } from "@/components/layout/PageHeader";
+import { SectionHeader } from "@/components/layout/SectionHeader";
+import { Panel } from "@/components/ui/panel";
+import { EmptyState, LoadingState } from "@/components/ui/state";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
 import {
@@ -86,7 +92,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Switch } from "@/components/ui/switch";
-import { asArray } from "@/lib/utils";
+import { asArray, cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import { humanizeWindow } from "@/lib/cronUtils";
 import { DisruptionWindowEditor } from "@/components/DisruptionWindowEditor";
@@ -120,151 +126,152 @@ function WorkloadTypeIcon({ type }: { type: string }) {
   );
 }
 
+function FilterSelect({
+  value,
+  onValueChange,
+  placeholder,
+  triggerClassName,
+  children,
+}: {
+  value: string;
+  onValueChange: (value: string) => void;
+  placeholder: string;
+  triggerClassName: string;
+  children: ReactNode;
+}) {
+  return (
+    <Select value={value} onValueChange={onValueChange}>
+      <SelectTrigger className={triggerClassName}>
+        <SelectValue placeholder={placeholder} />
+      </SelectTrigger>
+      <SelectContent>{children}</SelectContent>
+    </Select>
+  );
+}
+
+function StatusIconWithTooltip({
+  title,
+  description,
+  className,
+  children,
+}: {
+  title: string;
+  description: ReactNode;
+  className: string;
+  children: ReactNode;
+}) {
+  return (
+    <TooltipProvider>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <span className={cn("inline-flex cursor-help", className)}>{children}</span>
+        </TooltipTrigger>
+        <TooltipContent side="right" className="max-w-sm">
+          <p className="font-semibold">{title}</p>
+          <p className="mt-1 text-muted-foreground">{description}</p>
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  );
+}
+
 function WorkloadStatusIcons({ workload }: { workload: FrontendWorkload }) {
   const isGpuWorkload = workload.isGpuWorkload === true || (workload.excluded && workload.excludedReason?.toLowerCase().includes("gpu"));
   const hasDisruptionWindows = asArray(workload.disruptionWindows).length > 0;
   const pdbDndMitigated = isPdbDndMitigatedForUi(workload);
+  const disruptionLockClassName = pdbDndMitigated ? "text-success" : "text-destructive";
+  const disabledDescription = "Cruise is disabled for this workload (non-optimizable, HPA, GPU, etc.). Disruption windows are not applied;";
+  const recommendOnlyDescription = "Cruise is in recommend-only mode, so disruption windows are not used for consolidation;";
+  const statuses: Array<{
+    key: string;
+    show: boolean;
+    title: string;
+    description: ReactNode;
+    className: string;
+    icon: ReactNode;
+  }> = [
+    {
+      key: "excluded",
+      show: workload.excluded,
+      title: "Non-optimizable",
+      description: workload.excludedReason || "This workload is not optimizable by CruiseKube.",
+      className: "text-muted-foreground",
+      icon: <Ban className="h-4 w-4" aria-hidden />,
+    },
+    {
+      key: "hpa",
+      show: workload.hpaEnabled,
+      title: "HPA enabled",
+      description: "This workload has Horizontal Pod Autoscaler (HPA) on CPU or memory. Cruise is disabled for HPA workloads.",
+      className: "text-amber-600 dark:text-amber-400",
+      icon: <BarChart2 className="h-4 w-4" aria-hidden />,
+    },
+    {
+      key: "scaled-down",
+      show: workload.scaledDown,
+      title: "Scaled down",
+      description: "This workload has been scaled down to 0 replicas.",
+      className: "text-blue-600 dark:text-blue-400",
+      icon: <Shrink className="h-4 w-4" aria-hidden />,
+    },
+    {
+      key: "gpu",
+      show: isGpuWorkload,
+      title: "GPU workload",
+      description: <>This workload is identified as a GPU workload. {workload.excluded ? "It is non-optimizable for Cruise because it uses GPU resources." : "It may be non-optimizable for Cruise when it uses GPU resources."}</>,
+      className: "text-violet-500 dark:text-violet-400",
+      icon: <Cpu className="h-4 w-4" aria-hidden />,
+    },
+    {
+      key: "pdb",
+      show: workload.blockingConsolidationPdb,
+      title: "Pod Disruption Budget (PDB)",
+      description: isWorkloadDisabled(workload)
+        ? `${disabledDescription} PDB is shown as locked.`
+        : workload.mode !== "enabled"
+          ? `${recommendOnlyDescription} PDB is shown as locked. Turn Cruise on to use scheduled windows.`
+          : hasDisruptionWindows
+            ? "Disruption windows are configured; during those windows the PDB is relaxed so nodes can consolidate. Outside the window the PDB still applies."
+            : "PDB will block node consolidation. Add a disruption window in Edit CruiseConfig so consolidation can run during scheduled windows.",
+      className: disruptionLockClassName,
+      icon: pdbDndMitigated ? <LockKeyholeOpen className="h-4 w-4" aria-hidden /> : <LockKeyhole className="h-4 w-4" aria-hidden />,
+    },
+    {
+      key: "dnd",
+      show: workload.blockingConsolidationDoNotDisrupt,
+      title: "Do-not-disrupt",
+      description: isWorkloadDisabled(workload)
+        ? `${disabledDescription} do-not-disrupt is shown as blocking.`
+        : workload.mode !== "enabled"
+          ? `${recommendOnlyDescription} do-not-disrupt is shown as blocking. Turn Cruise on to use scheduled windows.`
+          : hasDisruptionWindows
+            ? "Disruption windows are configured; during those windows the do-not-disrupt annotation is lifted so nodes can consolidate. Outside the window it still applies."
+            : "Do-not-disrupt will block node consolidation. Add a disruption window in Edit CruiseConfig so consolidation can run during scheduled windows.",
+      className: disruptionLockClassName,
+      icon: <Shield className="h-4 w-4" aria-hidden />,
+    },
+    {
+      key: "consolidation",
+      show: workload.blockingConsolidation && !workload.inDisruptionWindow && !workload.blockingConsolidationPdb && !workload.blockingConsolidationDoNotDisrupt,
+      title: "Blocks node consolidation",
+      description: "This workload blocks consolidation of nodes. Set up a disruption window in Edit CruiseConfig so that nodes can consolidate during the window.",
+      className: "text-amber-600 dark:text-amber-400",
+      icon: <ShieldAlert className="h-4 w-4" aria-hidden />,
+    },
+  ];
+
   return (
     <span className="inline-flex items-center gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
-      {workload.excluded && (
-        <TooltipProvider>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <span className="inline-flex cursor-help text-muted-foreground">
-                <Ban className="h-4 w-4" aria-hidden />
-              </span>
-            </TooltipTrigger>
-            <TooltipContent side="right" className="max-w-sm">
-              <p className="font-semibold">Non-optimizable</p>
-              <p className="mt-1 text-muted-foreground">
-                {workload.excludedReason || "This workload is not optimizable by CruiseKube."}
-              </p>
-            </TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
-      )}
-      {workload.hpaEnabled && (
-        <TooltipProvider>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <span className="inline-flex cursor-help text-amber-600 dark:text-amber-400">
-                <BarChart2 className="h-4 w-4" aria-hidden />
-              </span>
-            </TooltipTrigger>
-            <TooltipContent side="right" className="max-w-sm">
-              <p className="font-semibold">HPA enabled</p>
-              <p className="mt-1 text-muted-foreground">
-                This workload has Horizontal Pod Autoscaler (HPA) on CPU or memory. Cruise is disabled for HPA workloads.
-              </p>
-            </TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
-      )}
-      {workload.scaledDown && (
-        <TooltipProvider>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <span className="inline-flex cursor-help text-blue-600 dark:text-blue-400">
-                <Shrink className="h-4 w-4" aria-hidden />
-              </span>
-            </TooltipTrigger>
-            <TooltipContent side="right" className="max-w-sm">
-              <p className="font-semibold">Scaled down</p>
-              <p className="mt-1 text-muted-foreground">
-                This workload has been scaled down to 0 replicas.
-              </p>
-            </TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
-      )}
-      {isGpuWorkload && (
-        <TooltipProvider>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <span className="inline-flex cursor-help text-violet-500 dark:text-violet-400">
-                <Cpu className="h-4 w-4" aria-hidden />
-              </span>
-            </TooltipTrigger>
-            <TooltipContent side="right" className="max-w-sm">
-              <p className="font-semibold">GPU workload</p>
-              <p className="mt-1 text-muted-foreground">
-                This workload is identified as a GPU workload. {workload.excluded ? "It is non-optimizable for Cruise because it uses GPU resources." : "It may be non-optimizable for Cruise when it uses GPU resources."}
-              </p>
-            </TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
-      )}
-      {workload.blockingConsolidationPdb && (
-        <TooltipProvider>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <span
-                className={`inline-flex cursor-help ${pdbDndMitigated ? "text-success" : "text-destructive"}`}
-              >
-                {pdbDndMitigated ? (
-                  <LockKeyholeOpen className="h-4 w-4" aria-hidden />
-                ) : (
-                  <LockKeyhole className="h-4 w-4" aria-hidden />
-                )}
-              </span>
-            </TooltipTrigger>
-            <TooltipContent side="right" className="max-w-sm">
-              <p className="font-semibold">Pod Disruption Budget (PDB)</p>
-              <p className="mt-1 text-muted-foreground">
-                {isWorkloadDisabled(workload)
-                  ? "Cruise is disabled for this workload (non-optimizable, HPA, GPU, etc.). Disruption windows are not applied; PDB is shown as locked."
-                  : workload.mode !== "enabled"
-                    ? "Cruise is in recommend-only mode, so disruption windows are not used for consolidation; PDB is shown as locked. Turn Cruise on to use scheduled windows."
-                    : hasDisruptionWindows
-                      ? "Disruption windows are configured; during those windows the PDB is relaxed so nodes can consolidate. Outside the window the PDB still applies."
-                      : "PDB will block node consolidation. Add a disruption window in Edit CruiseConfig so consolidation can run during scheduled windows."}
-              </p>
-            </TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
-      )}
-      {workload.blockingConsolidationDoNotDisrupt && (
-        <TooltipProvider>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <span
-                className={`inline-flex cursor-help ${pdbDndMitigated ? "text-success" : "text-destructive"}`}
-              >
-                <Shield className="h-4 w-4" aria-hidden />
-              </span>
-            </TooltipTrigger>
-            <TooltipContent side="right" className="max-w-sm">
-              <p className="font-semibold">Do-not-disrupt</p>
-              <p className="mt-1 text-muted-foreground">
-                {isWorkloadDisabled(workload)
-                  ? "Cruise is disabled for this workload (non-optimizable, HPA, GPU, etc.). Disruption windows are not applied; do-not-disrupt is shown as blocking."
-                  : workload.mode !== "enabled"
-                    ? "Cruise is in recommend-only mode, so disruption windows are not used for consolidation; do-not-disrupt is shown as blocking. Turn Cruise on to use scheduled windows."
-                    : hasDisruptionWindows
-                      ? "Disruption windows are configured; during those windows the do-not-disrupt annotation is lifted so nodes can consolidate. Outside the window it still applies."
-                      : "Do-not-disrupt will block node consolidation. Add a disruption window in Edit CruiseConfig so consolidation can run during scheduled windows."}
-              </p>
-            </TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
-      )}
-      {workload.blockingConsolidation && !workload.inDisruptionWindow && !workload.blockingConsolidationPdb && !workload.blockingConsolidationDoNotDisrupt && (
-        <TooltipProvider>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <span className="inline-flex cursor-help text-amber-600 dark:text-amber-400">
-                <ShieldAlert className="h-4 w-4" aria-hidden />
-              </span>
-            </TooltipTrigger>
-            <TooltipContent side="right" className="max-w-sm">
-              <p className="font-semibold">Blocks node consolidation</p>
-              <p className="mt-1 text-muted-foreground">
-                This workload blocks consolidation of nodes. Set up a disruption window in Edit CruiseConfig so that nodes can consolidate during the window.
-              </p>
-            </TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
-      )}
+      {statuses.filter((status) => status.show).map((status) => (
+        <StatusIconWithTooltip
+          key={status.key}
+          title={status.title}
+          description={status.description}
+          className={status.className}
+        >
+          {status.icon}
+        </StatusIconWithTooltip>
+      ))}
     </span>
   );
 }
@@ -412,6 +419,66 @@ function InfoTooltip({
   );
 }
 
+function ColumnResizeHandle({ columnIndex, onResizeStart }: { columnIndex: number; onResizeStart: (columnIndex: number, clientX: number) => void }) {
+  return (
+    <div
+      className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-primary/30 active:bg-primary/50"
+      onMouseDown={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        onResizeStart(columnIndex, e.clientX);
+      }}
+      aria-hidden
+    />
+  );
+}
+
+function SortIcon({ active, direction }: { active: boolean; direction: "asc" | "desc" | null }) {
+  if (!active || !direction) return null;
+  return direction === "asc" ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />;
+}
+
+function SortableResizableHeader({
+  column,
+  sortColumn,
+  sortDirection,
+  onSort,
+  resizeColumnIndex,
+  onResizeStart,
+  children,
+  className,
+  contentClassName,
+  rowSpan,
+}: {
+  column: string;
+  sortColumn: string | null;
+  sortDirection: "asc" | "desc" | null;
+  onSort: (column: string) => void;
+  resizeColumnIndex: number;
+  onResizeStart: (columnIndex: number, clientX: number) => void;
+  children: ReactNode;
+  className?: string;
+  contentClassName?: string;
+  rowSpan?: number;
+}) {
+  return (
+    <th
+      rowSpan={rowSpan}
+      className={cn("cursor-pointer select-none hover:bg-muted/50 transition-colors align-middle leading-none py-2 relative", className)}
+      onClick={(e) => {
+        e.stopPropagation();
+        onSort(column);
+      }}
+    >
+      <div className={cn("flex items-center gap-1 pr-2", contentClassName)}>
+        {children}
+        <SortIcon active={sortColumn === column} direction={sortDirection} />
+      </div>
+      <ColumnResizeHandle columnIndex={resizeColumnIndex} onResizeStart={onResizeStart} />
+    </th>
+  );
+}
+
 export default function Workloads() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -425,7 +492,6 @@ export default function Workloads() {
     "all" | "excluded" | "blocking-consolidation" | "gpu" | "hpa-enabled" | "scaled-down"
   >("all");
   const [typeFilter, setTypeFilter] = useState<string>("all");
-  const [hasRecommendations, setHasRecommendations] = useState("all");
   const [sortColumn, setSortColumn] = useState<string | null>("potentialDollars");
   const [sortDirection, setSortDirection] = useState<"asc" | "desc" | null>("desc");
   const [editWorkload, setEditWorkload] = useState<FrontendWorkload | null>(null);
@@ -789,10 +855,7 @@ export default function Workloads() {
       (statusFilter === "hpa-enabled" && w.hpaEnabled === true) ||
       (statusFilter === "scaled-down" && w.scaledDown === true);
     const matchesType = typeFilter === "all" || w.type === typeFilter;
-    const matchesRecommendations = hasRecommendations === "all" || 
-      (hasRecommendations === "yes" && w.hasRecommendations) ||
-      (hasRecommendations === "no" && !w.hasRecommendations);
-    return matchesSearch && matchesNamespace && matchesMode && matchesCritical && matchesStatus && matchesType && matchesRecommendations;
+    return matchesSearch && matchesNamespace && matchesMode && matchesCritical && matchesStatus && matchesType;
   });
 
   const sortedWorkloads = sortWorkloads(filteredWorkloads);
@@ -812,6 +875,15 @@ export default function Workloads() {
   const clearSelection = () => setSelectedWorkloadIds(new Set());
   const allSelectableSelected = selectableWorkloads.length > 0 && selectableWorkloads.every((w) => selectedWorkloadIds.has(w.id));
   const someSelected = selectedWorkloadIds.size > 0;
+  const columnWidthTotal = columnWidths.reduce((total, width) => total + width, 0);
+  const activeFilterCount = [
+    namespaceFilter !== "all",
+    modeFilter !== "all",
+    criticalFilter !== "all",
+    statusFilter !== "all",
+    typeFilter !== "all",
+    search.trim().length > 0,
+  ].filter(Boolean).length;
 
   const handleBatchEnable = () => {
     const ids = [...selectedWorkloadIds].map((id) => workloadIdForApi(id));
@@ -843,11 +915,18 @@ export default function Workloads() {
 
   if (!selectedClusterId) {
     return (
-      <div className="p-6">
-        <div className="text-center text-muted-foreground">
-          Please select a cluster to view workloads.
-        </div>
-      </div>
+      <PageShell className="animate-fade-in">
+        <PageHeader
+          icon={<Layers className="h-5 w-5" />}
+          title="Workloads"
+          description="Browse workloads, compare recommended CPU and memory, estimate monthly savings, and switch Cruise or recommend-only mode."
+        />
+        <EmptyState
+          icon={Layers}
+          title="Select a cluster"
+          description="Choose a cluster to view workload recommendations, CruiseConfig status, and optimization opportunities."
+        />
+      </PageShell>
     );
   }
 
@@ -950,123 +1029,164 @@ export default function Workloads() {
   );
 
   return (
-    <div className="min-w-0 w-full max-w-full animate-fade-in">
-      <div className="mx-auto max-w-[1600px] px-4 py-6 sm:px-6 lg:px-8 space-y-8">
-        <div>
-          <h1 className="flex items-center gap-2 text-2xl font-semibold text-foreground">
-            <Layers className="h-6 w-6 shrink-0 text-muted-foreground" />
-            Workloads
-          </h1>
-          <p className="text-sm text-muted-foreground">
-            Browse workloads, compare recommended CPU and memory, estimate monthly savings, and switch Cruise or recommend-only mode.
-          </p>
-        </div>
-        {/* Error banner when API fails */}
-        {apiErrorMessage && (
-          <Alert variant="destructive">
-            <AlertTriangle className="h-4 w-4" />
-            <AlertTitle>Error loading workloads</AlertTitle>
-            <AlertDescription>{apiErrorMessage}</AlertDescription>
-          </Alert>
-        )}
-        {/* Alert: no data */}
-        {hasNoData && (
-          <Alert variant="default" className="border-amber-500/50 bg-amber-500/10 [&>svg]:text-amber-600 dark:[&>svg]:text-amber-400 rounded-xl">
-            <Info className="h-4 w-4" />
-            <AlertTitle>No workload data available</AlertTitle>
-            <AlertDescription>
-              No workload or stats data was returned for this cluster. The cluster may have no workloads yet, or the data sync may not have completed. Try refreshing the page or selecting another cluster.
-            </AlertDescription>
-          </Alert>
-        )}
+    <PageShell className="min-w-0 animate-fade-in gap-6">
+      <PageHeader
+        icon={<Layers className="h-5 w-5" />}
+        title="Workloads"
+        description="Browse workloads, compare recommended CPU and memory, estimate monthly savings, and switch Cruise or recommend-only mode."
+      />
 
-        {/* Workload list */}
-        <section aria-labelledby="workloads-heading">
-          <div className="flex flex-wrap items-center justify-between gap-4 mb-4">
-            <div className="flex items-center gap-1.5">
-              <h2 id="workloads-heading" className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
-                Workload list
-                {sortedWorkloads.length > 0 && (
-                  <span className="ml-2 font-normal normal-case text-foreground">({sortedWorkloads.length})</span>
-                )}
-              </h2>
-              <InfoTooltip label="What CruiseKube adoption means" contentClassName="max-w-sm p-4 text-left">
-                {cruiseKubeAdoptionTooltipContent}
-              </InfoTooltip>
+      {apiErrorMessage && (
+        <Alert variant="destructive">
+          <AlertTriangle className="h-4 w-4" />
+          <AlertTitle>Error loading workloads</AlertTitle>
+          <AlertDescription>{apiErrorMessage}</AlertDescription>
+        </Alert>
+      )}
+
+      {hasNoData && (
+        <Alert variant="info">
+          <Info className="h-4 w-4" />
+          <AlertTitle>No workload data available</AlertTitle>
+          <AlertDescription>
+            No workload or stats data was returned for this cluster. The cluster may have no workloads yet, or the data sync may not have completed. Try refreshing the page or selecting another cluster.
+          </AlertDescription>
+        </Alert>
+      )}
+
+      <section aria-labelledby="workloads-heading" className="min-w-0 space-y-4">
+        <Panel variant="subtle" padding="md">
+          {activeFilterCount > 0 ? (
+            <div className="mb-3 flex justify-end">
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-8 text-xs"
+                onClick={() => {
+                  setSearch("");
+                  setNamespaceFilter("all");
+                  setModeFilter("all");
+                  setCriticalFilter("all");
+                  setStatusFilter("all");
+                  setTypeFilter("all");
+                }}
+              >
+                Clear {activeFilterCount} filter{activeFilterCount === 1 ? "" : "s"}
+              </Button>
             </div>
-            <div className="flex flex-wrap items-center gap-2">
-              <div className="relative w-56 sm:w-64">
-                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+          ) : null}
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 lg:items-end">
+            <label className="space-y-1.5">
+              <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Search</span>
+              <div className="relative flex min-w-0 items-center">
+                <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
                 <Input
-                  placeholder="Search..."
+                  placeholder="Search workloads..."
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
-                  className="h-9 pl-8 text-sm bg-muted/30 border-border rounded-md"
+                  className="h-9 min-w-0 flex-1 bg-surface pl-8 pr-8 text-sm"
                 />
+                {search ? (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="absolute right-0 top-0 bottom-0 h-9 w-9 shrink-0"
+                    onClick={() => setSearch("")}
+                    aria-label="Clear search"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </Button>
+                ) : null}
               </div>
-              <Select value={namespaceFilter} onValueChange={setNamespaceFilter}>
-                <SelectTrigger className="h-9 min-w-[180px] flex-1 max-w-[280px] bg-muted/30 border-border rounded-md text-sm">
-                  <SelectValue placeholder="Namespace" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All namespaces</SelectItem>
-                  {asArray(namespaces).map((ns) => (
-                    <SelectItem key={ns} value={ns}>{ns}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <Select value={modeFilter} onValueChange={setModeFilter}>
-                <SelectTrigger className="h-9 w-[120px] bg-muted/30 border-border rounded-md text-sm">
-                  <SelectValue placeholder="Mode" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All modes</SelectItem>
-                  <SelectItem value="enabled">Cruise</SelectItem>
-                  <SelectItem value="recommend-only">Recommend</SelectItem>
-                </SelectContent>
-              </Select>
-              <Select value={criticalFilter} onValueChange={setCriticalFilter}>
-                <SelectTrigger className="h-9 w-[130px] bg-muted/30 border-border rounded-md text-sm">
-                  <SelectValue placeholder="Critical" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Criticalities</SelectItem>
-                  <SelectItem value="low">Low</SelectItem>
-                  <SelectItem value="medium">Medium</SelectItem>
-                  <SelectItem value="high">High</SelectItem>
-                  <SelectItem value="very-high">Very High</SelectItem>
-                </SelectContent>
-              </Select>
-              <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v as typeof statusFilter)}>
-                <SelectTrigger className="h-9 w-[200px] bg-muted/30 border-border rounded-md text-sm">
-                  <SelectValue placeholder="Non-optimizable / PDB / blocking" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All workloads</SelectItem>
-                  <SelectItem value="excluded">Non-optimizable</SelectItem>
-                  <SelectItem value="blocking-consolidation">Blocking consolidation</SelectItem>
-                  <SelectItem value="gpu">GPU workload</SelectItem>
-                  <SelectItem value="hpa-enabled">HPA enabled</SelectItem>
-                  <SelectItem value="scaled-down">Scaled down</SelectItem>
-                </SelectContent>
-              </Select>
-              <Select value={typeFilter} onValueChange={setTypeFilter}>
-                <SelectTrigger className="h-9 w-[140px] bg-muted/30 border-border rounded-md text-sm">
-                  <SelectValue placeholder="Type" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All types</SelectItem>
-                  {workloadTypesInData.map((t) => (
-                    <SelectItem key={t} value={t}>{t}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+            </label>
+            <label className="space-y-1.5">
+              <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Namespace</span>
+              <FilterSelect
+                value={namespaceFilter}
+                onValueChange={setNamespaceFilter}
+                placeholder="Namespace"
+                triggerClassName="h-9 w-full bg-surface text-sm"
+              >
+                <SelectItem value="all">All namespaces</SelectItem>
+                {asArray(namespaces).map((ns) => (
+                  <SelectItem key={ns} value={ns}>{ns}</SelectItem>
+                ))}
+              </FilterSelect>
+            </label>
+            <label className="space-y-1.5">
+              <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Mode</span>
+              <FilterSelect
+                value={modeFilter}
+                onValueChange={setModeFilter}
+                placeholder="Mode"
+                triggerClassName="h-9 w-full bg-surface text-sm"
+              >
+                <SelectItem value="all">All modes</SelectItem>
+                <SelectItem value="enabled">Cruise</SelectItem>
+                <SelectItem value="recommend-only">Recommend</SelectItem>
+              </FilterSelect>
+            </label>
+            <label className="space-y-1.5">
+              <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Criticality</span>
+              <FilterSelect
+                value={criticalFilter}
+                onValueChange={setCriticalFilter}
+                placeholder="Criticality"
+                triggerClassName="h-9 w-full bg-surface text-sm"
+              >
+                <SelectItem value="all">All criticalities</SelectItem>
+                <SelectItem value="low">Low</SelectItem>
+                <SelectItem value="medium">Medium</SelectItem>
+                <SelectItem value="high">High</SelectItem>
+                <SelectItem value="very-high">Very High</SelectItem>
+              </FilterSelect>
+            </label>
+            <label className="space-y-1.5">
+              <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Status</span>
+              <FilterSelect
+                value={statusFilter}
+                onValueChange={(v) => setStatusFilter(v as typeof statusFilter)}
+                placeholder="Status"
+                triggerClassName="h-9 w-full bg-surface text-sm"
+              >
+                <SelectItem value="all">All workload states</SelectItem>
+                <SelectItem value="excluded">Non-optimizable</SelectItem>
+                <SelectItem value="blocking-consolidation">Blocking consolidation</SelectItem>
+                <SelectItem value="gpu">GPU workload</SelectItem>
+                <SelectItem value="hpa-enabled">HPA enabled</SelectItem>
+                <SelectItem value="scaled-down">Scaled down</SelectItem>
+              </FilterSelect>
+            </label>
+            <label className="space-y-1.5">
+              <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Type</span>
+              <FilterSelect
+                value={typeFilter}
+                onValueChange={setTypeFilter}
+                placeholder="Type"
+                triggerClassName="h-9 w-full bg-surface text-sm"
+              >
+                <SelectItem value="all">All types</SelectItem>
+                {workloadTypesInData.map((t) => (
+                  <SelectItem key={t} value={t}>{t}</SelectItem>
+                ))}
+              </FilterSelect>
+            </label>
           </div>
+        </Panel>
 
-          <div data-tour="workload-table" className="rounded-xl border border-border bg-card/50 overflow-hidden shadow-sm">
+        <Panel data-tour="workload-table" padding="none" className="min-w-0 overflow-hidden">
+            <div className="border-b border-border bg-surface px-4 py-4 sm:px-5">
+              <SectionHeader
+                id="workloads-heading"
+                title="Workload list"
+                description="Compare workload recommendations, resource requests, savings, and CruiseConfig controls."
+                helpText={cruiseKubeAdoptionTooltipContent}
+              />
+            </div>
+
             {/* Workload summary — integrated bar above table */}
-            <div data-tour="workload-summary" className="border-b border-border bg-muted/30 px-4 py-3">
+            <div data-tour="workload-summary" className="border-b border-border bg-surface-subtle/80 px-4 py-3">
               {isLoadingMetrics ? (
                 <div className="flex flex-wrap items-center gap-6">
                   <Skeleton className="h-4 w-16" />
@@ -1167,23 +1287,28 @@ export default function Workloads() {
               className="w-full min-w-0 overflow-x-auto"
             >
               {isLoadingSummary ? (
-                <div className="flex flex-col items-center justify-center gap-4 py-24 text-muted-foreground">
-                  <Skeleton className="h-10 w-10 rounded-full" />
-                  <p className="text-sm font-medium">Loading workloads...</p>
-                  <div className="flex gap-1">
-                    <Skeleton className="h-2 w-2 rounded-full animate-pulse" style={{ animationDelay: "0ms" }} />
-                    <Skeleton className="h-2 w-2 rounded-full animate-pulse" style={{ animationDelay: "150ms" }} />
-                    <Skeleton className="h-2 w-2 rounded-full animate-pulse" style={{ animationDelay: "300ms" }} />
-                  </div>
-                </div>
+                <LoadingState
+                  title="Loading workloads"
+                  description="Fetching workload recommendations and CruiseConfig status for this cluster."
+                  className="min-h-[22rem] rounded-none border-0 shadow-none"
+                />
               ) : (
-              <table className="data-table data-table-compact w-full min-w-full border-collapse" style={{ tableLayout: "fixed", width: "100%" }}>
+              <table
+                className="data-table data-table-compact w-full min-w-full border-collapse"
+                style={{ tableLayout: "fixed", width: "100%" }}
+              >
             <colgroup>
               {columnWidths.map((w, i) => (
-                <col key={i} style={{ width: `${(w / columnWidths.reduce((a, b) => a + b, 0)) * 100}%`, minWidth: MIN_COLUMN_WIDTH }} />
+                <col
+                  key={i}
+                  style={{
+                    width: `${(w / columnWidthTotal) * 100}%`,
+                    minWidth: MIN_COLUMN_WIDTH,
+                  }}
+                />
               ))}
             </colgroup>
-            <thead className="sticky top-0 z-10 bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/80 border-b border-border">
+            <thead className="sticky top-0 z-10 border-b border-border bg-surface-elevated/95 text-muted-foreground shadow-sm backdrop-blur supports-[backdrop-filter]:bg-surface-elevated/85">
               <tr>
                 <th rowSpan={2} className="w-11 px-2 py-2 align-middle border-r border-border text-center leading-none">
                   <div className="flex items-center justify-center" onClick={(e) => e.stopPropagation()}>
@@ -1195,46 +1320,55 @@ export default function Workloads() {
                           else clearSelection();
                         }}
                         aria-label="Select all selectable workloads"
-                        className="h-4 w-4 data-[state=checked]:bg-muted data-[state=checked]:text-muted-foreground data-[state=indeterminate]:bg-muted data-[state=indeterminate]:text-muted-foreground border-muted-foreground/40"
+                        className="h-4 w-4 border-muted-foreground/40 data-[state=checked]:border-primary data-[state=checked]:bg-primary data-[state=checked]:text-primary-foreground data-[state=indeterminate]:border-primary data-[state=indeterminate]:bg-primary data-[state=indeterminate]:text-primary-foreground"
                       />
                     ) : (
                       <span className="w-4 h-4" aria-hidden />
                     )}
                   </div>
                 </th>
-                <th rowSpan={2}
-                  className="cursor-pointer select-none hover:bg-muted/50 transition-colors align-middle text-left leading-none py-2 relative"
-                  onClick={(e) => { e.stopPropagation(); handleSort("workload"); }}
+                <SortableResizableHeader
+                  rowSpan={2}
+                  column="workload"
+                  sortColumn={sortColumn}
+                  sortDirection={sortDirection}
+                  onSort={handleSort}
+                  resizeColumnIndex={1}
+                  onResizeStart={startResize}
+                  className="text-left"
+                  contentClassName="justify-start"
                 >
-                  <div className="flex items-center justify-start gap-1 pr-2">
-                    Workload
-                    {sortColumn === "workload" && (sortDirection === "asc" ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />)}
-                  </div>
-                  <div className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-primary/30 active:bg-primary/50" onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); startResize(1, e.clientX); }} aria-hidden />
-                </th>
-                <th rowSpan={2}
-                  className="cursor-pointer select-none hover:bg-muted/50 transition-colors align-middle text-left leading-none py-2 relative"
-                  onClick={(e) => { e.stopPropagation(); handleSort("namespace"); }}
+                  Workload
+                </SortableResizableHeader>
+                <SortableResizableHeader
+                  rowSpan={2}
+                  column="namespace"
+                  sortColumn={sortColumn}
+                  sortDirection={sortDirection}
+                  onSort={handleSort}
+                  resizeColumnIndex={2}
+                  onResizeStart={startResize}
+                  className="text-left"
+                  contentClassName="justify-start"
                 >
-                  <div className="flex items-center justify-start gap-1 pr-2">
-                    Namespace
-                    {sortColumn === "namespace" && (sortDirection === "asc" ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />)}
-                  </div>
-                  <div className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-primary/30 active:bg-primary/50" onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); startResize(2, e.clientX); }} aria-hidden />
-                </th>
-                <th rowSpan={2}
-                  className="cursor-pointer select-none hover:bg-muted/50 transition-colors align-middle text-center leading-none py-2 relative w-20"
-                  onClick={(e) => { e.stopPropagation(); handleSort("replicas"); }}
+                  Namespace
+                </SortableResizableHeader>
+                <SortableResizableHeader
+                  rowSpan={2}
+                  column="replicas"
+                  sortColumn={sortColumn}
+                  sortDirection={sortDirection}
+                  onSort={handleSort}
+                  resizeColumnIndex={3}
+                  onResizeStart={startResize}
+                  className="text-center w-20"
+                  contentClassName="justify-center"
                 >
-                  <div className="flex items-center justify-center gap-1 pr-2">
-                    Pods
-                    <InfoTooltip label="What pod count means">
-                      {podsTooltipContent}
-                    </InfoTooltip>
-                    {sortColumn === "replicas" && (sortDirection === "asc" ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />)}
-                  </div>
-                  <div className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-primary/30 active:bg-primary/50" onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); startResize(3, e.clientX); }} aria-hidden />
-                </th>
+                  Pods
+                  <InfoTooltip label="What pod count means">
+                    {podsTooltipContent}
+                  </InfoTooltip>
+                </SortableResizableHeader>
                 <th colSpan={3} className="border-t border-l border-r border-b-0 border-border bg-muted/40 font-medium align-middle text-center leading-none py-2 px-0">
                   <div className="flex items-center justify-center">
                     <span className="inline-flex items-center gap-1.5">
@@ -1257,159 +1391,180 @@ export default function Workloads() {
                     </span>
                   </div>
                 </th>
-                <th rowSpan={2}
-                  className="cursor-pointer select-none hover:bg-muted/50 transition-colors align-middle text-center leading-none py-2 relative"
-                  onClick={(e) => { e.stopPropagation(); handleSort("netSavings"); }}
+                <SortableResizableHeader
+                  rowSpan={2}
+                  column="netSavings"
+                  sortColumn={sortColumn}
+                  sortDirection={sortDirection}
+                  onSort={handleSort}
+                  resizeColumnIndex={10}
+                  onResizeStart={startResize}
+                  className="text-center"
+                  contentClassName="justify-center"
                 >
-                  <div className="flex items-center justify-center gap-1 pr-2">
-                    Net Savings/M
-                    {sortColumn === "netSavings" && (sortDirection === "asc" ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />)}
-                    <InfoTooltip label="What net savings per month means">
-                      {netSavingsTooltipContent}
-                    </InfoTooltip>
-                  </div>
-                  <div className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-primary/30 active:bg-primary/50" onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); startResize(10, e.clientX); }} aria-hidden />
-                </th>
+                  Net Savings/M
+                  <InfoTooltip label="What net savings per month means">
+                    {netSavingsTooltipContent}
+                  </InfoTooltip>
+                </SortableResizableHeader>
                 <th colSpan={2} className="border-t border-l border-r border-b-0 border-border font-medium align-middle text-center leading-none py-2 px-0">
                   <div className="flex items-center justify-center">
                     <span className="inline-flex items-center gap-1.5">
                       Config
-                      {sortColumn === "cruiseConfig" && (sortDirection === "asc" ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />)}
+                      <SortIcon active={sortColumn === "cruiseConfig"} direction={sortDirection} />
                     </span>
                   </div>
                 </th>
                 <th rowSpan={2} className="relative w-9 min-w-9 max-w-9 p-0 align-middle border-l border-border">
                   <span className="sr-only">Row actions</span>
-                  <div className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-primary/30 active:bg-primary/50" onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); startResize(13, e.clientX); }} aria-hidden />
+                  <ColumnResizeHandle columnIndex={13} onResizeStart={startResize} />
                 </th>
               </tr>
               <tr>
-                <th
-                  className="cursor-pointer select-none hover:bg-muted/30 transition-colors border-b border-l border-border bg-muted/30 relative !text-right align-middle leading-none py-1.5"
-                  onClick={(e) => { e.stopPropagation(); handleSort("currentCpu"); }}
+                <SortableResizableHeader
+                  column="currentCpu"
+                  sortColumn={sortColumn}
+                  sortDirection={sortDirection}
+                  onSort={handleSort}
+                  resizeColumnIndex={4}
+                  onResizeStart={startResize}
+                  className="border-b border-l border-border bg-muted/30 hover:bg-muted/30 !text-right py-1.5"
+                  contentClassName="w-full justify-end"
                 >
-                  <div className="flex w-full items-center justify-end gap-1 pr-2">
-                    <TooltipProvider>
-                      <Tooltip>
-                        <TooltipTrigger asChild onClick={(e) => e.stopPropagation()}>
-                          <span className="cursor-help">Workload</span>
-                        </TooltipTrigger>
-                        <TooltipContent side="top">Workload (configured request)</TooltipContent>
-                      </Tooltip>
-                    </TooltipProvider>
-                    {sortColumn === "currentCpu" && (sortDirection === "asc" ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />)}
-                  </div>
-                  <div className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-primary/30 active:bg-primary/50" onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); startResize(4, e.clientX); }} aria-hidden />
-                </th>
-                <th
-                  className="cursor-pointer select-none hover:bg-muted/30 transition-colors border-b border-border bg-muted/30 relative !text-right align-middle leading-none py-1.5"
-                  onClick={(e) => { e.stopPropagation(); handleSort("podCurrentAvgCpu"); }}
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild onClick={(e) => e.stopPropagation()}>
+                        <span className="cursor-help">Workload</span>
+                      </TooltipTrigger>
+                      <TooltipContent side="top">Workload (configured request)</TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                </SortableResizableHeader>
+                <SortableResizableHeader
+                  column="podCurrentAvgCpu"
+                  sortColumn={sortColumn}
+                  sortDirection={sortDirection}
+                  onSort={handleSort}
+                  resizeColumnIndex={5}
+                  onResizeStart={startResize}
+                  className="border-b border-border bg-muted/30 hover:bg-muted/30 !text-right py-1.5"
+                  contentClassName="w-full justify-end"
                 >
-                  <div className="flex w-full items-center justify-end gap-1 pr-2">
-                    <TooltipProvider>
-                      <Tooltip>
-                        <TooltipTrigger asChild onClick={(e) => e.stopPropagation()}>
-                          <span className="cursor-help">Current</span>
-                        </TooltipTrigger>
-                        <TooltipContent side="top">Current (average per pod)</TooltipContent>
-                      </Tooltip>
-                    </TooltipProvider>
-                    {sortColumn === "podCurrentAvgCpu" && (sortDirection === "asc" ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />)}
-                  </div>
-                  <div className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-primary/30 active:bg-primary/50" onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); startResize(5, e.clientX); }} aria-hidden />
-                </th>
-                <th
-                  className="cursor-pointer select-none hover:bg-muted/30 transition-colors border-b border-r border-border bg-muted/30 relative !text-right align-middle leading-none py-1.5"
-                  onClick={(e) => { e.stopPropagation(); handleSort("recommendedCpu"); }}
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild onClick={(e) => e.stopPropagation()}>
+                        <span className="cursor-help">Current</span>
+                      </TooltipTrigger>
+                      <TooltipContent side="top">Current (average per pod)</TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                </SortableResizableHeader>
+                <SortableResizableHeader
+                  column="recommendedCpu"
+                  sortColumn={sortColumn}
+                  sortDirection={sortDirection}
+                  onSort={handleSort}
+                  resizeColumnIndex={6}
+                  onResizeStart={startResize}
+                  className="border-b border-r border-border bg-muted/30 hover:bg-muted/30 !text-right py-1.5"
+                  contentClassName="w-full justify-end"
                 >
-                  <div className="flex w-full items-center justify-end gap-1 pr-2">
-                    <TooltipProvider>
-                      <Tooltip>
-                        <TooltipTrigger asChild onClick={(e) => e.stopPropagation()}>
-                          <span className="cursor-help">Rec</span>
-                        </TooltipTrigger>
-                        <TooltipContent side="top">Recommended (average per pod)</TooltipContent>
-                      </Tooltip>
-                    </TooltipProvider>
-                    {sortColumn === "recommendedCpu" && (sortDirection === "asc" ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />)}
-                  </div>
-                  <div className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-primary/30 active:bg-primary/50" onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); startResize(6, e.clientX); }} aria-hidden />
-                </th>
-                <th
-                  className="cursor-pointer select-none hover:bg-muted/30 transition-colors border-b border-l border-border bg-muted/30 relative !text-right align-middle leading-none py-1.5"
-                  onClick={(e) => { e.stopPropagation(); handleSort("currentMem"); }}
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild onClick={(e) => e.stopPropagation()}>
+                        <span className="cursor-help">Rec</span>
+                      </TooltipTrigger>
+                      <TooltipContent side="top">Recommended (average per pod)</TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                </SortableResizableHeader>
+                <SortableResizableHeader
+                  column="currentMem"
+                  sortColumn={sortColumn}
+                  sortDirection={sortDirection}
+                  onSort={handleSort}
+                  resizeColumnIndex={7}
+                  onResizeStart={startResize}
+                  className="border-b border-l border-border bg-muted/30 hover:bg-muted/30 !text-right py-1.5"
+                  contentClassName="w-full justify-end"
                 >
-                  <div className="flex w-full items-center justify-end gap-1 pr-2">
-                    <TooltipProvider>
-                      <Tooltip>
-                        <TooltipTrigger asChild onClick={(e) => e.stopPropagation()}>
-                          <span className="cursor-help">Workload</span>
-                        </TooltipTrigger>
-                        <TooltipContent side="top">Workload (configured request)</TooltipContent>
-                      </Tooltip>
-                    </TooltipProvider>
-                    {sortColumn === "currentMem" && (sortDirection === "asc" ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />)}
-                  </div>
-                  <div className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-primary/30 active:bg-primary/50" onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); startResize(7, e.clientX); }} aria-hidden />
-                </th>
-                <th
-                  className="cursor-pointer select-none hover:bg-muted/30 transition-colors border-b border-border bg-muted/30 relative !text-right align-middle leading-none py-1.5"
-                  onClick={(e) => { e.stopPropagation(); handleSort("podCurrentAvgMem"); }}
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild onClick={(e) => e.stopPropagation()}>
+                        <span className="cursor-help">Workload</span>
+                      </TooltipTrigger>
+                      <TooltipContent side="top">Workload (configured request)</TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                </SortableResizableHeader>
+                <SortableResizableHeader
+                  column="podCurrentAvgMem"
+                  sortColumn={sortColumn}
+                  sortDirection={sortDirection}
+                  onSort={handleSort}
+                  resizeColumnIndex={8}
+                  onResizeStart={startResize}
+                  className="border-b border-border bg-muted/30 hover:bg-muted/30 !text-right py-1.5"
+                  contentClassName="w-full justify-end"
                 >
-                  <div className="flex w-full items-center justify-end gap-1 pr-2">
-                    <TooltipProvider>
-                      <Tooltip>
-                        <TooltipTrigger asChild onClick={(e) => e.stopPropagation()}>
-                          <span className="cursor-help">Current</span>
-                        </TooltipTrigger>
-                        <TooltipContent side="top">Current (average per pod)</TooltipContent>
-                      </Tooltip>
-                    </TooltipProvider>
-                    {sortColumn === "podCurrentAvgMem" && (sortDirection === "asc" ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />)}
-                  </div>
-                  <div className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-primary/30 active:bg-primary/50" onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); startResize(8, e.clientX); }} aria-hidden />
-                </th>
-                <th
-                  className="cursor-pointer select-none hover:bg-muted/30 transition-colors border-b border-r border-border bg-muted/30 relative !text-right align-middle leading-none py-1.5"
-                  onClick={(e) => { e.stopPropagation(); handleSort("recommendedMem"); }}
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild onClick={(e) => e.stopPropagation()}>
+                        <span className="cursor-help">Current</span>
+                      </TooltipTrigger>
+                      <TooltipContent side="top">Current (average per pod)</TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                </SortableResizableHeader>
+                <SortableResizableHeader
+                  column="recommendedMem"
+                  sortColumn={sortColumn}
+                  sortDirection={sortDirection}
+                  onSort={handleSort}
+                  resizeColumnIndex={9}
+                  onResizeStart={startResize}
+                  className="border-b border-r border-border bg-muted/30 hover:bg-muted/30 !text-right py-1.5"
+                  contentClassName="w-full justify-end"
                 >
-                  <div className="flex w-full items-center justify-end gap-1 pr-2">
-                    <TooltipProvider>
-                      <Tooltip>
-                        <TooltipTrigger asChild onClick={(e) => e.stopPropagation()}>
-                          <span className="cursor-help">Rec</span>
-                        </TooltipTrigger>
-                        <TooltipContent side="top">Recommended (average per pod)</TooltipContent>
-                      </Tooltip>
-                    </TooltipProvider>
-                    {sortColumn === "recommendedMem" && (sortDirection === "asc" ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />)}
-                  </div>
-                  <div className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-primary/30 active:bg-primary/50" onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); startResize(9, e.clientX); }} aria-hidden />
-                </th>
-                <th
-                  className="cursor-pointer select-none hover:bg-muted/30 transition-colors border-b border-l border-border relative text-center align-middle leading-none py-1.5"
-                  onClick={(e) => { e.stopPropagation(); handleSort("cruiseConfig"); }}
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild onClick={(e) => e.stopPropagation()}>
+                        <span className="cursor-help">Rec</span>
+                      </TooltipTrigger>
+                      <TooltipContent side="top">Recommended (average per pod)</TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                </SortableResizableHeader>
+                <SortableResizableHeader
+                  column="cruiseConfig"
+                  sortColumn={sortColumn}
+                  sortDirection={sortDirection}
+                  onSort={handleSort}
+                  resizeColumnIndex={11}
+                  onResizeStart={startResize}
+                  className="border-b border-l border-border text-center py-1.5"
+                  contentClassName="justify-center"
                 >
-                  <div className="flex items-center justify-center gap-1 pr-2">
-                    Mode
-                    <InfoTooltip label="How mode is defined" contentClassName="max-w-sm p-4 text-left">
-                      {modeHeaderTooltipContent}
-                    </InfoTooltip>
-                  </div>
-                  <div className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-primary/30 active:bg-primary/50" onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); startResize(11, e.clientX); }} aria-hidden />
-                </th>
-                <th
-                  className="cursor-pointer select-none hover:bg-muted/30 transition-colors border-b border-r border-border relative text-center align-middle leading-none py-1.5"
-                  onClick={(e) => { e.stopPropagation(); handleSort("cruiseConfig"); }}
+                  Mode
+                  <InfoTooltip label="How mode is defined" contentClassName="max-w-sm p-4 text-left">
+                    {modeHeaderTooltipContent}
+                  </InfoTooltip>
+                </SortableResizableHeader>
+                <SortableResizableHeader
+                  column="cruiseConfig"
+                  sortColumn={sortColumn}
+                  sortDirection={sortDirection}
+                  onSort={handleSort}
+                  resizeColumnIndex={12}
+                  onResizeStart={startResize}
+                  className="border-b border-r border-border text-center py-1.5"
+                  contentClassName="justify-center"
                 >
-                  <div className="flex items-center justify-center gap-1 pr-2">
-                    Critical
-                    <InfoTooltip label="How criticality is defined" contentClassName="max-w-sm p-4 text-left">
-                      {criticalityTooltipContent}
-                    </InfoTooltip>
-                  </div>
-                  <div className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-primary/30 active:bg-primary/50" onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); startResize(12, e.clientX); }} aria-hidden />
-                </th>
+                  Critical
+                  <InfoTooltip label="How criticality is defined" contentClassName="max-w-sm p-4 text-left">
+                    {criticalityTooltipContent}
+                  </InfoTooltip>
+                </SortableResizableHeader>
               </tr>
             </thead>
             <tbody>
@@ -1418,11 +1573,14 @@ export default function Workloads() {
                   key={workload.id}
                   id={`workload-row-${index + 1}`}
                   data-tour={index === 4 ? "workload-row-5" : undefined}
-                  className={`group transition-colors ${
+                  data-state={selectedWorkloadIds.has(workload.id) ? "selected" : undefined}
+                  className={cn(
+                    "group border-l-2 border-l-transparent transition-colors",
+                    selectedWorkloadIds.has(workload.id) && "border-l-primary bg-primary/10 hover:bg-primary/15",
                     isWorkloadDisabled(workload)
-                      ? "opacity-60 bg-muted/40 border-l-2 border-l-muted-foreground/40 hover:bg-muted/50"
-                      : "hover:bg-muted/50 " + (index % 2 === 1 ? "bg-muted/10" : "")
-                  }`}
+                      ? "border-l-muted-foreground/40 bg-muted/35 opacity-65 hover:bg-muted/45"
+                      : !selectedWorkloadIds.has(workload.id) && (index % 2 === 1 ? "bg-surface-subtle/35 hover:bg-accent/45" : "hover:bg-accent/45"),
+                  )}
                 >
                   <td className="w-11 px-2 align-middle border-r border-border text-center" onClick={(e) => e.stopPropagation()}>
                     <div className="flex items-center justify-center min-h-[2rem]">
@@ -1431,7 +1589,7 @@ export default function Workloads() {
                         onCheckedChange={() => !isWorkloadDisabled(workload) && toggleSelection(workload.id)}
                         disabled={isWorkloadDisabled(workload)}
                         aria-label={`Select ${workload.workload}`}
-                        className="h-4 w-4 data-[state=checked]:bg-muted data-[state=checked]:text-muted-foreground border-muted-foreground/40"
+                        className="h-4 w-4 border-muted-foreground/40 data-[state=checked]:border-primary data-[state=checked]:bg-primary data-[state=checked]:text-primary-foreground"
                       />
                     </div>
                   </td>
@@ -1629,13 +1787,15 @@ export default function Workloads() {
           </table>
               )}
         </div>
-      </div>
+      </Panel>
 
       {!isLoadingSummary && sortedWorkloads.length === 0 && (
-          <div className="rounded-xl border border-border bg-card/30 py-16 text-center text-sm text-muted-foreground">
-            No workloads match your filters
-          </div>
-        )}
+        <EmptyState
+          title="No workloads match your filters"
+          description="Adjust the search query or clear filters to show more workloads."
+          className="min-h-[12rem]"
+        />
+      )}
 
         {/* Edit CruiseConfig modal */}
         <Dialog open={!!editWorkload} onOpenChange={(open) => !open && setEditWorkload(null)}>
@@ -1684,7 +1844,7 @@ export default function Workloads() {
                   </p>
                 </div>
                 {editWorkload.blockingConsolidation && (
-                  <Alert className="border-amber-500/50 bg-amber-500/10 [&>svg]:text-amber-600 dark:[&>svg]:text-amber-400">
+                  <Alert variant="warning">
                     <ShieldAlert className="h-4 w-4" />
                     <AlertTitle>Disruption window recommended</AlertTitle>
                     <AlertDescription>
@@ -1703,9 +1863,13 @@ export default function Workloads() {
                   allowAdd={editWorkload.blockingConsolidation}
                 />
                 {!editWorkload.blockingConsolidation && (
-                  <p className="text-sm text-muted-foreground rounded-md border border-border bg-muted/30 px-3 py-2">
-                    This workload doesn&apos;t have pod-disruption-budgets or do-not-disrupt marked. No disruption window needs to be provided in this case since it will not block node consolidation.
-                  </p>
+                  <Alert variant="neutral">
+                    <Info className="h-4 w-4" />
+                    <AlertTitle>No disruption window needed</AlertTitle>
+                    <AlertDescription>
+                      This workload doesn&apos;t have pod-disruption-budgets or do-not-disrupt marked. No disruption window needs to be provided in this case since it will not block node consolidation.
+                    </AlertDescription>
+                  </Alert>
                 )}
               </div>
             )}
@@ -1717,8 +1881,7 @@ export default function Workloads() {
             </DialogFooter>
           </DialogContent>
         </Dialog>
-        </section>
-      </div>
-    </div>
+      </section>
+    </PageShell>
   );
 }

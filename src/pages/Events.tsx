@@ -21,7 +21,6 @@ import {
 import { useQuery } from "@tanstack/react-query";
 import { useCluster } from "@/contexts/ClusterContext";
 import { apiClient, type AuditEvent } from "@/lib/api";
-import { Skeleton } from "@/components/ui/skeleton";
 import {
   Select,
   SelectContent,
@@ -29,13 +28,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Card, CardContent } from "@/components/ui/card";
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
   Table,
   TableBody,
@@ -52,6 +51,11 @@ import {
 } from "@/components/ui/tooltip";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { PageShell } from "@/components/layout/PageShell";
+import { PageHeader } from "@/components/layout/PageHeader";
+import { SectionHeader } from "@/components/layout/SectionHeader";
+import { Panel } from "@/components/ui/panel";
+import { EmptyState, ErrorState, LoadingState } from "@/components/ui/state";
 import { useToast } from "@/hooks/use-toast";
 import { eventCategoryIconColor } from "@/theme";
 
@@ -218,6 +222,74 @@ function workloadIdFromEvent(event: AuditEvent): string {
   return typeof id === "string" ? id : "";
 }
 
+function eventCategoryLabel(category: string): string {
+  return category.replace(/_/g, " ");
+}
+
+function EventCategoryBadge({ category, tooltipSide = "right" }: { category: string; tooltipSide?: "top" | "right" | "bottom" | "left" }) {
+  const meta = CATEGORY_META[category] ?? DEFAULT_CATEGORY_META;
+  const Icon = meta.icon;
+  const label = eventCategoryLabel(category);
+
+  return (
+    <TooltipProvider>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <span className={`inline-flex cursor-help items-center gap-1.5 rounded-full border border-current/20 bg-current/10 px-2 py-0.5 text-xs font-medium ${meta.color}`}>
+            <Icon className="h-3 w-3 shrink-0" />
+            {label}
+          </span>
+        </TooltipTrigger>
+        <TooltipContent side={tooltipSide} className="max-w-md">
+          <p className="font-semibold">{label}</p>
+          <p className="mt-1 text-muted-foreground text-xs">{meta.description}</p>
+          <p className="mt-2 text-muted-foreground text-xs border-t border-border pt-2">{meta.explanation}</p>
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  );
+}
+
+function WorkloadIdWithCopy({
+  workloadId,
+  onCopy,
+  className,
+  tooltipSide = "right",
+}: {
+  workloadId: string;
+  onCopy: (workloadId: string) => void;
+  className?: string;
+  tooltipSide?: "top" | "right" | "bottom" | "left";
+}) {
+  return (
+    <span className={`inline-flex items-center gap-1.5 ${className ?? ""}`}>
+      {workloadId || "—"}
+      {workloadId && (
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="h-6 w-6 shrink-0"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onCopy(workloadId);
+                }}
+                aria-label="Copy workload ID"
+              >
+                <Copy className="h-3 w-3 text-muted-foreground" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side={tooltipSide}>Copy workload ID</TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+      )}
+    </span>
+  );
+}
+
 /** Workload id format: TYPE:NAMESPACE:NAME (e.g. Deployment:my-namespace:my-app) */
 const WORKLOAD_ID_PLACEHOLDER = "Deployment:namespace:workload-name";
 
@@ -230,10 +302,9 @@ export default function Events() {
   const [categoryFilter, setCategoryFilter] = useState<string>("all");
   const [selectedEvent, setSelectedEvent] = useState<AuditEvent | null>(null);
 
-  const copyWorkloadId = (event: AuditEvent) => {
-    const id = workloadIdFromEvent(event);
-    if (!id) return;
-    void navigator.clipboard.writeText(id).then(() => {
+  const copyWorkloadId = (workloadId: string) => {
+    if (!workloadId) return;
+    void navigator.clipboard.writeText(workloadId).then(() => {
       toast({ title: "Copied", description: "Workload ID copied to clipboard." });
     });
   };
@@ -261,147 +332,193 @@ export default function Events() {
   const categoryCount = (cat: string) =>
     cat === "all" ? allEvents.length : allEvents.filter((e) => e.category === cat).length;
 
+  const activeFilterCount = [
+    categoryFilter !== "all",
+    workloadSearch.trim().length > 0,
+  ].filter(Boolean).length;
+
   if (!selectedClusterId) {
     return (
-      <div className="p-6">
-        <div className="text-center text-muted-foreground">
-          Please select a cluster to view CruiseKube events
-        </div>
-      </div>
+      <PageShell className="animate-fade-in">
+        <PageHeader
+          icon={<Activity className="h-5 w-5" />}
+          title="Events"
+          description="Audit events performed by CruiseKube, including recommendations applied, evictions, and PDB changes."
+        />
+        <Alert variant="neutral">
+          <Activity className="h-4 w-4" />
+          <AlertTitle>Select a cluster</AlertTitle>
+          <AlertDescription>Please select a cluster to view CruiseKube events.</AlertDescription>
+        </Alert>
+      </PageShell>
     );
   }
 
+  const emptyDescription =
+    categoryFilter !== "all" && allEvents.length > 0
+      ? `No events match the selected category (${categoryLabel(categoryFilter)}).`
+      : workloadId
+        ? `No events for workload "${workloadId}" in ${auditEventsWindowPhrase(minutes)}.`
+        : `No events in ${auditEventsWindowPhrase(minutes)}.`;
+
   return (
-    <div className="p-6 space-y-6 animate-fade-in">
-      <div>
-        <h1 className="text-2xl font-semibold text-foreground flex items-center gap-2">
-          <Activity className="h-6 w-6 text-muted-foreground" />
-          Events
-        </h1>
-        <p className="text-sm text-muted-foreground">
-          Audit events performed by CruiseKube (recommendations applied, evictions, PDB changes, etc.)
-        </p>
-      </div>
+    <PageShell className="animate-fade-in">
+      <PageHeader
+        icon={<Activity className="h-5 w-5" />}
+        title="Events"
+        description="Audit events performed by CruiseKube, including recommendations applied, evictions, PDB changes, and node taints."
+      />
 
-      <div className="flex flex-wrap items-center gap-4">
-        <div className="flex items-center gap-2">
-          <span className="text-sm text-muted-foreground whitespace-nowrap">Last</span>
-          <Select
-            value={String(minutes)}
-            onValueChange={(v) => setMinutes(Number(v))}
-          >
-            <SelectTrigger className="w-[9rem]">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {MINUTES_OPTIONS.map((m) => (
-                <SelectItem key={m} value={String(m)}>
-                  {timeRangeOptionLabel(m)}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-        <div className="flex items-center gap-2">
-          <span className="text-sm text-muted-foreground whitespace-nowrap">Category</span>
-          <Select value={categoryFilter} onValueChange={setCategoryFilter}>
-            <SelectTrigger className="w-[18rem]">
-              <SelectValue>
-                {(() => {
-                  const { Icon, color } = categoryIcon(categoryFilter);
-                  return (
-                    <span className="flex items-center gap-2">
-                      <Icon className={`h-3.5 w-3.5 shrink-0 ${color}`} />
-                      <span className="tabular-nums">{categoryCount(categoryFilter)}</span>
-                      <span className="text-muted-foreground">·</span>
-                      {categoryLabel(categoryFilter)}
-                    </span>
-                  );
-                })()}
-              </SelectValue>
-            </SelectTrigger>
-            <SelectContent>
-              {CATEGORY_OPTIONS.map((cat) => {
-                const { Icon, color } = categoryIcon(cat);
-                return (
-                  <SelectItem key={cat} value={cat}>
-                    <span className="flex items-center gap-2">
-                      <Icon className={`h-3.5 w-3.5 shrink-0 ${color}`} />
-                      <span className="tabular-nums">{categoryCount(cat)}</span>
-                      <span className="text-muted-foreground">·</span>
-                      {categoryLabel(cat)}
-                    </span>
-                  </SelectItem>
-                );
-              })}
-            </SelectContent>
-          </Select>
-        </div>
-        <div className="relative flex-1 min-w-[16rem] max-w-md flex items-center gap-2">
-          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
-          <Input
-            type="text"
-            placeholder={WORKLOAD_ID_PLACEHOLDER}
-            value={workloadSearch}
-            onChange={(e) => setWorkloadSearch(e.target.value)}
-            className="pl-8 pr-8 h-9 text-sm flex-1 min-w-0"
-          />
-          {workloadSearch && (
+      <Panel variant="subtle" padding="md">
+        {activeFilterCount > 0 ? (
+          <div className="mb-3 flex justify-end">
             <Button
-              type="button"
               variant="ghost"
-              size="icon"
-              className="absolute right-0 top-0 bottom-0 h-9 w-9 shrink-0"
-              onClick={() => setWorkloadSearch("")}
-              aria-label="Clear workload filter"
+              size="sm"
+              className="h-8 text-xs"
+              onClick={() => {
+                setCategoryFilter("all");
+                setWorkloadSearch("");
+              }}
             >
-              <X className="h-3.5 w-3.5" />
+              Clear {activeFilterCount} filter{activeFilterCount === 1 ? "" : "s"}
             </Button>
-          )}
+          </div>
+        ) : null}
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 lg:items-end">
+          <label className="space-y-1.5">
+            <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Last</span>
+            <Select
+              value={String(minutes)}
+              onValueChange={(v) => setMinutes(Number(v))}
+            >
+              <SelectTrigger className="h-9 w-full bg-surface text-sm">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {MINUTES_OPTIONS.map((m) => (
+                  <SelectItem key={m} value={String(m)}>
+                    {timeRangeOptionLabel(m)}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </label>
+          <label className="space-y-1.5">
+            <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Category</span>
+            <Select value={categoryFilter} onValueChange={setCategoryFilter}>
+              <SelectTrigger className="h-9 w-full bg-surface text-sm">
+                <SelectValue>
+                  {(() => {
+                    const { Icon, color } = categoryIcon(categoryFilter);
+                    return (
+                      <span className="flex items-center gap-2">
+                        <Icon className={`h-3.5 w-3.5 shrink-0 ${color}`} />
+                        <span className="tabular-nums">{categoryCount(categoryFilter)}</span>
+                        <span className="text-muted-foreground">·</span>
+                        {categoryLabel(categoryFilter)}
+                      </span>
+                    );
+                  })()}
+                </SelectValue>
+              </SelectTrigger>
+              <SelectContent>
+                {CATEGORY_OPTIONS.map((cat) => {
+                  const { Icon, color } = categoryIcon(cat);
+                  return (
+                    <SelectItem key={cat} value={cat}>
+                      <span className="flex items-center gap-2">
+                        <Icon className={`h-3.5 w-3.5 shrink-0 ${color}`} />
+                        <span className="tabular-nums">{categoryCount(cat)}</span>
+                        <span className="text-muted-foreground">·</span>
+                        {categoryLabel(cat)}
+                      </span>
+                    </SelectItem>
+                  );
+                })}
+              </SelectContent>
+            </Select>
+          </label>
+          <label className="space-y-1.5 sm:col-span-2 lg:col-span-1">
+            <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Workload ID</span>
+            <div className="relative flex min-w-0 items-center">
+              <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                type="text"
+                placeholder={WORKLOAD_ID_PLACEHOLDER}
+                value={workloadSearch}
+                onChange={(e) => setWorkloadSearch(e.target.value)}
+                className="h-9 min-w-0 flex-1 bg-surface pl-8 pr-8 text-sm"
+              />
+              {workloadSearch ? (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="absolute right-0 top-0 bottom-0 h-9 w-9 shrink-0"
+                  onClick={() => setWorkloadSearch("")}
+                  aria-label="Clear workload filter"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </Button>
+              ) : null}
+            </div>
+          </label>
         </div>
-      </div>
+      </Panel>
 
-      <Card>
-        <CardContent className="p-0">
+      <Panel padding="none" className="overflow-hidden">
+        <div className="border-b border-border bg-surface px-4 py-4 sm:px-5">
+          <SectionHeader
+            title="Audit event stream"
+            description={`${events.length.toLocaleString()} event${events.length === 1 ? "" : "s"} shown from ${auditEventsWindowPhrase(minutes)}.`}
+            helpText="Use event details to inspect the raw CruiseKube payload and copy workload IDs for cross-page investigation."
+          />
+        </div>
           {isLoading ? (
-            <div className="p-6 space-y-3">
-              <Skeleton className="h-16 w-full" />
-              <Skeleton className="h-16 w-full" />
-              <Skeleton className="h-16 w-full" />
+            <div className="p-4 sm:p-5">
+              <LoadingState
+                title="Loading events"
+                description="Fetching recent CruiseKube audit events for the selected cluster."
+              />
             </div>
           ) : error ? (
-            <div className="p-6 text-sm text-destructive">
-              {error instanceof Error ? error.message : "Failed to load events"}
+            <div className="p-4 sm:p-5">
+              <ErrorState
+                title="Error loading events"
+                description={error instanceof Error ? error.message : "Failed to load events."}
+              />
             </div>
           ) : events.length === 0 ? (
-            <div className="p-6 text-sm text-muted-foreground text-center">
-              {categoryFilter !== "all" && allEvents.length > 0
-                ? `No events match the selected category (${categoryLabel(categoryFilter)}).`
-                : workloadId
-                  ? `No events for workload "${workloadId}" in ${auditEventsWindowPhrase(minutes)}`
-                  : `No events in ${auditEventsWindowPhrase(minutes)}`}
+            <div className="p-4 sm:p-5">
+              <EmptyState
+                icon={Activity}
+                title="No events found"
+                description={emptyDescription}
+              />
             </div>
           ) : (
-            <Table>
+            <>
+            <div className="hidden md:block">
+            <Table density="compact">
               <TableHeader>
-                <TableRow className="border-b border-border bg-muted/30 hover:bg-muted/30">
-                  <TableHead className="h-9 px-3 py-2 text-xs font-medium text-muted-foreground w-[8rem]">Time</TableHead>
-                  <TableHead className="h-9 px-3 py-2 text-xs font-medium text-muted-foreground min-w-[10rem]">Category</TableHead>
-                  <TableHead className="h-9 px-3 py-2 text-xs font-medium text-muted-foreground min-w-[10rem]">Workload ID</TableHead>
-                  <TableHead className="h-9 px-3 py-2 text-xs font-medium text-muted-foreground min-w-[16rem]">Object name</TableHead>
-                  <TableHead className="h-9 px-3 py-2 text-xs font-medium text-muted-foreground w-20">Details</TableHead>
+                <TableRow className="bg-surface-subtle hover:bg-surface-subtle">
+                  <TableHead className="w-[8rem]">Time</TableHead>
+                  <TableHead className="min-w-[13rem]">Category</TableHead>
+                  <TableHead className="min-w-[14rem]">Workload ID</TableHead>
+                  <TableHead className="min-w-[16rem]">Object name</TableHead>
+                  <TableHead className="w-24 text-right">Details</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {events.map((event, index) => {
-                  const meta = CATEGORY_META[event.category] ?? DEFAULT_CATEGORY_META;
-                  const Icon = meta.icon;
+                  const eventWorkloadId = workloadIdFromEvent(event);
                   return (
                     <TableRow
                       key={`${event.created_at}-${index}`}
-                      className={index % 2 === 1 ? "bg-muted/10" : ""}
+                      className={index % 2 === 1 ? "bg-surface-subtle/35" : ""}
                     >
-                      <TableCell className="py-2 px-3 text-xs text-muted-foreground whitespace-nowrap align-top">
+                      <TableCell className="whitespace-nowrap align-top text-xs text-muted-foreground">
                         <TooltipProvider>
                           <Tooltip>
                             <TooltipTrigger asChild>
@@ -415,56 +532,16 @@ export default function Events() {
                           </Tooltip>
                         </TooltipProvider>
                       </TableCell>
-                      <TableCell className="py-2 px-3 align-top">
-                        <TooltipProvider>
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <span className={`inline-flex items-center gap-1 cursor-help text-xs ${meta.color}`}>
-                                <Icon className="h-3 w-3 shrink-0" />
-                                {event.category.replace(/_/g, " ")}
-                              </span>
-                            </TooltipTrigger>
-                            <TooltipContent side="right" className="max-w-md">
-                              <p className="font-semibold">{event.category.replace(/_/g, " ")}</p>
-                              <p className="mt-1 text-muted-foreground text-xs">{meta.description}</p>
-                              <p className="mt-2 text-muted-foreground text-xs border-t border-border pt-2">{meta.explanation}</p>
-                            </TooltipContent>
-                          </Tooltip>
-                        </TooltipProvider>
+                      <TableCell className="align-top">
+                        <EventCategoryBadge category={event.category} />
                       </TableCell>
-                      <TableCell className="py-2 px-3 font-mono text-xs align-top break-all min-w-0">
-                        <span className="inline-flex items-center gap-1.5">
-                          {workloadIdFromEvent(event) || "—"}
-                          {workloadIdFromEvent(event) && (
-                            <TooltipProvider>
-                              <Tooltip>
-                                <TooltipTrigger asChild>
-                                  <Button
-                                    type="button"
-                                    variant="ghost"
-                                    size="icon"
-                                    className="h-6 w-6 shrink-0"
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      copyWorkloadId(event);
-                                    }}
-                                    aria-label="Copy workload ID"
-                                  >
-                                    <Copy className="h-3 w-3 text-muted-foreground" />
-                                  </Button>
-                                </TooltipTrigger>
-                                <TooltipContent side="right">
-                                  Copy workload ID
-                                </TooltipContent>
-                              </Tooltip>
-                            </TooltipProvider>
-                          )}
-                        </span>
+                      <TableCell className="min-w-0 break-all align-top font-mono text-xs text-muted-foreground">
+                        <WorkloadIdWithCopy workloadId={eventWorkloadId} onCopy={copyWorkloadId} />
                       </TableCell>
-                      <TableCell className="py-2 px-3 font-mono text-xs align-top min-w-0">
+                      <TableCell className="min-w-0 align-top font-mono text-xs">
                         {workloadName(event)}
                       </TableCell>
-                      <TableCell className="py-2 px-3 align-top">
+                      <TableCell className="align-top text-right">
                         <Button
                           variant="ghost"
                           size="sm"
@@ -482,23 +559,45 @@ export default function Events() {
                 })}
               </TableBody>
             </Table>
+            </div>
+            <div className="divide-y divide-border md:hidden">
+              {events.map((event, index) => {
+                const eventWorkloadId = workloadIdFromEvent(event);
+                return (
+                  <div key={`${event.created_at}-${index}-mobile`} className="space-y-3 bg-surface px-4 py-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <EventCategoryBadge category={event.category} />
+                      <span className="whitespace-nowrap text-xs text-muted-foreground">{formatTimeAgo(event.created_at)}</span>
+                    </div>
+                    <div className="space-y-1 text-xs">
+                      <div className="grid grid-cols-[5.5rem_1fr] gap-2">
+                        <span className="text-muted-foreground">Workload</span>
+                        <WorkloadIdWithCopy workloadId={eventWorkloadId} onCopy={copyWorkloadId} className="break-all font-mono" />
+                        <span className="text-muted-foreground">Object</span>
+                        <span className="break-all font-mono">{workloadName(event)}</span>
+                      </div>
+                    </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-8 w-full text-xs"
+                      onClick={() => setSelectedEvent(event)}
+                    >
+                      View details
+                    </Button>
+                  </div>
+                );
+              })}
+            </div>
+            </>
           )}
-        </CardContent>
-      </Card>
+      </Panel>
 
       <Dialog open={!!selectedEvent} onOpenChange={(open) => !open && setSelectedEvent(null)}>
         <DialogContent className="max-w-2xl max-h-[85vh] flex flex-col">
           <DialogHeader>
             <DialogTitle className="text-base">
-              {selectedEvent && (() => {
-                const { icon: EventIcon } = CATEGORY_META[selectedEvent.category] ?? DEFAULT_CATEGORY_META;
-                return (
-                  <span className="flex items-center gap-2">
-                    <EventIcon className="h-4 w-4 shrink-0" />
-                    {selectedEvent.category.replace(/_/g, " ")}
-                  </span>
-                );
-              })()}
+              {selectedEvent && <EventCategoryBadge category={selectedEvent.category} tooltipSide="bottom" />}
             </DialogTitle>
           </DialogHeader>
           {selectedEvent && (
@@ -507,21 +606,12 @@ export default function Events() {
                 <span className="text-muted-foreground">Time</span>
                 <span>{formatEventTime(selectedEvent.created_at)}</span>
                 <span className="text-muted-foreground">Workload ID</span>
-                <span className="font-mono inline-flex items-center gap-1.5">
-                  {workloadIdFromEvent(selectedEvent) || "—"}
-                  {workloadIdFromEvent(selectedEvent) && (
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      className="h-6 w-6 shrink-0"
-                      onClick={() => copyWorkloadId(selectedEvent)}
-                      aria-label="Copy workload ID"
-                    >
-                      <Copy className="h-3 w-3 text-muted-foreground" />
-                    </Button>
-                  )}
-                </span>
+                <WorkloadIdWithCopy
+                  workloadId={workloadIdFromEvent(selectedEvent)}
+                  onCopy={copyWorkloadId}
+                  className="font-mono"
+                  tooltipSide="bottom"
+                />
                 <span className="text-muted-foreground">Target</span>
                 <span className="font-mono">{targetDisplay(selectedEvent)}</span>
                 {selectedEvent.payload?.message != null && (
@@ -533,7 +623,7 @@ export default function Events() {
               </div>
               <div>
                 <p className="text-xs font-medium text-muted-foreground mb-1">Details</p>
-                <pre className="text-xs bg-muted/50 rounded-md p-3 overflow-auto max-h-[50vh] font-mono whitespace-pre-wrap break-words border border-border">
+                <pre className="text-xs bg-surface-subtle rounded-md p-3 overflow-auto max-h-[50vh] font-mono whitespace-pre-wrap break-words border border-border">
                   {selectedEvent.payload?.details != null && Object.keys(selectedEvent.payload.details).length > 0
                     ? JSON.stringify(selectedEvent.payload.details, null, 2)
                     : "No details"}
@@ -543,6 +633,6 @@ export default function Events() {
           )}
         </DialogContent>
       </Dialog>
-    </div>
+    </PageShell>
   );
 }

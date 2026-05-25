@@ -35,6 +35,9 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { useConfig } from "@/contexts/ConfigContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { ClusterSelector } from "@/components/ClusterSelector";
+import { ThemeToggle } from "@/components/layout/ThemeToggle";
+import { UpgradeNotification } from "@/components/layout/UpgradeNotification";
+import { formatVersionForDisplay } from "@/lib/github-release";
 import { publicUrl } from "@/lib/public-asset";
 
 
@@ -42,7 +45,7 @@ const navItems = [
   { title: "Overview", url: "/", icon: LayoutDashboard },
   { title: "Workloads", url: "/workloads", icon: Layers, dataTour: "nav-workloads" },
   { title: "Events", url: "/events", icon: Activity, dataTour: "nav-events" },
-  { title: "Policies & Configuration", url: "/policies", icon: Settings },
+  { title: "Settings", url: "/policies", icon: Settings },
 ];
 
 const helpLinks = [
@@ -78,12 +81,12 @@ export function AppSidebar() {
   const { username, logout, authEnabled } = useAuth();
   const { startTour, isMobile } = useOnboardingTour();
   return (
-    <Sidebar collapsible="icon" className="border-r border-sidebar-border">
-      <SidebarHeader className="border-b border-sidebar-border p-4">
+    <Sidebar collapsible="icon" className="border-r border-sidebar-border/80">
+      <SidebarHeader className="border-b border-sidebar-border/80 p-3.5">
         <div className={cn("flex items-center gap-3", isCollapsed && "justify-center")}>
           <div className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-lg">
             <div
-              className="h-7 w-7 shrink-0 bg-white opacity-80"
+              className="h-7 w-7 shrink-0 bg-sidebar-primary opacity-95"
               style={{
                 maskImage: `url(${logoMaskUrl})`,
                 WebkitMaskImage: `url(${logoMaskUrl})`,
@@ -100,7 +103,7 @@ export function AppSidebar() {
               <div className="flex items-center gap-2">
                 <span className="font-semibold text-sidebar-accent-foreground truncate">CruiseKube</span>
               </div>
-              <span className="text-xs text-sidebar-foreground">K8s Optimizer</span>
+              <span className="text-xs text-sidebar-foreground/75">K8s Optimizer</span>
             </div>
           )}
         </div>
@@ -108,13 +111,13 @@ export function AppSidebar() {
       
       <SidebarContent className="">
         {!isCollapsed && (
-          <SidebarGroup className="border-b border-sidebar-border">
+          <SidebarGroup className="border-b border-sidebar-border/70">
             <SidebarGroupLabel>Cluster</SidebarGroupLabel>
             <SidebarGroupContent className="px-2 pb-3">
               <ClusterSelector
                 variant="stacked"
                 showLabel={false}
-                triggerClassName="w-full border-sidebar-border bg-sidebar-accent/40 text-sidebar-foreground"
+                triggerClassName="w-full border-sidebar-border/80 bg-sidebar-accent/45 text-sidebar-foreground shadow-sm hover:bg-sidebar-accent/70"
               />
             </SidebarGroupContent>
           </SidebarGroup>
@@ -130,12 +133,12 @@ export function AppSidebar() {
                       end={item.url === "/"}
                       data-tour={item.dataTour}
                       className={cn(
-                        "flex items-center gap-3 rounded-md px-3 py-2 text-sidebar-foreground transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+                        "relative flex items-center gap-3 rounded-lg px-3 py-2 text-sidebar-foreground transition-colors hover:bg-sidebar-accent/70 hover:text-sidebar-accent-foreground focus-visible:ring-2 focus-visible:ring-sidebar-ring",
                         isCollapsed && "justify-center"
                       )}
-                      activeClassName="bg-sidebar-accent text-primary"
+                      activeClassName="bg-sidebar-primary/10 text-sidebar-accent-foreground hover:bg-sidebar-primary/15 [&>svg]:text-sidebar-primary"
                     >
-                      <item.icon className="h-4 w-4 shrink-0" />
+                      <item.icon className="h-4 w-4 shrink-0 transition-colors" />
                       {!isCollapsed && <span>{item.title}</span>}
                     </NavLink>
                   </SidebarMenuButton>
@@ -146,7 +149,7 @@ export function AppSidebar() {
         </SidebarGroup>
       </SidebarContent>
 
-      <div className="mt-auto shrink-0 border-t border-sidebar-border p-2 space-y-3">
+      <div className="mt-auto shrink-0 space-y-3 border-t border-sidebar-border/80 bg-sidebar/95 p-2">
         {authEnabled && (
           <SidebarGroup className="p-0">
             <SidebarGroupLabel>Account</SidebarGroupLabel>
@@ -155,7 +158,7 @@ export function AppSidebar() {
                 {!isCollapsed && username ? (
                   <SidebarMenuItem>
                     <div
-                      className="cursor-default select-none truncate px-3 py-1.5 text-xs text-sidebar-foreground/80"
+                      className="cursor-default select-none truncate rounded-md bg-sidebar-accent/35 px-3 py-1.5 text-xs text-sidebar-foreground/80"
                       title={username}
                     >
                       {username}
@@ -192,7 +195,7 @@ export function AppSidebar() {
                     href={CRUISEKUBE_INSTALL_URL}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="flex justify-center rounded-md p-2 text-primary transition-colors hover:bg-sidebar-accent"
+                    className="flex justify-center rounded-lg border border-sidebar-primary/20 bg-sidebar-primary/10 p-2 text-sidebar-primary transition-colors hover:bg-sidebar-primary/15"
                     aria-label="Demo mode — Start saving with CruiseKube"
                   >
                     <CircleDollarSign className="h-4 w-4 shrink-0" />
@@ -209,7 +212,7 @@ export function AppSidebar() {
               <SidebarGroupContent className="px-1">
                 <Alert
                   variant="default"
-                  className="border-primary/50 bg-primary/15 py-2.5 pl-3 pr-3"
+                  className="border-sidebar-primary/25 bg-sidebar-primary/10 py-2.5 pl-3 pr-3 shadow-sm"
                 >
                   <AlertTitle className="mb-0 text-sm font-semibold tracking-tight text-sidebar-accent-foreground">
                     Demo mode
@@ -220,7 +223,7 @@ export function AppSidebar() {
                   <Button
                     asChild
                     size="sm"
-                    className="mt-2 h-7 w-full px-3 text-xs"
+                    className="mt-2 h-7 w-full px-3 text-xs shadow-none"
                   >
                     <a
                       href={CRUISEKUBE_INSTALL_URL}
@@ -250,7 +253,7 @@ export function AppSidebar() {
                       target="_blank"
                       rel="noopener noreferrer"
                       className={cn(
-                        "flex items-center gap-3 rounded-md px-3 py-2 text-sidebar-foreground transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+                        "flex items-center gap-3 rounded-lg px-3 py-2 text-sidebar-foreground transition-colors hover:bg-sidebar-accent/70 hover:text-sidebar-accent-foreground focus-visible:ring-2 focus-visible:ring-sidebar-ring",
                         isCollapsed && "justify-center"
                       )}
                     >
@@ -284,7 +287,9 @@ export function AppSidebar() {
           </SidebarGroup>
         )}
 
-        <div className="space-y-2 border-t border-sidebar-border pt-3">
+        <div className="min-w-0 space-y-2 border-t border-sidebar-border/70 pt-3">
+          <UpgradeNotification />
+          <ThemeToggle />
           {config?.version ? (
             isCollapsed ? (
               <Tooltip>
@@ -296,13 +301,16 @@ export function AppSidebar() {
                     <Tag className="h-4 w-4" />
                   </div>
                 </TooltipTrigger>
-                <TooltipContent side="right" className="font-mono text-xs max-w-xs break-all">
+                <TooltipContent side="right" className="max-w-xs break-all font-mono text-xs">
                   {config.version}
                 </TooltipContent>
               </Tooltip>
             ) : (
-              <p className="text-center text-xs font-mono text-sidebar-foreground/50 px-1 truncate" title={config.version}>
-                {config.version}
+              <p
+                className="min-w-0 truncate px-1 text-center font-mono text-xs text-sidebar-foreground/50"
+                title={config.version}
+              >
+                {formatVersionForDisplay(config.version)}
               </p>
             )
           ) : null}
