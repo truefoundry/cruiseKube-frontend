@@ -2,6 +2,10 @@ export const CRUISEKUBE_GITHUB_REPO = "truefoundry/CruiseKube";
 export const CRUISEKUBE_LATEST_RELEASE_URL = `https://github.com/${CRUISEKUBE_GITHUB_REPO}/releases/latest`;
 
 const GITHUB_LATEST_RELEASE_API = `https://api.github.com/repos/${CRUISEKUBE_GITHUB_REPO}/releases/latest`;
+const SEMVER_PATTERN =
+  /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*))*))?(?:\+([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?$/;
+
+type VersionParts = [number, number, number];
 
 export function normalizeVersion(version: string): string {
   return version.trim().replace(/^v/i, "");
@@ -21,23 +25,20 @@ export function formatVersionForDisplay(version: string, maxLength = 14): string
   return `${trimmed.slice(0, maxLength)}…`;
 }
 
-function parseVersionParts(version: string): number[] {
-  return normalizeVersion(version)
-    .split(/[.+_-]/)
-    .map((part) => {
-      const match = part.match(/^\d+/);
-      return match ? Number.parseInt(match[0], 10) : 0;
-    });
+function parseVersionParts(version: string): VersionParts | null {
+  const normalized = normalizeVersion(version);
+  const match = normalized.match(SEMVER_PATTERN);
+
+  if (!match) {
+    return null;
+  }
+
+  return [Number.parseInt(match[1], 10), Number.parseInt(match[2], 10), Number.parseInt(match[3], 10)];
 }
 
-/** Returns negative if `a` is older than `b`, positive if newer, 0 if equal. */
-export function compareVersions(a: string, b: string): number {
-  const partsA = parseVersionParts(a);
-  const partsB = parseVersionParts(b);
-  const length = Math.max(partsA.length, partsB.length);
-
-  for (let index = 0; index < length; index += 1) {
-    const diff = (partsA[index] ?? 0) - (partsB[index] ?? 0);
+function compareVersionParts(partsA: VersionParts, partsB: VersionParts): number {
+  for (let index = 0; index < partsA.length; index += 1) {
+    const diff = partsA[index] - partsB[index];
     if (diff !== 0) {
       return diff;
     }
@@ -46,12 +47,27 @@ export function compareVersions(a: string, b: string): number {
   return 0;
 }
 
+/** Returns negative if `a` is older than `b`, positive if newer, 0 if equal. */
+export function compareVersions(a: string, b: string): number {
+  const partsA = parseVersionParts(a);
+  const partsB = parseVersionParts(b);
+
+  if (!partsA || !partsB) {
+    return 0;
+  }
+
+  return compareVersionParts(partsA, partsB);
+}
+
 export function isUpgradeAvailable(currentVersion: string, latestVersion: string): boolean {
-  if (!normalizeVersion(currentVersion) || !normalizeVersion(latestVersion)) {
+  const currentParts = parseVersionParts(currentVersion);
+  const latestParts = parseVersionParts(latestVersion);
+
+  if (!currentParts || !latestParts) {
     return false;
   }
 
-  return compareVersions(currentVersion, latestVersion) < 0;
+  return compareVersionParts(currentParts, latestParts) < 0;
 }
 
 export interface GitHubLatestRelease {
