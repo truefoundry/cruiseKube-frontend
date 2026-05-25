@@ -1055,29 +1055,26 @@ export default function Workloads() {
       )}
 
       <section aria-labelledby="workloads-heading" className="min-w-0 space-y-4">
-        <Panel variant="subtle" padding="md" className="space-y-4">
-          <SectionHeader
-            title="Filters"
-            action={
-              activeFilterCount > 0 ? (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-8 text-xs"
-                  onClick={() => {
-                    setSearch("");
-                    setNamespaceFilter("all");
-                    setModeFilter("all");
-                    setCriticalFilter("all");
-                    setStatusFilter("all");
-                    setTypeFilter("all");
-                  }}
-                >
-                  Clear {activeFilterCount} filter{activeFilterCount === 1 ? "" : "s"}
-                </Button>
-              ) : null
-            }
-          />
+        <Panel variant="subtle" padding="md">
+          {activeFilterCount > 0 ? (
+            <div className="mb-3 flex justify-end">
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-8 text-xs"
+                onClick={() => {
+                  setSearch("");
+                  setNamespaceFilter("all");
+                  setModeFilter("all");
+                  setCriticalFilter("all");
+                  setStatusFilter("all");
+                  setTypeFilter("all");
+                }}
+              >
+                Clear {activeFilterCount} filter{activeFilterCount === 1 ? "" : "s"}
+              </Button>
+            </div>
+          ) : null}
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 lg:items-end">
             <label className="space-y-1.5">
               <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Search</span>

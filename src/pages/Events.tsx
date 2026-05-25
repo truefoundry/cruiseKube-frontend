@@ -369,25 +369,22 @@ export default function Events() {
         description="Audit events performed by CruiseKube, including recommendations applied, evictions, PDB changes, and node taints."
       />
 
-      <Panel variant="subtle" padding="md" className="space-y-4">
-        <SectionHeader
-          title="Filters"
-          action={
-            activeFilterCount > 0 ? (
-              <Button
-                variant="ghost"
-                size="sm"
-                className="h-8 text-xs"
-                onClick={() => {
-                  setCategoryFilter("all");
-                  setWorkloadSearch("");
-                }}
-              >
-                Clear {activeFilterCount} filter{activeFilterCount === 1 ? "" : "s"}
-              </Button>
-            ) : null
-          }
-        />
+      <Panel variant="subtle" padding="md">
+        {activeFilterCount > 0 ? (
+          <div className="mb-3 flex justify-end">
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-8 text-xs"
+              onClick={() => {
+                setCategoryFilter("all");
+                setWorkloadSearch("");
+              }}
+            >
+              Clear {activeFilterCount} filter{activeFilterCount === 1 ? "" : "s"}
+            </Button>
+          </div>
+        ) : null}
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 lg:items-end">
           <label className="space-y-1.5">
             <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Last</span>
