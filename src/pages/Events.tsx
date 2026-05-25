@@ -332,6 +332,11 @@ export default function Events() {
   const categoryCount = (cat: string) =>
     cat === "all" ? allEvents.length : allEvents.filter((e) => e.category === cat).length;
 
+  const activeFilterCount = [
+    categoryFilter !== "all",
+    workloadSearch.trim().length > 0,
+  ].filter(Boolean).length;
+
   if (!selectedClusterId) {
     return (
       <PageShell className="animate-fade-in">
@@ -367,88 +372,102 @@ export default function Events() {
       <Panel variant="subtle" padding="md" className="space-y-4">
         <SectionHeader
           title="Filters"
-          description="Adjust the lookback window, narrow by event category, or inspect one workload by ID."
+          action={
+            activeFilterCount > 0 ? (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-8 text-xs"
+                onClick={() => {
+                  setCategoryFilter("all");
+                  setWorkloadSearch("");
+                }}
+              >
+                Clear {activeFilterCount} filter{activeFilterCount === 1 ? "" : "s"}
+              </Button>
+            ) : null
+          }
         />
-        <div className="grid gap-3 lg:grid-cols-[minmax(9rem,12rem)_minmax(16rem,20rem)_minmax(18rem,1fr)] lg:items-end">
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 lg:items-end">
           <label className="space-y-1.5">
             <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Last</span>
-          <Select
-            value={String(minutes)}
-            onValueChange={(v) => setMinutes(Number(v))}
-          >
-            <SelectTrigger className="h-9 w-full bg-surface">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {MINUTES_OPTIONS.map((m) => (
-                <SelectItem key={m} value={String(m)}>
-                  {timeRangeOptionLabel(m)}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+            <Select
+              value={String(minutes)}
+              onValueChange={(v) => setMinutes(Number(v))}
+            >
+              <SelectTrigger className="h-9 w-full bg-surface text-sm">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {MINUTES_OPTIONS.map((m) => (
+                  <SelectItem key={m} value={String(m)}>
+                    {timeRangeOptionLabel(m)}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </label>
           <label className="space-y-1.5">
             <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Category</span>
-          <Select value={categoryFilter} onValueChange={setCategoryFilter}>
-            <SelectTrigger className="h-9 w-full bg-surface">
-              <SelectValue>
-                {(() => {
-                  const { Icon, color } = categoryIcon(categoryFilter);
+            <Select value={categoryFilter} onValueChange={setCategoryFilter}>
+              <SelectTrigger className="h-9 w-full bg-surface text-sm">
+                <SelectValue>
+                  {(() => {
+                    const { Icon, color } = categoryIcon(categoryFilter);
+                    return (
+                      <span className="flex items-center gap-2">
+                        <Icon className={`h-3.5 w-3.5 shrink-0 ${color}`} />
+                        <span className="tabular-nums">{categoryCount(categoryFilter)}</span>
+                        <span className="text-muted-foreground">·</span>
+                        {categoryLabel(categoryFilter)}
+                      </span>
+                    );
+                  })()}
+                </SelectValue>
+              </SelectTrigger>
+              <SelectContent>
+                {CATEGORY_OPTIONS.map((cat) => {
+                  const { Icon, color } = categoryIcon(cat);
                   return (
-                    <span className="flex items-center gap-2">
-                      <Icon className={`h-3.5 w-3.5 shrink-0 ${color}`} />
-                      <span className="tabular-nums">{categoryCount(categoryFilter)}</span>
-                      <span className="text-muted-foreground">·</span>
-                      {categoryLabel(categoryFilter)}
-                    </span>
+                    <SelectItem key={cat} value={cat}>
+                      <span className="flex items-center gap-2">
+                        <Icon className={`h-3.5 w-3.5 shrink-0 ${color}`} />
+                        <span className="tabular-nums">{categoryCount(cat)}</span>
+                        <span className="text-muted-foreground">·</span>
+                        {categoryLabel(cat)}
+                      </span>
+                    </SelectItem>
                   );
-                })()}
-              </SelectValue>
-            </SelectTrigger>
-            <SelectContent>
-              {CATEGORY_OPTIONS.map((cat) => {
-                const { Icon, color } = categoryIcon(cat);
-                return (
-                  <SelectItem key={cat} value={cat}>
-                    <span className="flex items-center gap-2">
-                      <Icon className={`h-3.5 w-3.5 shrink-0 ${color}`} />
-                      <span className="tabular-nums">{categoryCount(cat)}</span>
-                      <span className="text-muted-foreground">·</span>
-                      {categoryLabel(cat)}
-                    </span>
-                  </SelectItem>
-                );
-              })}
-            </SelectContent>
-          </Select>
+                })}
+              </SelectContent>
+            </Select>
           </label>
-          <label className="space-y-1.5">
+          <label className="space-y-1.5 sm:col-span-2 lg:col-span-1">
             <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Workload ID</span>
-        <div className="relative flex min-w-0 items-center gap-2">
-          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
-          <Input
-            type="text"
-            placeholder={WORKLOAD_ID_PLACEHOLDER}
-            value={workloadSearch}
-            onChange={(e) => setWorkloadSearch(e.target.value)}
-            className="pl-8 pr-8 h-9 text-sm flex-1 min-w-0"
-          />
-          {workloadSearch && (
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              className="absolute right-0 top-0 bottom-0 h-9 w-9 shrink-0"
-              onClick={() => setWorkloadSearch("")}
-              aria-label="Clear workload filter"
-            >
-              <X className="h-3.5 w-3.5" />
-            </Button>
-          )}
-        </div>
+            <div className="relative flex min-w-0 items-center">
+              <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                type="text"
+                placeholder={WORKLOAD_ID_PLACEHOLDER}
+                value={workloadSearch}
+                onChange={(e) => setWorkloadSearch(e.target.value)}
+                className="h-9 min-w-0 flex-1 bg-surface pl-8 pr-8 text-sm"
+              />
+              {workloadSearch ? (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="absolute right-0 top-0 bottom-0 h-9 w-9 shrink-0"
+                  onClick={() => setWorkloadSearch("")}
+                  aria-label="Clear workload filter"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </Button>
+              ) : null}
+            </div>
           </label>
-      </div>
+        </div>
       </Panel>
 
       <Panel padding="none" className="overflow-hidden">

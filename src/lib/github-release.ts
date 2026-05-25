@@ -21,6 +21,21 @@ export function formatVersionForDisplay(version: string, maxLength = 14): string
   return `${trimmed.slice(0, maxLength)}…`;
 }
 
+function isComparableReleaseVersion(version: string): boolean {
+  const normalized = normalizeVersion(version);
+  if (!normalized) {
+    return false;
+  }
+
+  // Short/full git commit SHAs are not semver releases.
+  if (/^[0-9a-f]+$/i.test(normalized) && normalized.length >= 7) {
+    return false;
+  }
+
+  // Require numeric semver core (e.g. 1, 1.2, 1.2.3), optionally with suffixes.
+  return /^\d+(\.\d+){0,2}(?:[.+_-].*)?$/.test(normalized);
+}
+
 function parseVersionParts(version: string): number[] {
   return normalizeVersion(version)
     .split(/[.+_-]/)
@@ -47,7 +62,10 @@ export function compareVersions(a: string, b: string): number {
 }
 
 export function isUpgradeAvailable(currentVersion: string, latestVersion: string): boolean {
-  if (!normalizeVersion(currentVersion) || !normalizeVersion(latestVersion)) {
+  if (
+    !isComparableReleaseVersion(currentVersion) ||
+    !isComparableReleaseVersion(latestVersion)
+  ) {
     return false;
   }
 
