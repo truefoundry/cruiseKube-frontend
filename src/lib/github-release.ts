@@ -2,6 +2,15 @@ export const CRUISEKUBE_GITHUB_REPO = "truefoundry/CruiseKube";
 export const CRUISEKUBE_LATEST_RELEASE_URL = `https://github.com/${CRUISEKUBE_GITHUB_REPO}/releases/latest`;
 
 const GITHUB_LATEST_RELEASE_API = `https://api.github.com/repos/${CRUISEKUBE_GITHUB_REPO}/releases/latest`;
+const SEMVER_PATTERN =
+  /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*))*))?(?:\+([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?$/;
+
+type ParsedVersion = {
+  major: number;
+  minor: number;
+  patch: number;
+  prerelease: string[];
+};
 
 export function normalizeVersion(version: string): string {
   return version.trim().replace(/^v/i, "");
@@ -21,38 +30,83 @@ export function formatVersionForDisplay(version: string, maxLength = 14): string
   return `${trimmed.slice(0, maxLength)}…`;
 }
 
-function isComparableReleaseVersion(version: string): boolean {
-  const normalized = normalizeVersion(version);
-  if (!normalized) {
-    return false;
+function parseVersion(version: string): ParsedVersion | null {
+  const match = normalizeVersion(version).match(SEMVER_PATTERN);
+
+  if (!match) {
+    return null;
   }
 
-  // Short/full git commit SHAs are not semver releases.
-  if (/^[0-9a-f]+$/i.test(normalized) && normalized.length >= 7) {
-    return false;
+  const [, major, minor, patch, prerelease] = match;
+
+  return {
+    major: Number.parseInt(major, 10),
+    minor: Number.parseInt(minor, 10),
+    patch: Number.parseInt(patch, 10),
+    prerelease: prerelease ? prerelease.split(".") : [],
+  };
+}
+
+function comparePrereleaseIdentifiers(a: string, b: string): number {
+  const aIsNumeric = /^\d+$/.test(a);
+  const bIsNumeric = /^\d+$/.test(b);
+
+  if (aIsNumeric && bIsNumeric) {
+    return Number.parseInt(a, 10) - Number.parseInt(b, 10);
   }
 
-  // Require numeric semver core (e.g. 1, 1.2, 1.2.3), optionally with suffixes.
-  return /^\d+(\.\d+){0,2}(?:[.+_-].*)?$/.test(normalized);
+  if (aIsNumeric) {
+    return -1;
+  }
+
+  if (bIsNumeric) {
+    return 1;
+  }
+
+  if (a < b) {
+    return -1;
+  }
+
+  if (a > b) {
+    return 1;
+  }
+
+  return 0;
 }
 
-function parseVersionParts(version: string): number[] {
-  return normalizeVersion(version)
-    .split(/[.+_-]/)
-    .map((part) => {
-      const match = part.match(/^\d+/);
-      return match ? Number.parseInt(match[0], 10) : 0;
-    });
-}
+function compareParsedVersions(a: ParsedVersion, b: ParsedVersion): number {
+  const coreDiff = a.major - b.major || a.minor - b.minor || a.patch - b.patch;
 
-/** Returns negative if `a` is older than `b`, positive if newer, 0 if equal. */
-export function compareVersions(a: string, b: string): number {
-  const partsA = parseVersionParts(a);
-  const partsB = parseVersionParts(b);
-  const length = Math.max(partsA.length, partsB.length);
+  if (coreDiff !== 0) {
+    return coreDiff;
+  }
 
+  if (a.prerelease.length === 0 && b.prerelease.length === 0) {
+    return 0;
+  }
+
+  if (a.prerelease.length === 0) {
+    return 1;
+  }
+
+  if (b.prerelease.length === 0) {
+    return -1;
+  }
+
+  const length = Math.max(a.prerelease.length, b.prerelease.length);
   for (let index = 0; index < length; index += 1) {
-    const diff = (partsA[index] ?? 0) - (partsB[index] ?? 0);
+    const partA = a.prerelease[index];
+    const partB = b.prerelease[index];
+
+    if (partA === undefined) {
+      return -1;
+    }
+
+    if (partB === undefined) {
+      return 1;
+    }
+
+    const diff = comparePrereleaseIdentifiers(partA, partB);
     if (diff !== 0) {
       return diff;
     }
@@ -61,14 +115,19 @@ export function compareVersions(a: string, b: string): number {
   return 0;
 }
 
-export function isUpgradeAvailable(currentVersion: string, latestVersion: string): boolean {
-  if (
-    !isComparableReleaseVersion(currentVersion) ||
-    !isComparableReleaseVersion(latestVersion)
-  ) {
-    return false;
+/** Returns negative if `a` is older than `b`, positive if newer, 0 if equal or not comparable. */
+export function compareVersions(a: string, b: string): number {
+  const versionA = parseVersion(a);
+  const versionB = parseVersion(b);
+
+  if (!versionA || !versionB) {
+    return 0;
   }
 
+  return compareParsedVersions(versionA, versionB);
+}
+
+export function isUpgradeAvailable(currentVersion: string, latestVersion: string): boolean {
   return compareVersions(currentVersion, latestVersion) < 0;
 }
 

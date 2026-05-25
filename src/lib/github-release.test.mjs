@@ -25,9 +25,27 @@ describe("github release version helpers", () => {
     assert.equal(isUpgradeAvailable("1.2.4", "1.2.3"), false);
   });
 
-  it("accepts valid SemVer prerelease and build metadata", () => {
-    assert.equal(isUpgradeAvailable("1.2.3-alpha.1+build.5", "1.2.4"), true);
+  it("ignores build metadata for SemVer precedence", () => {
+    assert.equal(compareVersions("1.2.3", "1.2.3+build.5"), 0);
+    assert.equal(compareVersions("1.2.3+build.1", "1.2.3+build.5"), 0);
     assert.equal(isUpgradeAvailable("1.2.3", "1.2.3+build.5"), false);
+    assert.equal(isUpgradeAvailable("1.2.3+build.1", "1.2.3+build.5"), false);
+  });
+
+  it("orders prerelease versions below stable versions with the same core", () => {
+    assert.equal(compareVersions("1.2.3", "1.2.3-alpha.1"), 1);
+    assert.equal(compareVersions("1.2.3-alpha.1", "1.2.3"), -1);
+    assert.equal(isUpgradeAvailable("1.2.3", "1.2.3-alpha.1"), false);
+    assert.equal(isUpgradeAvailable("1.2.3-alpha.1", "1.2.3"), true);
+  });
+
+  it("orders prerelease identifiers by SemVer precedence", () => {
+    assert.equal(compareVersions("1.2.3-alpha.1", "1.2.3-alpha.2") < 0, true);
+    assert.equal(compareVersions("1.2.3-alpha.2", "1.2.3-alpha.10") < 0, true);
+    assert.equal(compareVersions("1.2.3-alpha.10", "1.2.3-beta.1") < 0, true);
+    assert.equal(compareVersions("1.2.3-beta", "1.2.3-beta.1") < 0, true);
+    assert.equal(compareVersions("1.2.3-A", "1.2.3-a") < 0, true);
+    assert.equal(compareVersions("1.0.0-RC.1", "1.0.0-rc.1") < 0, true);
   });
 
   it("ignores non-SemVer current versions", () => {
@@ -44,10 +62,9 @@ describe("github release version helpers", () => {
     assert.equal(isUpgradeAvailable("0.3.1", "1.2.3foo"), false);
   });
 
-  it("compares the fixed major, minor, and patch tuple", () => {
+  it("compares the major, minor, and patch core", () => {
     assert.equal(compareVersions("1.2.3", "1.2.4") < 0, true);
     assert.equal(compareVersions("1.3.0", "1.2.4") > 0, true);
-    assert.equal(compareVersions("2.0.0", "2.0.0+build.1"), 0);
     assert.equal(compareVersions("not-semver", "1.2.3"), 0);
   });
 });
