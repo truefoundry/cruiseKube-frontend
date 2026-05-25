@@ -117,7 +117,7 @@ export default function Policies() {
       <PageShell className="animate-fade-in">
         <PageHeader
           icon={<Settings2 className="h-5 w-5" />}
-          title="Policies & Configuration"
+          title="Settings"
           description="Configure CruiseKube behavior and workload settings."
         />
         <EmptyState
@@ -132,7 +132,7 @@ export default function Policies() {
     <PageShell className="animate-fade-in">
       <PageHeader
         icon={<Settings2 className="h-5 w-5" />}
-        title="Policies & Configuration"
+        title="Settings"
         description="Configure cost calculations, observability connections, and workload settings for the selected cluster."
       />
 

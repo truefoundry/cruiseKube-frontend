@@ -35,6 +35,9 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { useConfig } from "@/contexts/ConfigContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { ClusterSelector } from "@/components/ClusterSelector";
+import { ThemeToggle } from "@/components/layout/ThemeToggle";
+import { UpgradeNotification } from "@/components/layout/UpgradeNotification";
+import { formatVersionForDisplay } from "@/lib/github-release";
 import { publicUrl } from "@/lib/public-asset";
 
 
@@ -42,7 +45,7 @@ const navItems = [
   { title: "Overview", url: "/", icon: LayoutDashboard },
   { title: "Workloads", url: "/workloads", icon: Layers, dataTour: "nav-workloads" },
   { title: "Events", url: "/events", icon: Activity, dataTour: "nav-events" },
-  { title: "Policies & Configuration", url: "/policies", icon: Settings },
+  { title: "Settings", url: "/policies", icon: Settings },
 ];
 
 const helpLinks = [
@@ -284,7 +287,9 @@ export function AppSidebar() {
           </SidebarGroup>
         )}
 
-        <div className="space-y-2 border-t border-sidebar-border/70 pt-3">
+        <div className="min-w-0 space-y-2 border-t border-sidebar-border/70 pt-3">
+          <UpgradeNotification />
+          <ThemeToggle />
           {config?.version ? (
             isCollapsed ? (
               <Tooltip>
@@ -296,13 +301,16 @@ export function AppSidebar() {
                     <Tag className="h-4 w-4" />
                   </div>
                 </TooltipTrigger>
-                <TooltipContent side="right" className="font-mono text-xs max-w-xs break-all">
+                <TooltipContent side="right" className="max-w-xs break-all font-mono text-xs">
                   {config.version}
                 </TooltipContent>
               </Tooltip>
             ) : (
-              <p className="text-center text-xs font-mono text-sidebar-foreground/50 px-1 truncate" title={config.version}>
-                {config.version}
+              <p
+                className="min-w-0 truncate px-1 text-center font-mono text-xs text-sidebar-foreground/50"
+                title={config.version}
+              >
+                {formatVersionForDisplay(config.version)}
               </p>
             )
           ) : null}
