@@ -11,7 +11,7 @@ import { PreflightStatusPage } from "./PreflightStatusPage";
  *
  * - No cluster selected → render children (Overview shows its own empty state).
  * - Request in flight → "Running setup checks…" loading state.
- * - 400 / 404 / network / 5xx → error state with a Retry button (never falls
+ * - 404 / network / 5xx → error state with a Retry button (never falls
  *   through to Overview).
  * - 200 + `healthy: false` → the setup/status page.
  * - 200 + `healthy: true` → render children (Overview).

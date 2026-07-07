@@ -469,6 +469,7 @@ export async function demoGetPreflight(clusterID: string): Promise<PreflightResp
     prometheus_connectivity: {
       connected: true,
       healthy: true,
+      target: "https://prometheus.demo.local",
       url: "https://prometheus.demo.local",
       host: "prometheus.demo.local",
       port: "9090",
@@ -479,13 +480,16 @@ export async function demoGetPreflight(clusterID: string): Promise<PreflightResp
     },
     versions: {
       passed: true,
-      min_kube_version: "1.24.0",
+      cruisekube_version: "0.0.0-demo",
+      min_kube_version: "1.34.0",
+      min_kubernetes_version: "1.34.0",
       min_prometheus_version: "2.30.0",
+      kubernetes: { version: "v1.34.2", meets_minimum: true, error: "" },
       nodes: [
         {
           name: "demo-node-1",
-          kubelet_version: "v1.28.2",
-          kube_proxy_version: "v1.28.2",
+          kubelet_version: "v1.34.2",
+          kube_proxy_version: "v1.34.2",
           os_image: "Ubuntu 22.04",
           container_runtime: "containerd://1.7.0",
           kernel_version: "5.15.0",

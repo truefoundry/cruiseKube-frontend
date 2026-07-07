@@ -5,7 +5,7 @@ import { apiClient, type PreflightResponse } from "@/lib/api";
  * Runs the backend preflight/health checks for a cluster.
  *
  * A `200` with `healthy: false` is a normal, resolved result (setup incomplete)
- * — NOT an error. Only `400`/`404`/network/`5xx` surface as `isError` (the api
+ * — NOT an error. Only `404`/network/`5xx` surface as `isError` (the api
  * client throws for those). The query key includes `clusterID`, so switching
  * clusters re-runs the checks automatically; call `refetch()` for manual retry.
  */

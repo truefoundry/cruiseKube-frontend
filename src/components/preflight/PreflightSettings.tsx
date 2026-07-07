@@ -1,7 +1,6 @@
 import {
   AlertTriangle,
   CheckCircle,
-  Download,
   Loader2,
   RefreshCw,
   ShieldCheck,
@@ -14,7 +13,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { SectionHeader } from "@/components/layout/SectionHeader";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/state";
 import { PreflightReportBody } from "@/components/preflight/PreflightStatusPage";
-import { downloadPreflightReport } from "@/lib/preflight-report";
+import { DownloadReportButton } from "@/components/preflight/DownloadReportButton";
 
 /**
  * Settings tab that lets the user re-run the backend preflight checks on demand
@@ -76,15 +75,15 @@ export function PreflightSettings() {
           )}
           {isFetching ? "Running…" : "Run checks"}
         </Button>
-        <Button
-          variant="outline"
-          onClick={() => data && downloadPreflightReport(data)}
-          disabled={!data}
-          className="gap-2"
-        >
-          <Download className="h-4 w-4" />
-          Download report
-        </Button>
+        {data ? <DownloadReportButton data={data} /> : null}
+        {data?.versions?.cruisekube_version ? (
+          <span className="text-xs text-muted-foreground">
+            CruiseKube{" "}
+            <code className="font-mono text-foreground">
+              {data.versions.cruisekube_version}
+            </code>
+          </span>
+        ) : null}
         {generatedLabel ? (
           <span className="text-xs text-muted-foreground">
             Last run {generatedLabel}

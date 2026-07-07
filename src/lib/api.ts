@@ -474,9 +474,16 @@ export interface PreflightSummary {
 export interface PreflightPrometheusConnectivity {
   connected: boolean;
   healthy: boolean;
-  /** May be absent; never contains a token. */
+  /**
+   * The endpoint we tried to reach (== `url` when known). Always present
+   * ("" if the URL couldn't be resolved); never contains a token.
+   */
+  target?: string;
+  /** Parsed URL. Always present ("" if unresolved); never contains a token. */
   url?: string;
+  /** Always present ("" if unknown). */
   host?: string;
+  /** Always present ("" if unknown). */
   port?: string;
   /** "buildinfo" | "query-fallback" */
   probe?: string;
@@ -499,22 +506,33 @@ export interface PreflightNode {
   error?: string;
 }
 
-export interface PreflightPrometheusVersion {
+/** Version check for a single component (Kubernetes server or Prometheus). */
+export interface PreflightVersionCheck {
   version?: string;
   meets_minimum: boolean;
   error?: string;
 }
 
+/** @deprecated Use {@link PreflightVersionCheck}. */
+export type PreflightPrometheusVersion = PreflightVersionCheck;
+
 export interface PreflightVersions {
   passed: boolean;
+  /** CruiseKube's own build version (informational; does NOT affect `healthy`). */
+  cruisekube_version?: string;
+  /** Minimum per-node kubelet version. */
   min_kube_version: string;
+  /** Minimum Kubernetes server (control-plane) version. */
+  min_kubernetes_version: string;
   min_prometheus_version: string;
+  /** Cluster Kubernetes server (control-plane) version check. */
+  kubernetes: PreflightVersionCheck;
   nodes: PreflightNode[];
   node_count: number;
   nodes_below_minimum: number;
   /** Present only if the node list couldn't be fetched at all. */
   node_error?: string;
-  prometheus: PreflightPrometheusVersion;
+  prometheus: PreflightVersionCheck;
 }
 
 export interface PreflightMetricCheck {
@@ -522,13 +540,20 @@ export interface PreflightMetricCheck {
   required: boolean;
   present: boolean;
   series: number;
+  /**
+   * Distinct label names present on this metric's series (with `__name__`
+   * stripped). Always an array (never null): populated for present metrics,
+   * `[]` for absent ones.
+   */
+  labels: string[];
   error?: string;
 }
 
 /** Group names: kube-state-metrics | cadvisor-kubelet | node-exporter | psi | karpenter */
 export interface PreflightMetricGroup {
   name: string;
-  job_matcher: string;
+  /** PromQL job matcher; may be absent on some groups (e.g. karpenter). */
+  job_matcher?: string;
   required: boolean;
   /** Group present iff all its required checks are present. */
   present: boolean;
@@ -554,16 +579,6 @@ export interface PreflightResponse {
   prometheus_connectivity: PreflightPrometheusConnectivity;
   versions: PreflightVersions;
   metrics: PreflightMetrics;
-}
-
-/** Optional overrides for preflight thresholds. Omit to use backend defaults. */
-export interface PreflightOptions {
-  /** default v1.24.0 */
-  minKubeVersion?: string;
-  /** default 2.30.0 */
-  minPrometheusVersion?: string;
-  /** default 15m — a Go duration string. */
-  metricLookback?: string;
 }
 
 class ApiClient {
@@ -748,22 +763,17 @@ class ApiClient {
    * Runs backend preflight/health checks for a cluster.
    * GET /clusters/:clusterID/preflight
    *
-   * Returns 200 with `healthy: false` when setup is incomplete — that is NOT an
-   * error and is returned normally. Only 400/404/network/5xx reject (thrown by
-   * `request`). Query params are omitted unless overrides are provided so the
-   * backend applies its defaults.
+   * Sends NO query params — version and metric-lookback thresholds are defined
+   * and enforced entirely by the backend. Returns 200 with `healthy: false`
+   * when setup is incomplete — that is NOT an error and is returned normally.
+   * Only 404/network/5xx reject (thrown by `request`).
    */
-  async getPreflight(clusterID: string, options?: PreflightOptions): Promise<PreflightResponse> {
+  async getPreflight(clusterID: string): Promise<PreflightResponse> {
     if (isDemoMode) {
       return demoStore.demoGetPreflight(clusterID);
     }
-    const params = new URLSearchParams();
-    if (options?.minKubeVersion) params.set('minKubeVersion', options.minKubeVersion);
-    if (options?.minPrometheusVersion) params.set('minPrometheusVersion', options.minPrometheusVersion);
-    if (options?.metricLookback) params.set('metricLookback', options.metricLookback);
-    const qs = params.toString();
     return this.request<PreflightResponse>(
-      `/clusters/${encodeURIComponent(clusterID)}/preflight${qs ? `?${qs}` : ''}`
+      `/clusters/${encodeURIComponent(clusterID)}/preflight`
     );
   }
 
