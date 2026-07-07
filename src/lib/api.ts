@@ -454,6 +454,118 @@ export interface AuditEventsResponse {
   events: AuditEvent[];
 }
 
+/** Which preflight step a failure belongs to. */
+export type PreflightStep = 'prometheus_connectivity' | 'versions' | 'metrics';
+
+/** One flattened, human-readable problem from the preflight check. */
+export interface PreflightFailure {
+  step: PreflightStep;
+  /** The specific node name / metric name / `prometheus`. */
+  item: string;
+  message: string;
+}
+
+export interface PreflightSummary {
+  total_checks: number;
+  passed: number;
+  failed: number;
+}
+
+export interface PreflightPrometheusConnectivity {
+  connected: boolean;
+  healthy: boolean;
+  /** May be absent; never contains a token. */
+  url?: string;
+  host?: string;
+  port?: string;
+  /** "buildinfo" | "query-fallback" */
+  probe?: string;
+  /** Present when reachable via buildinfo. */
+  version?: string;
+  revision?: string;
+  /** Populated when connected=false. */
+  error?: string;
+}
+
+export interface PreflightNode {
+  name: string;
+  kubelet_version: string;
+  kube_proxy_version: string;
+  os_image: string;
+  container_runtime: string;
+  kernel_version: string;
+  architecture: string;
+  meets_minimum: boolean;
+  error?: string;
+}
+
+export interface PreflightPrometheusVersion {
+  version?: string;
+  meets_minimum: boolean;
+  error?: string;
+}
+
+export interface PreflightVersions {
+  passed: boolean;
+  min_kube_version: string;
+  min_prometheus_version: string;
+  nodes: PreflightNode[];
+  node_count: number;
+  nodes_below_minimum: number;
+  /** Present only if the node list couldn't be fetched at all. */
+  node_error?: string;
+  prometheus: PreflightPrometheusVersion;
+}
+
+export interface PreflightMetricCheck {
+  metric: string;
+  required: boolean;
+  present: boolean;
+  series: number;
+  error?: string;
+}
+
+/** Group names: kube-state-metrics | cadvisor-kubelet | node-exporter | psi | karpenter */
+export interface PreflightMetricGroup {
+  name: string;
+  job_matcher: string;
+  required: boolean;
+  /** Group present iff all its required checks are present. */
+  present: boolean;
+  checks: PreflightMetricCheck[];
+}
+
+export interface PreflightMetrics {
+  passed: boolean;
+  lookback: string;
+  groups: PreflightMetricGroup[];
+}
+
+/** Response from GET /clusters/:clusterID/preflight. Returned with 200 even when setup is incomplete. */
+export interface PreflightResponse {
+  cluster_id: string;
+  /** THE GATE. true => render Overview. false => render Status page. */
+  healthy: boolean;
+  /** RFC3339 UTC. */
+  generated_at: string;
+  summary: PreflightSummary;
+  /** Flat list of everything wrong — the primary checklist. */
+  failures: PreflightFailure[];
+  prometheus_connectivity: PreflightPrometheusConnectivity;
+  versions: PreflightVersions;
+  metrics: PreflightMetrics;
+}
+
+/** Optional overrides for preflight thresholds. Omit to use backend defaults. */
+export interface PreflightOptions {
+  /** default v1.24.0 */
+  minKubeVersion?: string;
+  /** default 2.30.0 */
+  minPrometheusVersion?: string;
+  /** default 15m — a Go duration string. */
+  metricLookback?: string;
+}
+
 class ApiClient {
   private baseUrl: string;
 
@@ -629,6 +741,29 @@ class ApiClient {
     }
     return this.request<WorkloadDetailResponse>(
       `/clusters/${encodeURIComponent(clusterID)}/workloads/${encodeURIComponent(namespace)}/${encodeURIComponent(workloadName)}/detail`
+    );
+  }
+
+  /**
+   * Runs backend preflight/health checks for a cluster.
+   * GET /clusters/:clusterID/preflight
+   *
+   * Returns 200 with `healthy: false` when setup is incomplete — that is NOT an
+   * error and is returned normally. Only 400/404/network/5xx reject (thrown by
+   * `request`). Query params are omitted unless overrides are provided so the
+   * backend applies its defaults.
+   */
+  async getPreflight(clusterID: string, options?: PreflightOptions): Promise<PreflightResponse> {
+    if (isDemoMode) {
+      return demoStore.demoGetPreflight(clusterID);
+    }
+    const params = new URLSearchParams();
+    if (options?.minKubeVersion) params.set('minKubeVersion', options.minKubeVersion);
+    if (options?.minPrometheusVersion) params.set('minPrometheusVersion', options.minPrometheusVersion);
+    if (options?.metricLookback) params.set('metricLookback', options.metricLookback);
+    const qs = params.toString();
+    return this.request<PreflightResponse>(
+      `/clusters/${encodeURIComponent(clusterID)}/preflight${qs ? `?${qs}` : ''}`
     );
   }
 

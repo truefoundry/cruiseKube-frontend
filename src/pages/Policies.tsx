@@ -23,6 +23,7 @@ import { useCluster } from "@/contexts/ClusterContext";
 import { useConfig } from "@/contexts/ConfigContext";
 import { toast } from "@/hooks/use-toast";
 import { setResourcePricing } from "@/lib/pricing";
+import { PreflightSettings } from "@/components/preflight/PreflightSettings";
 
 const DEFAULT_CPU = 0.0145;
 const DEFAULT_MEMORY = 0.00724;
@@ -141,6 +142,7 @@ export default function Policies() {
           <TabsList className="w-full justify-start sm:w-auto">
             <TabsTrigger value="pricing">Resource Pricing</TabsTrigger>
             <TabsTrigger value="prometheus">Prometheus Config</TabsTrigger>
+            <TabsTrigger value="preflight">Setup Checks</TabsTrigger>
           </TabsList>
         </div>
 
@@ -319,6 +321,11 @@ export default function Policies() {
               </div>
             )}
           </Panel>
+        </TabsContent>
+
+        {/* Setup Checks (preflight) Tab */}
+        <TabsContent value="preflight" className="space-y-6">
+          <PreflightSettings />
         </TabsContent>
       </Tabs>
     </PageShell>
