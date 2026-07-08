@@ -47,12 +47,6 @@ const STEP_META: Record<PreflightStep, { label: string; icon: LucideIcon }> = {
   metrics: { label: "Metrics", icon: BarChart3 },
 };
 
-const STEP_ORDER: PreflightStep[] = [
-  "prometheus_connectivity",
-  "versions",
-  "metrics",
-];
-
 /** Stable group identifiers → friendly labels. Unknown names fall through as-is. */
 const METRIC_GROUP_LABELS: Record<string, string> = {
   "kube-state-metrics": "Kube State Metrics",
@@ -101,36 +95,12 @@ function MetricCheckIcon({ present, required }: { present: boolean; required: bo
   return <MinusCircle className="h-4 w-4 shrink-0 text-muted-foreground" aria-label="not present" />;
 }
 
-function FailureRow({
-  item,
-  message,
-  optional = false,
-}: {
-  item: string;
-  message: string;
-  optional?: boolean;
-}) {
+function FailureRow({ item, message }: { item: string; message: string }) {
   return (
-    <li
-      className={cn(
-        "flex items-start gap-3 rounded-md border px-3 py-2.5",
-        optional ? "border-border bg-muted/30" : "border-destructive/20 bg-destructive/5"
-      )}
-    >
-      {optional ? (
-        <MinusCircle className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
-      ) : (
-        <XCircle className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
-      )}
+    <li className="flex items-start gap-3 rounded-md border border-destructive/20 bg-destructive/5 px-3 py-2.5">
+      <XCircle className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
       <div className="min-w-0 space-y-0.5">
-        <div className="flex items-center gap-2">
-          <p className="font-mono text-xs font-semibold text-foreground">{item}</p>
-          {optional ? (
-            <Badge variant="outline" className="text-[10px] font-normal text-muted-foreground">
-              optional · non-blocking
-            </Badge>
-          ) : null}
-        </div>
+        <p className="font-mono text-xs font-semibold text-foreground">{item}</p>
         <p className="break-words text-sm text-muted-foreground">{message}</p>
       </div>
     </li>
@@ -139,39 +109,24 @@ function FailureRow({
 
 function FailureSection({
   step,
-  blockingCount,
-  optionalCount,
+  count,
   children,
 }: {
   step: PreflightStep;
-  blockingCount: number;
-  optionalCount: number;
+  count: number;
   children: ReactNode;
 }) {
   const { label, icon: Icon } = STEP_META[step];
-  const blocking = blockingCount > 0;
   return (
     <div className="space-y-3">
       <div className="flex items-center gap-2">
-        <div
-          className={cn(
-            "rounded-lg p-1.5",
-            blocking ? "bg-destructive/10 text-destructive" : "bg-muted text-muted-foreground"
-          )}
-        >
+        <div className="rounded-lg bg-destructive/10 p-1.5 text-destructive">
           <Icon className="h-4 w-4" />
         </div>
         <h3 className="text-sm font-semibold text-foreground">{label}</h3>
-        {blocking ? (
-          <Badge variant="destructive" className="ml-1">
-            {blockingCount} {blockingCount === 1 ? "issue" : "issues"}
-          </Badge>
-        ) : null}
-        {optionalCount > 0 ? (
-          <Badge variant="outline" className="text-muted-foreground">
-            {optionalCount} optional
-          </Badge>
-        ) : null}
+        <Badge variant="destructive" className="ml-1">
+          {count} {count === 1 ? "issue" : "issues"}
+        </Badge>
       </div>
       {children}
     </div>
@@ -221,11 +176,7 @@ function MetricGroupRow({ group }: { group: PreflightMetricGroup }) {
                     <span className="text-[10px] text-muted-foreground">(optional)</span>
                   )}
                   <span className="ml-auto shrink-0 font-mono text-muted-foreground">
-                    {check.present
-                      ? `${check.series} series`
-                      : check.required
-                        ? "no series"
-                        : "not present"}
+                    {check.present ? `${check.series} series` : "no series"}
                   </span>
                   {check.error ? (
                     <span
@@ -416,37 +367,37 @@ function VersionsPanel({ versions }: { versions: PreflightVersions }) {
  */
 export function PreflightReportBody({ data }: { data: PreflightResponse }) {
   const groups = data.metrics?.groups ?? [];
+  const summary = data.summary;
 
-  // Metric names the backend marks as optional (required:false). Their absence
-  // is non-blocking, but the backend still lists them in `failures[]` — so we
-  // flag them here rather than showing them as hard errors.
-  const optionalMetrics = new Set<string>();
-  for (const g of groups) {
-    for (const c of g.checks ?? []) {
-      if (!c.required) optionalMetrics.add(c.metric);
-    }
-  }
-  const isOptional = (f: PreflightResponse["failures"][number]) =>
-    f.step === "metrics" && optionalMetrics.has(f.item);
-
-  const failures = data.failures ?? [];
-  const failuresByStep = STEP_ORDER.map((step) => {
-    const items = failures.filter((f) => f.step === step);
-    return {
-      step,
-      items,
-      blockingCount: items.filter((f) => !isOptional(f)).length,
-      optionalCount: items.filter((f) => isOptional(f)).length,
-    };
-  }).filter((g) => g.items.length > 0);
+  // Version and metric failures are shown inline in their detail boxes; only
+  // connectivity failures get a dedicated call-out list.
+  const connFailures = (data.failures ?? []).filter(
+    (f) => f.step === "prometheus_connectivity"
+  );
 
   const showConnectivity = !!data.prometheus_connectivity;
   const showVersions = !!data.versions;
 
   return (
     <>
-      {/* Detail: versions, then Prometheus, then metrics — one wrapping row, equal height. */}
-      {(showVersions || showConnectivity || data.metrics) && (
+      {/* One-line pass summary at the very top. */}
+      {summary ? (
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
+          <span className="inline-flex items-center gap-1.5 font-medium text-foreground">
+            <CheckCircle2 className="h-4 w-4 text-success" />
+            {summary.passed} of {summary.total_checks} checks passed
+          </span>
+          {summary.failed > 0 ? (
+            <span className="inline-flex items-center gap-1.5 text-destructive">
+              <XCircle className="h-4 w-4" />
+              {summary.failed} failed
+            </span>
+          ) : null}
+        </div>
+      ) : null}
+
+      {/* Detail: versions + Prometheus — one wrapping row, equal height. */}
+      {(showVersions || showConnectivity) && (
         <section className="flex flex-wrap gap-3">
           {showVersions && (
             <div className="min-w-[320px] flex-1 [&>section]:h-full">
@@ -458,61 +409,42 @@ export function PreflightReportBody({ data }: { data: PreflightResponse }) {
               <ConnectivityPanel conn={data.prometheus_connectivity} />
             </div>
           )}
-          {data.metrics && (
-            <div className="min-w-[320px] flex-1 [&>section]:h-full">
-              <Panel padding="none" className="overflow-hidden">
-                <div className="flex items-center gap-2 border-b border-border/60 px-5 py-3">
-                  <BarChart3 className="h-4 w-4 text-muted-foreground" />
-                  <h3 className="text-sm font-semibold text-foreground">Metric groups</h3>
-                  <span className="text-xs text-muted-foreground">
-                    lookback {data.metrics.lookback}
-                  </span>
-                </div>
-                {groups.length === 0 ? (
-                  <p className="px-5 py-4 text-sm text-muted-foreground">
-                    No metric groups reported.
-                  </p>
-                ) : (
-                  <div className="p-2">
-                    {groups.map((group) => (
-                      <MetricGroupRow key={group.name} group={group} />
-                    ))}
-                  </div>
-                )}
-              </Panel>
-            </div>
-          )}
         </section>
       )}
 
-      {/* Issues to fix: flat failures grouped by step (bottom). */}
-      {failuresByStep.length > 0 ? (
-        <section className="space-y-6">
-          {failuresByStep.map(({ step, items, blockingCount, optionalCount }) => (
-            <FailureSection
-              key={step}
-              step={step}
-              blockingCount={blockingCount}
-              optionalCount={optionalCount}
-            >
-              <ul className="space-y-2">
-                {items.map((f, i) => (
-                  <FailureRow
-                    key={`${f.item}-${i}`}
-                    item={f.item}
-                    message={f.message}
-                    optional={isOptional(f)}
-                  />
-                ))}
-              </ul>
-            </FailureSection>
-          ))}
-        </section>
-      ) : !data.healthy ? (
-        <Panel className="text-sm text-muted-foreground">
-          No specific failures were reported, but the cluster is not yet healthy.
-          Try re-running the checks.
+      {/* Metrics: every group and every check with labels — its own row. */}
+      {data.metrics && (
+        <Panel padding="none" className="overflow-hidden">
+          <div className="flex items-center gap-2 border-b border-border/60 px-5 py-3">
+            <BarChart3 className="h-4 w-4 text-muted-foreground" />
+            <h3 className="text-sm font-semibold text-foreground">Metric groups</h3>
+            <span className="text-xs text-muted-foreground">
+              lookback {data.metrics.lookback}
+            </span>
+          </div>
+          {groups.length === 0 ? (
+            <p className="px-5 py-4 text-sm text-muted-foreground">
+              No metric groups reported.
+            </p>
+          ) : (
+            <div className="p-2">
+              {groups.map((group) => (
+                <MetricGroupRow key={group.name} group={group} />
+              ))}
+            </div>
+          )}
         </Panel>
+      )}
+
+      {/* Connectivity failures call-out (versions/metrics are shown in their boxes). */}
+      {connFailures.length > 0 ? (
+        <FailureSection step="prometheus_connectivity" count={connFailures.length}>
+          <ul className="space-y-2">
+            {connFailures.map((f, i) => (
+              <FailureRow key={`${f.item}-${i}`} item={f.item} message={f.message} />
+            ))}
+          </ul>
+        </FailureSection>
       ) : null}
     </>
   );
@@ -526,10 +458,10 @@ export interface PreflightStatusPageProps {
 
 /** The "setup incomplete" page shown when preflight returns `healthy: false`. */
 export function PreflightStatusPage({ data, onRetry, isRetrying }: PreflightStatusPageProps) {
-  const { summary } = data;
   const conn = data.prometheus_connectivity;
   const target = connectivityTarget(conn);
   const ckVersion = data.versions?.cruisekube_version;
+  const connHint = !conn?.healthy && target;
 
   return (
     <PageShell className="animate-fade-in gap-6">
@@ -540,15 +472,13 @@ export function PreflightStatusPage({ data, onRetry, isRetrying }: PreflightStat
           <>
             {ckVersion ? (
               <>
-                CruiseKube{" "}
-                <code className="font-mono text-foreground">{ckVersion}</code>
-                {" · "}
+                CruiseKube <code className="font-mono text-foreground">{ckVersion}</code>
               </>
             ) : null}
-            {summary.failed} of {summary.total_checks} checks failed
-            {!conn.healthy && target ? (
+            {ckVersion && connHint ? " · " : null}
+            {connHint ? (
               <>
-                {" · "}can&apos;t reach Prometheus at{" "}
+                can&apos;t reach Prometheus at{" "}
                 <code className="break-all font-mono text-foreground">{target}</code>
               </>
             ) : null}
