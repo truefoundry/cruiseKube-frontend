@@ -11,6 +11,7 @@ import { ProtectedLayout } from "@/components/layout/ProtectedLayout";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { ClusterProvider } from "@/contexts/ClusterContext";
 import { ConfigProvider } from "@/contexts/ConfigContext";
+import { PreflightGate } from "@/components/preflight/PreflightGate";
 import Overview from "./pages/Overview";
 import Workloads from "./pages/Workloads";
 import WorkloadDetail from "./pages/WorkloadDetail";
@@ -67,7 +68,14 @@ const App = () => (
                     </ClusterProvider>
                   }
                 >
-                  <Route path="/" element={<Overview />} />
+                  <Route
+                    path="/"
+                    element={
+                      <PreflightGate>
+                        <Overview />
+                      </PreflightGate>
+                    }
+                  />
                   <Route path="/workloads" element={<Workloads />} />
                   <Route path="/workloads/:namespace/:workloadName" element={<WorkloadDetail />} />
                   <Route path="/policies" element={<Policies />} />

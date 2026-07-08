@@ -8,6 +8,7 @@ import type {
   LoginResponse,
   Overrides,
   OverviewResponse,
+  PreflightResponse,
   PrometheusConfig,
   WorkloadDetail,
   WorkloadDetailResponse,
@@ -454,6 +455,59 @@ export async function demoGetConfig(clusterID: string): Promise<PrometheusConfig
     url: "https://prometheus.demo.local",
     connected: true,
     version: "0.0.0-demo",
+  });
+}
+
+export async function demoGetPreflight(clusterID: string): Promise<PreflightResponse> {
+  await delay();
+  return clone<PreflightResponse>({
+    cluster_id: clusterID,
+    healthy: true,
+    generated_at: new Date().toISOString(),
+    summary: { total_checks: 20, passed: 20, failed: 0 },
+    failures: [],
+    prometheus_connectivity: {
+      connected: true,
+      healthy: true,
+      target: "https://prometheus.demo.local",
+      url: "https://prometheus.demo.local",
+      host: "prometheus.demo.local",
+      port: "9090",
+      probe: "buildinfo",
+      version: "2.45.0",
+      revision: "demo",
+      error: "",
+    },
+    versions: {
+      passed: true,
+      cruisekube_version: "0.0.0-demo",
+      min_kube_version: "1.34.0",
+      min_kubernetes_version: "1.34.0",
+      min_prometheus_version: "2.30.0",
+      kubernetes: { version: "v1.34.2", meets_minimum: true, error: "" },
+      nodes: [
+        {
+          name: "demo-node-1",
+          kubelet_version: "v1.34.2",
+          kube_proxy_version: "v1.34.2",
+          os_image: "Ubuntu 22.04",
+          container_runtime: "containerd://1.7.0",
+          kernel_version: "5.15.0",
+          architecture: "amd64",
+          meets_minimum: true,
+          error: "",
+        },
+      ],
+      node_count: 1,
+      nodes_below_minimum: 0,
+      node_error: "",
+      prometheus: { version: "2.45.0", meets_minimum: true, error: "" },
+    },
+    metrics: {
+      passed: true,
+      lookback: "15m",
+      groups: [],
+    },
   });
 }
 

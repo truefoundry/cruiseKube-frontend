@@ -454,6 +454,133 @@ export interface AuditEventsResponse {
   events: AuditEvent[];
 }
 
+/** Which preflight step a failure belongs to. */
+export type PreflightStep = 'prometheus_connectivity' | 'versions' | 'metrics';
+
+/** One flattened, human-readable problem from the preflight check. */
+export interface PreflightFailure {
+  step: PreflightStep;
+  /** The specific node name / metric name / `prometheus`. */
+  item: string;
+  message: string;
+}
+
+export interface PreflightSummary {
+  total_checks: number;
+  passed: number;
+  failed: number;
+}
+
+export interface PreflightPrometheusConnectivity {
+  connected: boolean;
+  healthy: boolean;
+  /**
+   * The endpoint we tried to reach (== `url` when known). Always present
+   * ("" if the URL couldn't be resolved); never contains a token.
+   */
+  target?: string;
+  /** Parsed URL. Always present ("" if unresolved); never contains a token. */
+  url?: string;
+  /** Always present ("" if unknown). */
+  host?: string;
+  /** Always present ("" if unknown). */
+  port?: string;
+  /** "buildinfo" | "query-fallback" */
+  probe?: string;
+  /** Present when reachable via buildinfo. */
+  version?: string;
+  revision?: string;
+  /** Populated when connected=false. */
+  error?: string;
+}
+
+export interface PreflightNode {
+  name: string;
+  kubelet_version: string;
+  kube_proxy_version: string;
+  os_image: string;
+  container_runtime: string;
+  kernel_version: string;
+  architecture: string;
+  meets_minimum: boolean;
+  error?: string;
+}
+
+/** Version check for a single component (Kubernetes server or Prometheus). */
+export interface PreflightVersionCheck {
+  version?: string;
+  meets_minimum: boolean;
+  error?: string;
+}
+
+/** @deprecated Use {@link PreflightVersionCheck}. */
+export type PreflightPrometheusVersion = PreflightVersionCheck;
+
+export interface PreflightVersions {
+  passed: boolean;
+  /** CruiseKube's own build version (informational; does NOT affect `healthy`). */
+  cruisekube_version?: string;
+  /** Minimum per-node kubelet version. */
+  min_kube_version: string;
+  /** Minimum Kubernetes server (control-plane) version. */
+  min_kubernetes_version: string;
+  min_prometheus_version: string;
+  /** Cluster Kubernetes server (control-plane) version check. */
+  kubernetes: PreflightVersionCheck;
+  nodes: PreflightNode[];
+  node_count: number;
+  nodes_below_minimum: number;
+  /** Present only if the node list couldn't be fetched at all. */
+  node_error?: string;
+  prometheus: PreflightVersionCheck;
+}
+
+export interface PreflightMetricCheck {
+  metric: string;
+  required: boolean;
+  present: boolean;
+  series: number;
+  /**
+   * Distinct label names present on this metric's series (with `__name__`
+   * stripped). Always an array (never null): populated for present metrics,
+   * `[]` for absent ones.
+   */
+  labels: string[];
+  error?: string;
+}
+
+/** Group names: kube-state-metrics | cadvisor-kubelet | node-exporter | psi | karpenter */
+export interface PreflightMetricGroup {
+  name: string;
+  /** PromQL job matcher; may be absent on some groups (e.g. karpenter). */
+  job_matcher?: string;
+  required: boolean;
+  /** Group present iff all its required checks are present. */
+  present: boolean;
+  checks: PreflightMetricCheck[];
+}
+
+export interface PreflightMetrics {
+  passed: boolean;
+  lookback: string;
+  groups: PreflightMetricGroup[];
+}
+
+/** Response from GET /clusters/:clusterID/preflight. Returned with 200 even when setup is incomplete. */
+export interface PreflightResponse {
+  cluster_id: string;
+  /** THE GATE. true => render Overview. false => render Status page. */
+  healthy: boolean;
+  /** RFC3339 UTC. */
+  generated_at: string;
+  summary: PreflightSummary;
+  /** Flat list of everything wrong — the primary checklist. */
+  failures: PreflightFailure[];
+  prometheus_connectivity: PreflightPrometheusConnectivity;
+  versions: PreflightVersions;
+  metrics: PreflightMetrics;
+}
+
 class ApiClient {
   private baseUrl: string;
 
@@ -629,6 +756,24 @@ class ApiClient {
     }
     return this.request<WorkloadDetailResponse>(
       `/clusters/${encodeURIComponent(clusterID)}/workloads/${encodeURIComponent(namespace)}/${encodeURIComponent(workloadName)}/detail`
+    );
+  }
+
+  /**
+   * Runs backend preflight/health checks for a cluster.
+   * GET /clusters/:clusterID/preflight
+   *
+   * Sends NO query params — version and metric-lookback thresholds are defined
+   * and enforced entirely by the backend. Returns 200 with `healthy: false`
+   * when setup is incomplete — that is NOT an error and is returned normally.
+   * Only 404/network/5xx reject (thrown by `request`).
+   */
+  async getPreflight(clusterID: string): Promise<PreflightResponse> {
+    if (isDemoMode) {
+      return demoStore.demoGetPreflight(clusterID);
+    }
+    return this.request<PreflightResponse>(
+      `/clusters/${encodeURIComponent(clusterID)}/preflight`
     );
   }
 

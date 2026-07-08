@@ -1,12 +1,4 @@
-import {
-  Database,
-  CheckCircle,
-  XCircle,
-  Loader2,
-  DollarSign,
-  Settings2,
-  AlertCircle,
-} from "lucide-react";
+import { Loader2, DollarSign, Settings2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -18,18 +10,17 @@ import { PageShell } from "@/components/layout/PageShell";
 import { SectionHeader } from "@/components/layout/SectionHeader";
 import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { apiClient, type PrometheusConfig, type ClusterSettings } from "@/lib/api";
+import { apiClient, type ClusterSettings } from "@/lib/api";
 import { useCluster } from "@/contexts/ClusterContext";
-import { useConfig } from "@/contexts/ConfigContext";
 import { toast } from "@/hooks/use-toast";
 import { setResourcePricing } from "@/lib/pricing";
+import { PreflightSettings } from "@/components/preflight/PreflightSettings";
 
 const DEFAULT_CPU = 0.0145;
 const DEFAULT_MEMORY = 0.00724;
 
 export default function Policies() {
   const { selectedClusterId } = useCluster();
-  const { config: prometheusConfig, isLoading: prometheusConfigLoading, refetch: refetchPrometheusConfig } = useConfig();
   const queryClient = useQueryClient();
 
   const { data: settings, isLoading: settingsLoading, error: settingsError } = useQuery<ClusterSettings>({
@@ -87,31 +78,6 @@ export default function Policies() {
     updateSettingsMutation.mutate({ cpuPricePerCorePerHour: cpu, memoryPricePerGBPerHour: mem });
   };
 
-  const testConnection = async () => {
-    try {
-      await refetchPrometheusConfig();
-      const data = queryClient.getQueryData<PrometheusConfig>(['config', selectedClusterId]);
-      if (data?.connected) {
-        toast({
-          title: "Connection successful",
-          description: "Successfully connected to Prometheus",
-        });
-      } else {
-        toast({
-          title: "Connection failed",
-          description: data?.error || "Failed to connect to Prometheus",
-          variant: "destructive",
-        });
-      }
-    } catch (error) {
-      toast({
-        title: "Connection failed",
-        description: error instanceof Error ? error.message : "Failed to connect to Prometheus",
-        variant: "destructive",
-      });
-    }
-  };
-
   if (!selectedClusterId) {
     return (
       <PageShell className="animate-fade-in">
@@ -133,16 +99,21 @@ export default function Policies() {
       <PageHeader
         icon={<Settings2 className="h-5 w-5" />}
         title="Settings"
-        description="Configure cost calculations, observability connections, and workload settings for the selected cluster."
+        description="Configure cost calculations and run setup checks for the selected cluster."
       />
 
-      <Tabs defaultValue="pricing" className="space-y-6">
+      <Tabs defaultValue="preflight" className="space-y-6">
         <div className="overflow-x-auto pb-1">
           <TabsList className="w-full justify-start sm:w-auto">
+            <TabsTrigger value="preflight">Setup Checks</TabsTrigger>
             <TabsTrigger value="pricing">Resource Pricing</TabsTrigger>
-            <TabsTrigger value="prometheus">Prometheus Config</TabsTrigger>
           </TabsList>
         </div>
+
+        {/* Setup Checks (preflight) Tab */}
+        <TabsContent value="preflight" className="space-y-6">
+          <PreflightSettings />
+        </TabsContent>
 
         {/* Resource Pricing Tab */}
         <TabsContent value="pricing" className="space-y-6">
@@ -233,89 +204,6 @@ export default function Policies() {
                     Updated rates are applied to cost calculations after saving and are reflected on subsequent workload summaries.
                   </AlertDescription>
                 </Alert>
-              </div>
-            )}
-          </Panel>
-        </TabsContent>
-
-        {/* Prometheus Config Tab */}
-        <TabsContent value="prometheus" className="space-y-6">
-          <Panel className="space-y-5">
-            <SectionHeader
-              title="Prometheus Configuration"
-              description="Review the Prometheus endpoint used for metrics ingestion and verify its connection status."
-              helpText="This configuration is read from the active cluster context and is used to power utilization, charts, and recommendations."
-              action={
-                prometheusConfig ? (
-                  <span className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium ${
-                    prometheusConfig.connected
-                      ? "border-success/25 bg-success/10 text-success"
-                      : "border-destructive/25 bg-destructive/10 text-destructive"
-                  }`}>
-                    {prometheusConfig.connected ? <CheckCircle className="h-3.5 w-3.5" /> : <XCircle className="h-3.5 w-3.5" />}
-                    {prometheusConfig.connected ? "Connected" : "Disconnected"}
-                  </span>
-                ) : null
-              }
-            />
-
-            {prometheusConfigLoading ? (
-              <LoadingState
-                className="min-h-[240px]"
-                title="Loading Prometheus configuration"
-                description="Checking the endpoint and current connection state."
-              />
-            ) : (
-              <div className="space-y-5">
-                <div>
-                  <label className="text-sm font-medium text-foreground" htmlFor="prometheus-url">
-                    Prometheus URL
-                  </label>
-                  <div className="mt-2 flex flex-col gap-3 sm:flex-row sm:items-center">
-                    <Input
-                      id="prometheus-url"
-                      value={prometheusConfig?.url || ""}
-                      readOnly
-                      className="font-mono text-sm sm:flex-1"
-                      placeholder="http://prometheus:9090"
-                    />
-                    <Button onClick={testConnection} disabled={prometheusConfigLoading} className="sm:w-auto">
-                      Test Connection
-                    </Button>
-                  </div>
-                </div>
-
-                {prometheusConfig?.version ? (
-                  <div className="rounded-lg border border-border bg-surface-subtle/60 p-4">
-                    <label className="text-sm font-medium text-foreground">Version</label>
-                    <p className="mt-2 break-all font-mono text-sm text-muted-foreground">{prometheusConfig.version}</p>
-                  </div>
-                ) : null}
-
-                {prometheusConfig ? (
-                  <Alert variant={prometheusConfig.connected ? "success" : "destructive"}>
-                    {prometheusConfig.connected ? (
-                      <CheckCircle className="h-4 w-4" />
-                    ) : (
-                      <AlertCircle className="h-4 w-4" />
-                    )}
-                    <AlertTitle>
-                      {prometheusConfig.connected ? "Connected successfully" : "Connection failed"}
-                    </AlertTitle>
-                    <AlertDescription>
-                      {prometheusConfig.connected
-                        ? "CruiseKube can read metrics from the configured Prometheus endpoint."
-                        : prometheusConfig.error || "CruiseKube could not connect to the configured Prometheus endpoint."}
-                    </AlertDescription>
-                  </Alert>
-                ) : (
-                  <EmptyState
-                    className="min-h-[220px]"
-                    icon={Database}
-                    title="No Prometheus configuration"
-                    description="No Prometheus endpoint is available for the selected cluster."
-                  />
-                )}
               </div>
             )}
           </Panel>
