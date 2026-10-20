@@ -14,6 +14,7 @@ jobs:
     name: Build and Push Docker Images
     uses: truefoundry/github-workflows-public/.github/workflows/build.yml@main
     with:
+      artifactory_oidc_provider_name: github-jfrog-public
       image_tag: ${{ github.sha }}
       image_artifact_name: 'cruisekube-frontend'
       dockerfile_path: 'Dockerfile'
